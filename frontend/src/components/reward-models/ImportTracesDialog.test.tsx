@@ -55,3 +55,14 @@ it("explains an empty folder instead of enabling an import that cannot upload an
   expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   expect(rmImportTraces).not.toHaveBeenCalled();
 });
+
+it.each(["files", "paste"])("attaches the specified source ID to %s imports", async (method) => {
+  vi.mocked(rmImportTraces).mockResolvedValue({ imported: 1, format: "stash", trace_ids: [] });
+  render(<ImportTracesDialog onImported={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Import traces" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /^Source ID/ }), { target: { value: " heavi " } });
+  if (method === "files") fireEvent.change(screen.getByLabelText("Trace files"), { target: { files: [file("trace.jsonl", "traces")] } });
+  else fireEvent.change(screen.getByRole("textbox", { name: "Trace data" }), { target: { value: "traces" } });
+  fireEvent.click(screen.getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(rmImportTraces).toHaveBeenCalledExactlyOnceWith("auto", "traces", "heavi"));
+});

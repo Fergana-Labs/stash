@@ -65,6 +65,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
         rows={[
           ["GET", <span key="p" className="font-mono">{"/formats"}</span>, "List import formats"],
           ["POST", <span key="p" className="font-mono">{"/traces/import"}</span>, "Import traces"],
+          ["PUT", <span key="p" className="font-mono">{"/trace-sources"}</span>, "Name a trace source"],
           ["GET", <span key="p" className="font-mono">{"/traces"}</span>, "List traces"],
           ["GET", <span key="p" className="font-mono">{"/traces/{trace_id}"}</span>, "Get a trace with steps, annotations, scores"],
           ["DELETE", <span key="p" className="font-mono">{"/traces/{trace_id}"}</span>, "Delete a trace"],
@@ -96,6 +97,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
         params={[
           { name: "format", type: "string", desc: "A format name from /formats, or auto.", required: true },
           { name: "data", type: "string", desc: "The file contents, as one string.", required: true },
+          { name: "source_id", type: "string", desc: "Optional stable agent ID, 1–200 characters (e.g. henry-codex or heavi). Applies to every trace in the payload. Otherwise uses recorded source metadata, agent, or format." },
         ]}
       />
       <CodeTabs
@@ -132,14 +134,31 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
       </P>
 
       <Endpoint method="GET" path="/traces">List traces, paginated.</Endpoint>
+      <P>
+        Each summary includes <Code>source_id</Code>, <Code>source_name</Code>, and{" "}
+        <Code>source_owner_id</Code>. Source IDs group runs within an account; display
+        names can be changed without affecting existing scores. In the Traces page
+        and training picker, filter by source and inclusive import dates. Use{" "}
+        <Code>Select only shown</Code> to train on exactly the matching traces.
+      </P>
       <ParamTable
         params={[
           { name: "limit", type: "integer", desc: "Page size, 1 to 500. Default 50." },
           { name: "offset", type: "integer", desc: "Rows to skip. Default 0." },
         ]}
       />
+
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces?limit=50&offset=0" ${AUTH}`}</CodeBlock>
       <P>Returns <Code>{`{"traces": [TraceSummary], "total": int}`}</Code>, newest first.</P>
+
+      <Endpoint method="PUT" path="/trace-sources">Set a source’s display name for your account.</Endpoint>
+      <CodeBlock lang="json">{`{"source_id": "henry-codex", "name": "Henry’s Codex"}`}</CodeBlock>
+      <P>
+        The name is 1–120 characters and applies to existing and future traces with
+        this source ID. For live OTLP exports, send <Code>X-Stash-Trace-Source</Code>{" "}
+        on <Code>POST /otel/v1/traces</Code> to set the source ID. Leaving it out on
+        subsequent updates preserves a previously saved explicit ID.
+      </P>
 
       <Endpoint method="GET" path="/traces/{trace_id}">A trace with its steps, annotations, and reward model scores.</Endpoint>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>

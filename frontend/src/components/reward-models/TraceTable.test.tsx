@@ -4,8 +4,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { RmTraceSummary } from "@/lib/types";
 import TraceTable from "./TraceTable";
 
-const { push, search } = vi.hoisted(() => ({ push: vi.fn(), search: vi.fn() }));
-vi.mock("@/lib/api", () => ({ rmListAllTraces: search }));
+const { push, search, rename } = vi.hoisted(() => ({ push: vi.fn(), search: vi.fn(), rename: vi.fn() }));
+vi.mock("@/lib/api", () => ({ rmListAllTraces: search, rmRenameTraceSource: rename }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 beforeEach(() => vi.clearAllMocks());
 
@@ -105,4 +105,32 @@ it("finds matches inside content and ignores a late result from an older search"
   expect(screen.queryByRole("cell", { name: "Trace 20" })).not.toBeInTheDocument();
   fireEvent.change(input, { target: { value: "" } });
   expect(screen.getByRole("cell", { name: "Trace 20" })).toBeVisible();
+});
+
+it("filters by source and date, and renames a source without changing its ID", async () => {
+  rename.mockResolvedValue({ source_id: "codex", source_name: "Henry’s Codex" });
+  const rows = traces.map((trace, i) => ({ ...trace, source_owner_id: "henry", source_id: i === 2 ? "heavi" : "codex", source_name: i === 2 ? "Heavi" : "Codex", created_at: new Date(2026, 9, 7 + i, 12).toISOString() }));
+  render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Filter by source" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Codex" }));
+  fireEvent.change(screen.getByLabelText("Imported from"), { target: { value: "2026-10-08" } });
+  fireEvent.change(screen.getByLabelText("Imported through"), { target: { value: "2026-10-09" } });
+  expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual(["Trace 3"]);
+  fireEvent.click(screen.getByRole("button", { name: "Rename source" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Source name" }), { target: { value: "Henry’s Codex" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(rename).toHaveBeenCalledWith("codex", "Henry’s Codex");
+  expect(screen.getByRole("cell", { name: "Henry’s Codex" })).toHaveAttribute("title", "Henry’s Codex · Source ID: codex");
+  expect(screen.getByRole("combobox", { name: "Filter by source" })).toHaveTextContent("Henry’s Codex");
+  fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  expect(screen.getAllByRole("link")).toHaveLength(3);
+  expect(screen.getAllByRole("cell", { name: "Henry’s Codex" })).toHaveLength(2);
+});
+
+it("does not offer source renaming for traces shared by another owner", async () => {
+  render(<TraceTable traces={[{ ...traces[0], can_score: false }]} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Filter by source" }));
+  fireEvent.click(await screen.findByRole("option", { name: "OpenTelemetry" }));
+  expect(screen.queryByRole("button", { name: "Rename source" })).not.toBeInTheDocument();
 });

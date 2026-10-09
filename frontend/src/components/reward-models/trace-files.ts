@@ -37,6 +37,7 @@ export async function importTraceFiles(
   files: TraceFile[],
   format: string,
   onProgress: (path: string) => void,
+  sourceId?: string,
 ): Promise<FileImportResult> {
   const result: FileImportResult = { imported: 0, failed: [], skipped: [] };
   for (const entry of files) {
@@ -56,7 +57,8 @@ export async function importTraceFiles(
       if (archive) {
         throw new Error("Unzip this archive, then import the folder inside.");
       }
-      const imported = await rmImportTraces(format, await file.text());
+      const data = await file.text();
+      const imported = await (sourceId?.trim() ? rmImportTraces(format, data, sourceId.trim()) : rmImportTraces(format, data));
       result.imported += imported.imported;
     } catch (error) {
       result.failed.push({ entry, message: `${path}: ${errorMessage(error)}` });

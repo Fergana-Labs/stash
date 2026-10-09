@@ -14,9 +14,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmTraceSummary } from "@/lib/types";
 import { selectRange, sortTraces, toggleAllVisible, type TraceSortKey, type TraceSortDirection } from "./trace-selection";
+import { matchesTraceFilters, traceSourceId, traceSourceKey, traceSourceName, type TraceFilters } from "./trace-sources";
+import TraceSourceNameDialog from "./TraceSourceNameDialog";
 
 const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
   { key: "title", label: "Trace", className: "" },
+  { key: "source", label: "Source", className: "w-36" },
   { key: "steps", label: "Steps", className: "w-16 text-right" },
   { key: "comments", label: "Comments", className: "w-24 text-right" },
   { key: "credit", label: "Avg. credit", className: "w-24 text-right" },
@@ -47,6 +50,8 @@ function LatestTraceTable({
 }) {
   const [query, setQuery] = useState("");
   const [assessmentFilter, setAssessmentFilter] = useState("all");
+  const [filters, setFilters] = useState<TraceFilters>({ source: "all", from: "", through: "" });
+  const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: TraceSortKey; direction: TraceSortDirection }>({ key: "imported", direction: "descending" });
   // Index (in the visible list) of the last row clicked without shift: the anchor for shift-click ranges.
   const anchor = useRef<number | null>(null);
@@ -64,12 +69,29 @@ function LatestTraceTable({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [query, traces]);
   const searching = !!query.trim() && searchResults === null && !searchError;
-  const filtered = (query.trim() ? searchResults ?? [] : traces).filter((trace) => assessmentFilter === "all"
+  const namedTrace = (trace: RmTraceSummary) => sourceNames[traceSourceKey(trace)]
+    ? { ...trace, source_name: sourceNames[traceSourceKey(trace)] } : trace;
+  const sources = Array.from(new Map(traces.map((trace) => [traceSourceKey(trace), namedTrace(trace)])).values())
+    .sort((a, b) => traceSourceName(a).localeCompare(traceSourceName(b)));
+  const selectedSource = sources.find((trace) => traceSourceKey(trace) === filters.source);
+  // Search can return traces shared for review; only the loaded picker set is trainable.
+  const selectableIds = new Set(traces.map((trace) => trace.id));
+  const filtered = (query.trim() ? searchResults ?? [] : traces).map(namedTrace)
+    .filter((trace) => (mode !== "picker" || selectableIds.has(trace.id)) && matchesTraceFilters(trace, filters))
+    .filter((trace) => assessmentFilter === "all"
     || (assessmentFilter === "scored" && traceScore(trace) !== null)
     || (assessmentFilter === "unscored" && traceScore(trace) === null));
   const visible = sortTraces(filtered, sort.key, sort.direction, "automatic");
   const visibleIds = visible.map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
+  const hiddenSelected = traces.filter((trace) => selected.has(trace.id)).length - selectedVisible;
+  const hasFilters = filters.source !== "all" || !!filters.from || !!filters.through;
+  const invalidDates = !!filters.from && !!filters.through && filters.from > filters.through;
+
+  function changeFilters(next: Partial<TraceFilters>) {
+    setFilters((current) => ({ ...current, ...next }));
+    anchor.current = null;
+  }
 
   function toggleRow(index: number, shiftKey: boolean) {
     const id = visibleIds[index];
@@ -101,15 +123,39 @@ function LatestTraceTable({
           />
         </label>}
         {mode === "browse" && <Select aria-label="Filter traces" value={assessmentFilter} onChange={(value) => { setAssessmentFilter(value); anchor.current = null; }} className="h-7 min-w-32 px-2 text-[12px]" options={[{ value: "all", label: "All traces" }, { value: "scored", label: "Scored" }, { value: "unscored", label: "Unscored" }]} />}
+        <div className="flex items-center gap-1">
+          <Select aria-label="Filter by source" value={filters.source} onChange={(source) => changeFilters({ source })} className="h-7 max-w-60 min-w-36 px-2 text-[12px]" options={[
+            { value: "all", label: "All sources" },
+            ...sources.map((trace) => ({ value: traceSourceKey(trace), label: traceSourceName(trace) })),
+          ]} />
+          {selectedSource && selectedSource.can_score !== false && <TraceSourceNameDialog
+            key={filters.source}
+            sourceId={traceSourceId(selectedSource)}
+            name={traceSourceName(selectedSource)}
+            onRenamed={(name) => setSourceNames((current) => ({ ...current, [filters.source]: name }))}
+          />}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+          <span>Imported</span>
+          <input type="date" aria-label="Imported from" value={filters.from} max={filters.through || undefined} onChange={(e) => changeFilters({ from: e.target.value })} className="h-7 rounded-md border border-border bg-background px-2 text-foreground" />
+          <span>to</span>
+          <input type="date" aria-label="Imported through" value={filters.through} min={filters.from || undefined} onChange={(e) => changeFilters({ through: e.target.value })} className="h-7 rounded-md border border-border bg-background px-2 text-foreground" />
+          {hasFilters && <Button variant="ghost" size="xs" onClick={() => changeFilters({ source: "all", from: "", through: "" })}>Clear filters</Button>}
+        </div>
 
         <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
           {searching ? "Searching…" : `${visible.length} traces`}
         </span>
       </div>
 
+      {mode === "picker" && <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
+        <Button variant="outline" size="xs" disabled={searching || !!searchError || visible.length === 0} onClick={() => { onSelectedChange(new Set(visibleIds)); anchor.current = null; }}>Select only shown</Button>
+        <span>{selectedVisible} shown selected{hiddenSelected > 0 && ` · ${hiddenSelected} selected outside these filters`}</span>
+      </div>}
+      {invalidDates && <p role="alert" className="mb-3 text-xs text-red-600">The end date must be on or after the start date.</p>}
       {searchError && <p role="alert" className="mb-3 text-sm text-red-600">{searchError}</p>}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className={cn("w-full table-fixed border-collapse text-[13px]", mode === "browse" && "min-w-[980px]")}>
+        <table className="w-full min-w-[1140px] table-fixed border-collapse text-[13px]">
           <thead>
             <tr className={cn("border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase", mode === "browse" && "h-7 [&>th]:py-0")}>
               {mode === "picker" && <th className="w-10 py-2 pl-3">
@@ -213,6 +259,7 @@ function TraceRow({
           </Link>
         )}
       </td>
+      <td className="px-3 py-1.5 text-[12px] text-muted-foreground" title={`${traceSourceName(trace)} · Source ID: ${traceSourceId(trace)}`}><span className="block truncate">{traceSourceName(trace)}</span></td>
       <td className="px-3 py-1.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-1.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
       {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-1.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : (Math.round(credit * 100) / 100 || 0).toFixed(2)}</td>)}

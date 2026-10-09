@@ -10,6 +10,7 @@ from . import (
     evaluator,
     step_labeling,
     trace_images,
+    trace_sources,
     trace_titles,
     workbench_auto,
     workbench_evaluation,
@@ -19,6 +20,7 @@ from .adapters import CanonicalTrace, TraceFormatError, parse_traces
 SUMMARY_SELECT = """
     SELECT
       t.id, t.owner_user_id, t.external_id, t.title, t.source_format, t.metadata, t.spans, t.created_at, t.shared_training_allowed,
+      coalesce(nullif(u.display_name,''),u.name) AS source_owner_name,
       (SELECT count(*) FROM rm_trace_steps s WHERE s.trace_id = t.id)::int AS step_count,
       a.positive_count, a.negative_count, a.comment_count, a.label_error_count,
       ls.reward_model_id AS latest_reward_model_id,
@@ -26,6 +28,7 @@ SUMMARY_SELECT = """
       ls.score AS latest_score,
       ac.mean_credit, ac.min_credit, ac.max_credit, ac.scored_actions, ac.revision AS evaluator_revision
     FROM rm_traces t
+    JOIN users u ON u.id=t.owner_user_id
     CROSS JOIN LATERAL (
       SELECT
         count(*) FILTER (WHERE rating = 1 AND NOT label_error)::int AS positive_count,
@@ -49,7 +52,7 @@ SUMMARY_SELECT = """
 """
 
 
-def _summary(row, viewer_id: UUID) -> dict:
+def _summary(row, viewer_id: UUID, source_names: dict) -> dict:
     latest_score = None
     if row["latest_reward_model_id"] is not None:
         latest_score = {
@@ -58,12 +61,19 @@ def _summary(row, viewer_id: UUID) -> dict:
             "score": row["latest_score"],
         }
     agent = (row["metadata"] or {}).get("agent")
+    source_id = trace_sources.source_id(row["metadata"] or {}, row["source_format"])
     return {
         "id": row["id"],
         "can_score": row["owner_user_id"] == viewer_id,
         "external_id": row["external_id"],
         "title": row["title"],
         "source_format": row["source_format"],
+        "source_id": source_id,
+        "source_name": source_names.get(
+            (row["owner_user_id"], source_id),
+            trace_sources.default_name(source_id, row["source_owner_name"]),
+        ),
+        "source_owner_id": row["owner_user_id"],
         "agent": agent if isinstance(agent, str) and agent.strip() else row["source_format"],
         "step_count": row["step_count"],
         "positive_count": row["positive_count"],
@@ -98,9 +108,14 @@ def _step(row) -> dict:
     }
 
 
-async def import_traces(owner_user_id: UUID, format: str, data: str) -> dict:
+async def import_traces(
+    owner_user_id: UUID, format: str, data: str, source_id: str | None = None
+) -> dict:
     """Parse and store traces. Re-importing an `id` replaces that trace's steps."""
     resolved_format, traces = parse_traces(data, format)
+    if source_id is not None:
+        for trace in traces:
+            trace.metadata["source_id"] = source_id
     async with get_pool().acquire() as conn, conn.transaction():
         trace_ids = await store_traces(conn, owner_user_id, resolved_format, traces)
     return {"format": resolved_format, "imported": len(trace_ids), "trace_ids": trace_ids}
@@ -130,7 +145,9 @@ async def store_traces(
             ON CONFLICT (owner_user_id, external_id) DO UPDATE SET
               title = EXCLUDED.title,
               source_format = EXCLUDED.source_format,
-              metadata = EXCLUDED.metadata,
+              metadata = CASE WHEN NOT (EXCLUDED.metadata ? 'source_id') AND rm_traces.metadata ? 'source_id'
+                THEN EXCLUDED.metadata || jsonb_build_object('source_id',rm_traces.metadata->'source_id')
+                ELSE EXCLUDED.metadata END,
               spans = EXCLUDED.spans,
               updated_at = now()
             RETURNING id
@@ -213,7 +230,8 @@ async def list_traces(
         reward_model_id,
     )
     total = await pool.fetchval("SELECT count(*) FROM rm_traces t" + where, owner_user_id, query)
-    summaries = [_summary(row, owner_user_id) for row in rows]
+    source_names = await trace_sources.names(rows)
+    summaries = [_summary(row, owner_user_id, source_names) for row in rows]
     if rows:
         coverage = await pool.fetch(
             """WITH selected AS (SELECT unnest($1::uuid[]) AS id), latest AS (
@@ -345,7 +363,7 @@ async def get_trace(
         owner_user_id,
         trace_id,
     )
-    summary = _summary(row, owner_user_id)
+    summary = _summary(row, owner_user_id, await trace_sources.names([row]))
     await _evaluation_summaries([summary])
     images = await trace_images.for_trace(trace_id)
     detail = {

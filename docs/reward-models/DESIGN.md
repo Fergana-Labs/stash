@@ -265,6 +265,36 @@ The training picker shows all suggested base models and accepts a custom Hugging
 Face model ID. Training requires at least two source traces so evaluation can
 hold out whole traces; the UI does not claim to verify semantic independence.
 
+### Trace sources and training selection
+
+Trace summaries expose `source_id`, `source_name`, and `source_owner_id`. A source
+ID is stable within an owner's account; its display name can change. The ID is
+read from `metadata.source_id`, falling back to `metadata.agent`, `metadata.source`,
+then the import format for older traces. Codex and Claude Code default to names
+including the owner's display name. No recording rewrite or scoring is needed.
+
+`POST /api/v1/rm/traces/import` accepts an optional `source_id` (1–200 characters)
+which applies to every trace in that payload and overrides recorded source IDs.
+OTLP exports accept the same value in the `X-Stash-Trace-Source` header. Reusing
+these IDs groups future runs together. Omitting an explicit ID during a later
+upsert preserves a previously saved explicit ID. The import and connection dialogs
+expose this option. Canonical exports retain it in trace metadata.
+
+`PUT /api/v1/rm/trace-sources` accepts `{source_id, name}` (name: 1–120 characters).
+It upserts an alias scoped to the authenticated owner in `rm_trace_sources`
+(migration `0232`). Aliases apply to existing and future traces, including shared
+read views, without changing trace revisions or invalidating evaluations. A
+reviewer cannot rename another owner's source.
+
+The latest trace list and training picker include source and inclusive local
+calendar import-date filters. Dates match the **Imported** column, not the time
+the agent originally ran. The source column is sortable; selecting a source
+exposes its rename control. The picker loads owned traces only. Filtering retains
+the current selection and reports selections hidden by the filters. **Select
+only shown** replaces the selection with the visible trace IDs so a model can be
+trained on one source and date range. The header checkbox continues to toggle
+visible rows without changing hidden selections.
+
 Automatic step labeling uses overlapping windows bounded by
 `STEP_LABELING_MAX_CHUNKS` and `STEP_LABELING_MAX_CHARS`. These are provider
 context budgets, not limits on recording size: every target is processed,

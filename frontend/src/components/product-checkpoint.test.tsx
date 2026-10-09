@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ProductCheckpointProvider } from "./ProductCheckpointContext";
 import RewardRail from "./workspace/reward-rail";
 import TraceTable from "./reward-models/TraceTable";
@@ -28,9 +28,12 @@ const trace: RmTraceSummary = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The current reward navigation includes the system-theme toggle.
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   api.list.mockResolvedValue([]);
   api.create.mockResolvedValue({ id: "new-model" });
 });
+afterEach(() => { vi.unstubAllGlobals(); delete document.documentElement.dataset.theme; });
 
 it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("selects the account's navigation: %s", (checkpoint) => {
   render(<RewardRail user={{ ...user, product_checkpoint: checkpoint }} onLogout={vi.fn()} />);
@@ -52,6 +55,7 @@ it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("shows the checkp
   </ProductCheckpointProvider>);
   expect(screen.getByRole("link", { name: "Heavi production trace" })).toBeVisible();
   expect(screen.queryByRole("columnheader", { name: "Trace score" }) !== null).toBe(checkpoint === "latest");
+  expect(screen.queryByRole("columnheader", { name: "Source" }) !== null).toBe(checkpoint === "latest");
   expect(screen.queryByRole("combobox", { name: "Filter traces" }) !== null).toBe(checkpoint === "latest");
   expect(screen.queryByRole("button", { name: "Mean action credit" }) !== null).toBe(checkpoint !== "latest");
 });

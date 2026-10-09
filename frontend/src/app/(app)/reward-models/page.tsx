@@ -97,6 +97,7 @@ function Traces() {
   return (
     <TraceDropzone onImported={() => void load()}>
       <RmPage
+        wide
         title="Traces"
         actions={(
           <>
