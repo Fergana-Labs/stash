@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Align trace step numbers with their message headings and move the theme toggle
+  to the bottom-left sidebar.
+
 - Simplify trace navigation and remove the label summary, Labels/Scores toggles,
   scoring explainer, and redundant navigation hints. Keep long-message collapse
   controls visible while scrolling, use warm Stash colors in dark mode, and show

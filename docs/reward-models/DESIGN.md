@@ -224,8 +224,9 @@ Show less control or Escape collapses it and keeps the message in view. There is
 no separate message reader. Each input
 variable and tool output has one disclosure row and an explicitly named copy
 action. Recognized code and fenced Markdown blocks use syntax highlighting while
-preserving annotation offsets. Displayed step numbers live in the left gutter.
-The theme control remembers the choice; dark mode uses warm charcoal surfaces,
+preserving annotation offsets. Displayed step numbers live in the left gutter,
+centered on each message heading. The theme control lives at the bottom of the
+left sidebar and remembers the choice; dark mode uses warm charcoal surfaces,
 cream text, and Stash's orange accents. Model creation/training status links to the current user's model that
 was trained on this trace; another reviewer's private models are not exposed.
 

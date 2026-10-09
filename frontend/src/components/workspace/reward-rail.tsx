@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
+import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
@@ -50,6 +51,7 @@ function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void
           Settings
         </Link>
         <AccountMenu user={user} onLogout={onLogout} />
+        <div className="px-1.5"><TraceThemeToggle /></div>
       </div>
     </aside>
   );
