@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep the reward-model creation sheet open when clicking outside it, preserving
+  trace selections until it is closed with the close button or Escape.
+
 - Give user messages a quiet tint and accent, and start a new phase with the
   user's reply or approval. Reduce the completion curve to 30% opacity.
 
