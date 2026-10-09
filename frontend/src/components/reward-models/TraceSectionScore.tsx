@@ -1,9 +1,12 @@
 import type { RmSectionCopy } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-export default function TraceSectionScore({ section, range, loading }: {
-  section: RmSectionCopy | undefined; range: string; loading: boolean;
+export default function TraceSectionScore({ section, range, loading, hasActions }: {
+  section: RmSectionCopy | undefined; range: string; loading: boolean; hasActions: boolean;
 }) {
+  if (!hasActions) return <div aria-label={`Ungraded context for ${range}`} title="This section contains only context, with no agent actions to assess." className="absolute top-1/2 right-4 flex -translate-y-1/2 flex-col items-end gap-1 px-1 py-2 text-right text-muted-foreground">
+    <span className="text-[10px]">Context</span><span className="text-xs">Ungraded</span>
+  </div>;
   const value = section ? section.score == null ? "Unscored" : section.score.toFixed(2) : loading ? "Scoring…" : "Unavailable";
   return <TooltipProvider><Tooltip><TooltipTrigger asChild>
     <button type="button" aria-label={`Section score ${value} for ${range}`} className="absolute top-1/2 right-4 flex -translate-y-1/2 cursor-help flex-col items-end gap-1 rounded px-1 py-2 text-right focus-visible:outline-2 focus-visible:outline-brand-500">

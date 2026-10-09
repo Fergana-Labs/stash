@@ -58,6 +58,48 @@ async def test_generated_copy_reused_and_invalidated_by_changed_evidence(client,
     assert complete.await_count == 2
 
 
+@pytest.mark.parametrize("thinking", [False, True])
+async def test_context_only_sections_never_return_generated_or_cached_success(
+    client, pool, monkeypatch, thinking
+):
+    auth, trace_id, body, steps = await setup_trace(client)
+    await pool.execute(
+        "UPDATE rm_trace_steps SET role=$2, metadata=$3 WHERE trace_id=$1",
+        UUID(trace_id),
+        "assistant" if thinking else "system",
+        {"thinking": True} if thinking else {},
+    )
+    complete = AsyncMock(return_value=generated())
+    monkeypatch.setattr(trace_sections.llm, "complete_structured", complete)
+    url = f"/api/v1/rm/traces/{trace_id}/section-summaries"
+    response = await client.post(url, headers=auth, json=body)
+    assert response.status_code == 200
+    section = response.json()["sections"][0]
+    assert section["title"] == "Looking up an order"
+    assert section["score"] is None
+    assert section["score_reason"] == trace_sections.CONTEXT_ONLY_REASON
+    assert not json.loads(complete.call_args.kwargs["prompt"])["section_0"]["has_agent_actions"]
+    stored = await pool.fetchval(
+        "SELECT copy FROM rm_trace_section_summaries WHERE trace_id=$1", UUID(trace_id)
+    )
+    assert stored["score"] is None
+    # Even a pre-existing numeric score must not escape the eligibility check.
+    await pool.execute(
+        "UPDATE rm_trace_section_summaries SET copy=$2 WHERE trace_id=$1",
+        UUID(trace_id),
+        generated().section_0.model_dump(),
+    )
+    assert (await client.post(url, headers=auth, json=body)).json()["sections"][0]["score"] is None
+    assert complete.await_count == 1
+    # A real action in the same range restores eligibility and invalidates its cache.
+    await pool.execute(
+        "UPDATE rm_trace_steps SET role='assistant', metadata='{}' WHERE id=$1",
+        UUID(steps[-1]["id"]),
+    )
+    assert (await client.post(url, headers=auth, json=body)).json()["sections"][0]["score"] == 0.83
+    assert complete.await_count == 2
+
+
 async def test_authorization_and_range_validation_precede_cache_or_inference(
     client, pool, monkeypatch
 ):

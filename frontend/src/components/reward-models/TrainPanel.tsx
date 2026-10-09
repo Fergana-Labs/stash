@@ -8,6 +8,7 @@ import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { rmCreateRewardModel, rmListRewardModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmRewardModel } from "@/lib/types";
@@ -20,7 +21,7 @@ const BASE_MODEL_SUGGESTIONS = ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "Qwen/Qwen
 
 /**
  * Trains a reward model on exactly `traceIds`. One click uses the defaults;
- * "Options" exposes them. A selection needs at least two independent tasks;
+ * "Options" exposes them. A selection needs at least two source traces;
  * the server validates the resulting training/evaluation split.
  */
 function LatestTrainPanel({
@@ -40,6 +41,7 @@ function LatestTrainPanel({
   // null = the generated name, which follows the model count.
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [baseModel, setBaseModel] = useState(DEFAULT_BASE_MODEL);
+  const [customBaseModel, setCustomBaseModel] = useState(false);
   const [epochs, setEpochs] = useState(1);
   const [rubric, setRubric] = useState("Task completion\nAdherence to the user's constraints\nEvidence grounding\nAppropriate uncertainty");
   const [submitting, setSubmitting] = useState(false);
@@ -74,26 +76,21 @@ function LatestTrainPanel({
   return (
     <div className="relative flex items-center gap-3">
       <TrainStatus summary={summary} error={error} />
-      <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-        Base model
-        <Input
-          value={baseModel}
-          onChange={(e) => setBaseModel(e.target.value)}
-          list="rm-base-models"
-          title="Any Hugging Face model that loads with AutoModelForSequenceClassification."
-          className="h-8 w-48 font-mono text-[12.5px] text-foreground md:text-[12.5px]"
-        />
-        <datalist id="rm-base-models">
-          {BASE_MODEL_SUGGESTIONS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-      </label>
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        <span>Base model</span>
+        <div className="flex flex-col gap-1">
+          <Select aria-label="Base model" value={customBaseModel ? "custom" : baseModel} onChange={(value) => {
+            setCustomBaseModel(value === "custom");
+            setBaseModel(value === "custom" ? "" : value);
+          }} options={[...BASE_MODEL_SUGGESTIONS.map((value) => ({ value, label: value })), { value: "custom", label: "Custom model…" }]} className="h-8 w-48 px-2 text-[12px]" />
+          {customBaseModel && <Input aria-label="Custom base model" value={baseModel} onChange={(e) => setBaseModel(e.target.value)} placeholder="Hugging Face model ID" className="h-8 w-48 text-[12px]" />}
+        </div>
+      </div>
       <Button variant="outline" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions}>
         Options
         <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
       </Button>
-      <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2}>
+      <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2 || !baseModel.trim()}>
         {submitting && <Loader2 className="animate-spin" />}
         {submitting ? "Queuing…" : "Create new reward model"}
       </Button>
@@ -128,7 +125,7 @@ function TrainStatus({ summary, error }: { summary: SelectionSummary; error: str
   if (summary.count > 1) return null;
   return (
     <p className="m-0 max-w-xs text-right text-[12px] leading-snug text-amber-700 dark:text-amber-400">
-      Select at least two independent tasks for training and evaluation.
+      Select at least two traces. Training and evaluation use separate traces.
     </p>
   );
 }

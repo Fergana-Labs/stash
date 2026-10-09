@@ -7,7 +7,7 @@ import type { RmStep } from "@/lib/types";
 import { sectionFallbackTitle, traceExplorerLevel, type TraceGroup } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import type { TraceRow } from "./trace-rows";
-import { traceScrollMarkers, traceSectionTarget } from "./trace-scroll";
+import { TRACE_STEP_INSET, traceScrollMarkers, traceSectionTarget } from "./trace-scroll";
 
 /** A stable whole-trace map, even while the explorer shows a nested subsection. */
 export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, scroller, onPath, onOpenRows, onStep }: {
@@ -58,7 +58,7 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
       focus?.focus({ preventScroll: true });
       if (first || node && trail.length && node.children.length) container.scrollTo({ top: 0, behavior: "instant" });
       else if (target) container.scrollTo({
-        top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 40,
+        top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - TRACE_STEP_INSET,
         behavior: "instant",
       });
     });

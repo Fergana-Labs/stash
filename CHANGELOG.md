@@ -10,6 +10,29 @@ everything before it is captured in git history (`git log`), not here.
   duplicate skill names with the documents to choose from instead of silently
   loading one of them.
 
+- Align the sticky Show less control with the left edge of message content.
+
+- Default trace credit charts to ±1 and omit the inactive Sections heading at
+  the overview level. Fit scaling and navigation within sections remain available.
+
+- Add Fit / ±1 trace-credit scaling and use baseline ticks for unscored steps.
+  Separate task score summaries from message rows, with the task's step range,
+  final answer, total work, and capped score. Show every suggested training base
+  model in the picker and clarify that evaluation uses separate source traces.
+
+- Plot step credit around a centered zero line: positive bars rise, negative bars
+  fall, and zero has no filled height. Add an explanatory rescore tooltip.
+
+- Keep the trace minimap marker on the selected step after a jump by matching
+  scroll tracking to the space reserved for the sticky breadcrumb. Preserve
+  clicked selections when a jump reaches the bottom, until the viewer scrolls
+  or navigates elsewhere.
+
+- Align trace step numbers with their message headings and move the theme toggle
+  to the bottom-left sidebar.
+- Leave sections containing only supplied context ungraded instead of assigning
+  success scores to system instructions, requests, or tool observations.
+
 - Simplify trace navigation and remove the label summary, Labels/Scores toggles,
   scoring explainer, and redundant navigation hints. Keep long-message collapse
   controls visible while scrolling, use warm Stash colors in dark mode, and show

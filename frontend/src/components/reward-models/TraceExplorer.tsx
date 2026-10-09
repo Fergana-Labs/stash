@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
 import { sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
-import type { TraceRow } from "./trace-rows";
+import { rowSteps, type TraceRow } from "./trace-rows";
+import { isGradableAction } from "./automatic-credit";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
@@ -21,6 +22,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
 }) {
   const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
+  const taskRows = groups.flatMap((group) => group.rows);
   const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
@@ -82,17 +84,20 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     return first === last ? `Step ${first}` : `Steps ${first}–${last}`;
   };
   const title = (node: TraceGroup) => copy(node)?.title ?? sectionFallbackTitle(node);
+  const assessmentStatus = children.length > 0 && status !== "ready"
+    ? <span role="status" className="ml-auto shrink-0 text-[11px] text-muted-foreground">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>
+    : null;
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
-    <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
-      {canAscend ? <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Back to sections</button> : <span className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"><LayoutGrid className="size-3.5" />Sections</span>}
+    {trail.length > 0 ? <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
+      {canAscend && <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Back to sections</button>}
       {trail.map((node, index) => <span key={node.key} className="flex min-w-0 items-center gap-1">
-        <ChevronRight className="size-3 shrink-0" aria-hidden="true" />
+        {(canAscend || index > 0) && <ChevronRight className="size-3 shrink-0" aria-hidden="true" />}
         {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
       </span>)}
-      {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
+      {assessmentStatus}
       {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
-    </nav>
-    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
+    </nav> : assessmentStatus && <div className="mb-2 flex">{assessmentStatus}</div>}
+    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
       <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {
         const generated = copy(node);
         return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
@@ -104,7 +109,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
           {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
           <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span>{node.children.length > 0 && <span>{node.children.length} subtasks</span>}</div>
-        </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} /></div>;
+        </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} hasActions={node.rows.some((row) => rowSteps(row).some(isGradableAction))} /></div>;
       })}</div>}
   </section>;
 }

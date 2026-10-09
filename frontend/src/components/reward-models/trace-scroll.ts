@@ -2,6 +2,9 @@ import { conversationExcerpt, conversationMarkers, type ConversationMarker } fro
 import { isThinking, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { TraceGroup } from "./trace-outline";
 
+/** Leave room for the sticky 32px hierarchy bar and an 8px gap. */
+export const TRACE_STEP_INSET = 40;
+
 export function traceSectionTarget(node: TraceGroup): string {
   return `trace-section-${node.key}`;
 }
@@ -34,8 +37,9 @@ export function traceScrollMarkers(rows: TraceRow[], includeAllRows = false): Co
   });
 }
 
-export function visibleStepElement(container: HTMLElement, navigation: HTMLElement): HTMLElement | null {
-  const boundary = Math.max(container.getBoundingClientRect().top, navigation.getBoundingClientRect().bottom) + 12;
+/** The legacy reader uses 12px; the section explorer passes its sticky-header inset. */
+export function visibleStepElement(container: HTMLElement, navigation: HTMLElement, inset = 12): HTMLElement | null {
+  const boundary = Math.max(container.getBoundingClientRect().top, navigation.getBoundingClientRect().bottom) + inset;
   const elements = [...container.querySelectorAll<HTMLElement>('[id^="step-"]')];
   // The last row may be too short to reach the top beneath the sticky graph.
   const atBottom = container.scrollHeight > container.clientHeight

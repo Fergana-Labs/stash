@@ -7,11 +7,11 @@ import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import { StepLabelChips } from "./StepLabels";
-import { StepScoreChip, StepScoreLine, TaskScoreChip } from "./StepRewards";
+import { StepScoreChip, StepScoreLine, TaskScoreSummary } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
-import { signed, type StepReward, type TaskScore } from "./step-rewards";
+import type { StepReward, TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
-import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
+import { firstLine, isThinking, looksLikeError, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import { Check, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
@@ -65,7 +65,17 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
         className,
       )}
     >
-      <span aria-label={`Step ${ann.stepNumber?.(step) ?? step.index + 1}`} className="absolute top-1 left-0 w-6 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{ann.stepNumber?.(step) ?? step.index + 1}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Keep the gutter number centered on its heading, regardless of row padding or content. */
+function RowHeader({ step, ann, children, className }: { step: RmStep; ann: StepAnnotations; children: ReactNode; className?: string }) {
+  const number = ann.stepNumber?.(step) ?? step.index + 1;
+  return (
+    <div className={cn("relative -ml-8 flex items-center gap-3 pl-8", className)}>
+      <span aria-label={`Step ${number}`} className="absolute inset-y-0 left-0 flex w-6 items-center justify-end font-mono text-[10px] tabular-nums text-muted-foreground">{number}</span>
       {children}
     </div>
   );
@@ -105,7 +115,7 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
 
   return (
     <div ref={frame} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); event.preventDefault(); collapse(); } }}>
-      {open && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-end bg-background">
+      {open && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-start bg-background">
         <button type="button" data-message-collapse onClick={collapse} aria-expanded="true" title="Collapse message (Esc)" className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-dim hover:bg-surface hover:text-foreground"><ChevronDown className="size-3 rotate-180" aria-hidden="true" />Show less</button>
       </div>}
       <div
@@ -211,7 +221,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 }) {
   return (
     <RowFrame step={step} ann={ann} className="group/row">
-      <div className="mb-2 flex min-h-8 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="mb-2 min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -221,7 +231,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
         </button>
         <Labels step={step} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <StepContent step={step} ann={ann} markdown max={300} />}
     </RowFrame>
   );
@@ -233,13 +243,13 @@ function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations
   const thinking = isThinking(step);
   return (
     <RowFrame step={step} ann={ann} className={cn("group/row", !first && "pt-3")}>
-      <div className="mb-1 flex min-h-5 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="mb-1 min-h-5">
         <span className={cn(first ? "text-[13px] font-semibold text-blue-600 dark:text-blue-300" : "text-[11px] text-blue-600 dark:text-blue-300")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       <ScoreLine step={step} ann={ann} className="mb-1.5" />
       <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
@@ -276,7 +286,7 @@ function ToolRow({
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
       )}
-      <div className="flex min-h-8 items-center gap-3">
+      <RowHeader step={head} ann={ann} className="min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
@@ -288,7 +298,7 @@ function ToolRow({
         {isError && <span className="text-[11px] text-red-600">Error</span>}
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <ScoreLine step={head} ann={ann} className="mb-2 ml-5" />}
       {expanded && <div className="mb-2 ml-5 text-[13px]">
         {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
@@ -319,14 +329,14 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} ann={ann}>
-      <div className="group/row flex min-h-8 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="group/row min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
           <DisclosureIcon expanded={expanded} /><span className="shrink-0 font-medium">System</span>
           {!expanded && <span className="truncate text-xs">{readableExcerpt(step.content)}</span>}
         </button>
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <div className="mb-4 mt-2 pl-5"><StepContent step={step} ann={ann} markdown max={420} /></div>}
     </RowFrame>
   );
@@ -336,20 +346,35 @@ function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepA
 
 export default function TraceTimeline({
   rows,
+  taskRows = rows,
   ann,
   isExpanded,
   onToggle,
 }: {
   rows: TraceRow[];
+  /** All trace rows keep task summaries complete when sections render separate timelines. */
+  taskRows?: TraceRow[];
   ann: StepAnnotations;
   isExpanded: (row: TraceRow) => boolean;
   onToggle: (row: TraceRow) => void;
 }) {
   const groups: { assistant: boolean; rows: TraceRow[] }[] = [];
+  const tasks = new Map<string, { rowKey: string; heading: string; score: TaskScore; firstStep: number; lastStep: number }>();
+  for (const row of taskRows) {
+    const step = rowSteps(row)[0];
+    const score = ann.taskScore?.(step);
+    if (score) {
+      const number = ann.stepNumber?.(step) ?? step.index + 1;
+      const task = tasks.get(score.task);
+      if (task) task.lastStep = number;
+      else tasks.set(score.task, { rowKey: row.key, heading: ann.taskHeading?.(step) ?? `Task ${score.task.replace(/^t/, "")}`, score, firstStep: number, lastStep: number });
+    }
+  }
+  const taskSummaries = new Map([...tasks.values()].map((task) => [task.rowKey, task]));
   for (const row of rows) {
     const assistant = row.kind === "tool" || row.kind === "assistant";
     const last = groups.at(-1);
-    if (last && last.assistant === assistant) last.rows.push(row);
+    if (last && last.assistant === assistant && !taskSummaries.has(row.key)) last.rows.push(row);
     else groups.push({ assistant, rows: [row] });
   }
 
@@ -361,19 +386,12 @@ export default function TraceTimeline({
       const previous = groupRows[index - 1];
       const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
         && previous.step.content === row.step.content;
-      const task = ann.taskHeading?.(row.step) ?? null;
-      const taskScore = task === null ? null : ann.taskScore?.(row.step) ?? null;
+      const task = taskSummaries.has(row.key) ? null : ann.taskHeading?.(row.step) ?? null;
       return (
         <div key={row.key}>
           {task !== null && (
             <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">
               <span>{task}</span>
-              {taskScore && <TaskScoreChip score={taskScore} />}
-              {taskScore && (
-                <span className="font-normal tracking-normal normal-case">
-                  {taskScore.hasAnswer ? "final answer" : "no answer"} {signed(taskScore.answer ?? 0)} · work {signed(taskScore.costs)}
-                </span>
-              )}
               <span aria-hidden="true" className="h-px flex-1 bg-border-subtle" />
             </div>
           )}
@@ -387,12 +405,16 @@ export default function TraceTimeline({
 
   return (
     <div className="divide-y divide-border-subtle">
-      {groups.map((group) => (
-        <section key={group.rows[0].key} aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
-          {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
-          <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
-        </section>
-      ))}
+      {groups.map((group) => {
+        const task = taskSummaries.get(group.rows[0].key);
+        return <div key={group.rows[0].key}>
+          {task && <div className="pt-3"><TaskScoreSummary {...task} /></div>}
+          <section aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
+            {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
+            <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
+          </section>
+        </div>;
+      })}
     </div>
   );
 }

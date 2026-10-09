@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RmStep } from "@/lib/types";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
@@ -15,6 +15,41 @@ const ann: StepAnnotations = {
   highlights: () => [], commentCount: () => 0, hasQuotes: () => false, flashing: () => false,
   onComment: vi.fn(), onSelectAnnotation: vi.fn(),
 };
+
+it("separates the task summary from step rows, including a single task starting with a tool call", () => {
+  const call = { ...step(0, "", "assistant"), tool_name: "lookup", tool_input: {}, tool_call_id: "call" };
+  const scoredAnn = { ...ann, taskScore: () => ({ task: "t1", score: -1, rubricOnly: -1, answer: 0.28, costs: -1.32, hasAnswer: true }) };
+  const { container } = render(<TraceTimeline rows={buildRows([call, step(1, "Done", "assistant")])} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />);
+  const summary = screen.getByRole("region", { name: "Task 1 score summary" });
+  expect(within(summary).getByText("Steps 1–2 · Entire task")).toBeVisible();
+  expect(summary).toHaveTextContent("Final answer+0.28");
+  expect(summary).toHaveTextContent("Total work−1.32");
+  expect(summary).toHaveTextContent("Task score−1.00");
+  expect(summary).toHaveTextContent("Limited to −1…+1");
+  expect(container.querySelector("#step-s0")?.contains(summary)).toBe(false);
+  expect(container.querySelector("#step-s1")?.contains(summary)).toBe(false);
+  expect(summary.closest('[aria-label="Assistant turn"]')).toBeNull();
+});
+
+it("shows a task once with its full range when separate sections split its rows", () => {
+  const rows = buildRows([step(0, "Request"), step(1, "Done", "assistant")]);
+  const scoredAnn = { ...ann, taskScore: () => ({ task: "t1", score: 0.25, rubricOnly: 0.25, answer: 0.3, costs: -0.05, hasAnswer: true }) };
+  render(<>{rows.map((row) => <TraceTimeline key={row.key} rows={[row]} taskRows={rows} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />)}</>);
+  expect(screen.getAllByRole("region", { name: "Task 1 score summary" })).toHaveLength(1);
+  expect(screen.getByRole("region", { name: "Task 1 score summary" })).toHaveTextContent("Steps 1–2 · Entire task");
+});
+
+it("keeps separate task summaries and shows missing answers without inventing a zero score", () => {
+  const source = [step(0, "First request"), step(1, "Second request")];
+  const scoredAnn = { ...ann, taskScore: (s: RmStep) => ({ task: `t${s.index + 1}`, score: -0.05, rubricOnly: -0.05, answer: null, costs: -0.05, hasAnswer: false }) };
+  render(<TraceTimeline rows={buildRows(source)} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />);
+  for (const n of [1, 2]) {
+    const summary = screen.getByRole("region", { name: `Task ${n} score summary` });
+    expect(summary).toHaveTextContent(`Step ${n} · Entire task`);
+    expect(summary).toHaveTextContent("Final answerNo answer");
+    expect(summary).not.toHaveTextContent("Limited to");
+  }
+});
 
 it("gives every recorded role a number in the left gutter without a separate reader", () => {
   const source = [step(0, "Initial message", "system"), step(1, "A request"), step(2, "<turn_aborted>Interrupted</turn_aborted>", "system")];

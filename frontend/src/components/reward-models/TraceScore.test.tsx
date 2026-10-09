@@ -1,7 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { TraceEvaluation, TraceEvaluationResponse } from "@/lib/workbench-api";
 import TraceScore from "./TraceScore";
+
+beforeEach(() => vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}));
+afterEach(() => vi.unstubAllGlobals());
 
 const boundary = { kind: "response", step_index: 2 };
 const current = (overrides: Partial<TraceEvaluation> = {}): TraceEvaluation => ({
@@ -66,4 +74,17 @@ it("uses a compact rescore icon and prevents duplicate requests while scoring", 
   await waitFor(() => expect(rescore).toHaveBeenCalledOnce());
   rerender(<TraceScore evaluation={evaluation({ queue: { status: "running", error: null }, current: current() })} error={null} onRescore={rescore} />);
   expect(screen.getByRole("button", { name: "Scoring trace" })).toBeDisabled();
+});
+
+it("explains the rescore action on hover and keyboard focus", async () => {
+  const user = userEvent.setup();
+  render(<TraceScore evaluation={evaluation()} error={null} onRescore={vi.fn()} />);
+  const button = screen.getByRole("button", { name: "Rescore trace" });
+  expect(button).not.toHaveAttribute("title");
+  await user.hover(button);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Rerun automatic labels and recalculate step and trace scores.");
+  await user.unhover(button);
+  await user.tab();
+  expect(button).toHaveFocus();
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Rerun automatic labels and recalculate step and trace scores.");
 });
