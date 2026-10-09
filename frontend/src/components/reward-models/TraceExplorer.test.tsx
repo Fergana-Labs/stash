@@ -9,6 +9,7 @@ import type { StepAnnotations } from "./TraceTimeline";
 import { rmSummarizeSections } from "@/lib/api";
 import { useSectionSummaries } from "./use-section-summaries";
 import TraceScrollRail from "./TraceScrollRail";
+import { rowSteps } from "./trace-rows";
 import { traceSectionTarget } from "./trace-scroll";
 
 vi.mock("@/lib/api", () => ({ rmSummarizeSections: vi.fn() }));
@@ -91,7 +92,7 @@ it("only makes ancestor breadcrumbs clickable", async () => {
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
 });
 
-it("uses Up/Down to select, Enter to open, and Escape to return", async () => {
+it.each([["Enter", "Escape"], ["ArrowRight", "ArrowLeft"]])("uses Up/Down to select, %s to open, and %s to return", async (openKey, backKey) => {
   render(<Harness />);
   await load();
   const original = screen.getAllByRole("button", { name: /^Explore / });
@@ -99,22 +100,25 @@ it("uses Up/Down to select, Enter to open, and Escape to return", async () => {
   fireEvent.keyDown(document.body, { key: "ArrowDown" });
   expect(original[1]).toHaveFocus();
   expect(original[1]).toHaveAttribute("aria-current", "true");
-  fireEvent.keyDown(original[1], { key: "Enter" });
+  fireEvent.keyDown(original[1], { key: openKey });
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   let children = screen.getAllByRole("button", { name: /^Explore / });
   expect(children[0]).toHaveFocus();
-  fireEvent.keyDown(children[0], { key: "Enter", repeat: true });
+  fireEvent.keyDown(children[0], { key: openKey, repeat: true });
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(children.length);
-  fireEvent.keyDown(children[0], { key: "Enter" });
+  fireEvent.keyDown(children[0], { key: openKey });
   expect(screen.queryByRole("button", { name: /^Collapse .* message$/ })).not.toBeInTheDocument();
-  // Entering a subsection must not cut off the rest of the trace.
-  expect(screen.getByLabelText("Step 48")).toBeInTheDocument();
-  expect(screen.getByLabelText("Step 1")).toBeInTheDocument();
+  // A subsection contains only its own steps.
+  for (const row of groups[1].children[0].rows) expect(screen.getByLabelText(`Step ${rowSteps(row)[0].index + 1}`)).toBeInTheDocument();
+  expect(screen.queryByLabelText("Step 48")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Step 1")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  fireEvent.keyDown(document.body, { key: "Escape" });
+  fireEvent.keyDown(document.body, { key: backKey, repeat: true });
+  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: backKey });
   await load();
-  fireEvent.keyDown(document.body, { key: "Escape" });
+  fireEvent.keyDown(document.body, { key: backKey });
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   children = screen.getAllByRole("button", { name: /^Explore / });
@@ -130,10 +134,10 @@ it("uses mouse hover only to select and leaves editing and other controls alone"
   const buttons = screen.getAllByRole("button", { name: /^Explore / });
   mouseMove(buttons[2]);
   expect(buttons[2]).toHaveAttribute("aria-current", "true");
-  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Back to sections" })).not.toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment" }), { key: "Enter" });
   fireEvent.keyDown(screen.getByRole("button", { name: "Outside control" }), { key: "Enter" });
-  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Back to sections" })).not.toBeInTheDocument();
 });
 
 it("remains navigable if generation is unavailable", async () => {
@@ -143,7 +147,7 @@ it("remains navigable if generation is unavailable", async () => {
   expect(screen.getByRole("status")).toHaveTextContent("Section assessments unavailable");
   fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
   await load();
-  expect(screen.getByRole("button", { name: "Zoom out" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Back to sections" })).toBeInTheDocument();
 });
 
 
@@ -172,7 +176,8 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   function scrollToTask(index: number) {
     container.scrollTop = index * 500;
     groups.forEach((group, i) => {
-      const target = document.getElementById(traceSectionTarget(group))!;
+      const target = document.getElementById(traceSectionTarget(group));
+      if (!target) return;
       target.getBoundingClientRect = () => ({ top: 150 + i * 500 - container.scrollTop }) as DOMRect;
       target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
     });
@@ -201,9 +206,9 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   scrollToTask(1);
   expect(markers[1]).toHaveAttribute("aria-current", "location");
-  // Scrolling across the old leaf boundary updates global orientation.
+  // Scrolling cannot leave the selected section.
   scrollToTask(2);
-  expect(markers[2]).toHaveAttribute("aria-current", "location");
+  expect(markers[1]).toHaveAttribute("aria-current", "location");
   expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
   expect(markers.map((marker) => marker.getAttribute("aria-label"))).toEqual(labels);
 
@@ -256,7 +261,7 @@ it("opens a single task on its subtasks immediately, before assessment requests 
   expect(cards).toHaveLength(2);
   expect(cards[0]).toHaveAccessibleName("Explore Task 1");
   expect(cards[1]).toHaveAccessibleName("Explore Task 7");
-  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Back to sections" })).not.toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "Trace hierarchy" })).toHaveTextContent("Task 1");
   fireEvent.keyDown(document.body, { key: "ArrowDown" });
   fireEvent.keyDown(document.activeElement!, { key: "Enter" });
@@ -275,6 +280,6 @@ it("opens a single continuous task directly on its steps", async () => {
   render(<Harness outline={outline} />);
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   expect(document.getElementById("step-continuous19")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Back to sections" })).not.toBeInTheDocument();
   await load();
 });

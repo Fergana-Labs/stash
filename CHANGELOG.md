@@ -5,6 +5,15 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep trace sections scoped to their own steps, with Left/Right navigating up
+  and into sections. Remove the duplicate Back control. Add message comment
+  icons and a contextual menu for selected text, including multi-message quotes.
+- Use evenly spaced collapsed messages, quieter code typography, and scores
+  without grading breakdowns. Label context separately from numbered tasks.
+  Use dense, single-line section rows with setup grouped under Context. Remove
+  browse-table checkboxes and duplicate search, tighten trace-list rows, and
+  place ±1 first in the credit-scale toggle.
+
 - Start trace messages collapsed, including assistant messages, with previews and
   consistent neutral row labels. Call assistant messages “Assistant” throughout.
   Replace task score cards with compact, unboxed headers containing inline values

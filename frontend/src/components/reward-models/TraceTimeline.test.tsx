@@ -151,3 +151,23 @@ it("shows learned credit on a collapsed tool call and response, with no badge on
   expect(container.querySelector("#step-s1")?.getAttribute("style")).toBeNull();
   expect(container.querySelector("#step-s0")?.getAttribute("style")).toBeNull();
 });
+
+
+it("offers new message comments alongside existing comment navigation", () => {
+  const message = step(0, "Context", "system");
+  const onComment = vi.fn();
+  const onViewComments = vi.fn();
+  render(<TraceTimeline rows={buildRows([message])} ann={{ ...ann, commentCount: () => 2, onComment, onViewComments }} isExpanded={() => true} onToggle={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Comment on message" }));
+  expect(onComment).toHaveBeenCalledWith(message);
+  fireEvent.click(screen.getByRole("button", { name: "View 2 comments on this message" }));
+  expect(onViewComments).toHaveBeenCalledWith(message);
+});
+
+it("keeps the score visible without exposing the grading breakdown", () => {
+  const message = step(0, "Finished", "assistant");
+  render(<TraceTimeline rows={buildRows([message])} ann={{ ...ann, reward: () => ({ base: -0.03, baseParts: [{ text: "Standard cost of a lookup", value: -0.03 }], grade: null, score: -0.03, shared: [], sharedTotal: 0, total: -0.03, isAnswer: false }) }} isExpanded={() => true} onToggle={vi.fn()} />);
+  expect(screen.getByTitle("Step score")).toHaveTextContent("−0.03");
+  expect(screen.queryByText("Standard cost of a lookup")).not.toBeInTheDocument();
+  expect(screen.queryByText("Score for this step")).not.toBeInTheDocument();
+});

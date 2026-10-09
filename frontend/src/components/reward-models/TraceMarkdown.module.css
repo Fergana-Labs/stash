@@ -2,7 +2,7 @@
 
 .prose {
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.6;
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
@@ -33,20 +33,19 @@
   text-underline-offset: 2px;
 }
 .prose code {
-  font-family: var(--font-mono-stack);
-  font-size: 12.25px;
-  background: var(--bg-raised);
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--text-primary) 85%, transparent);
 }
 .prose pre {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle-color);
-  border-radius: 8px;
-  padding: 6px 10px;
+  margin: 0.8em 0;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  border-left: 2px solid var(--border-subtle-color);
+  padding: 12px 16px;
   overflow-x: auto;
   font-size: 12.25px;
-  line-height: 1.4;
+  line-height: 1.65;
 }
 .prose pre code {
   background: transparent;

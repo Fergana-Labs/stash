@@ -19,6 +19,17 @@ export default function TraceCommentMenu({ children, steps, onComment }: {
   const canvas = useRef<HTMLDivElement>(null);
   const itemClass = "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground";
 
+  function showSelectionMenu(x?: number, y?: number) {
+    const selection = window.getSelection();
+    if (!canvas.current || !selectedCommentTarget(canvas.current, selection, steps)) return;
+    const rect = selection!.getRangeAt(0).getBoundingClientRect();
+    canvas.current.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: x ?? rect.left,
+      clientY: y ?? rect.bottom,
+    }));
+  }
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
@@ -37,6 +48,14 @@ export default function TraceCommentMenu({ children, steps, onComment }: {
 
   return <ContextMenu.Root modal={false}>
     <ContextMenu.Trigger asChild ref={canvas}
+      onMouseUp={(event) => {
+        if (event.button !== 0 || (event.target as HTMLElement).closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+        showSelectionMenu(event.clientX, event.clientY);
+      }}
+      onKeyUp={(event) => {
+        if (event.shiftKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+          && !(event.target as HTMLElement).closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) showSelectionMenu();
+      }}
       onContextMenuCapture={(event) => {
         // Keep native editing/link/image menus on those elements.
         if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true], a, img")) event.stopPropagation();

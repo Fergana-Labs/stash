@@ -32,6 +32,7 @@ function select(start: Node, end: Node, endOffset: number) {
   const range = document.createRange();
   range.setStart(start, 0);
   range.setEnd(end, endOffset);
+  range.getBoundingClientRect = () => ({ left: 20, top: 30, bottom: 45 } as DOMRect);
   selection.addRange(range);
   return selection;
 }
@@ -39,13 +40,12 @@ function select(start: Node, end: Node, endOffset: number) {
 afterEach(() => { cleanup(); window.getSelection()?.removeAllRanges(); });
 
 describe("trace comment context menu", () => {
-  it("leaves selecting text alone and opens a single-message comment only from the menu", async () => {
+  it("offers a contextual menu on selection and waits for the comment action", async () => {
     const { first, comment } = setup();
     select(first, first, 9);
     fireEvent.mouseUp(first.parentElement!);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
     expect(comment).not.toHaveBeenCalled();
-    fireEvent.contextMenu(first.parentElement!, { clientX: 60, clientY: 80 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Comment on selection" }));
     expect(comment).toHaveBeenCalledWith({ stepId: "s0", quote: { text: "important", prefix: "First **", suffix: "** message." } });
   });
@@ -60,7 +60,7 @@ describe("trace comment context menu", () => {
     for (const step of steps) expect(locateQuote(step.content, quoteForStep(step.id, target.quote, target.stepId)!)).not.toBeNull();
     fireEvent.mouseUp(last.parentElement!);
     expect(comment).not.toHaveBeenCalled();
-    fireEvent.contextMenu(last.parentElement!, { clientX: 60, clientY: 80 });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
     // Opening the menu may change the browser selection; its snapshot must survive.
     selection.removeAllRanges();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Comment on selection" }));

@@ -33,7 +33,7 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
   });
 
   const { trail, current } = traceExplorerLevel(groups, path);
-  const activeTargetId = sections.length && trail.length && current?.children.length ? traceSectionTarget(trail[0])
+  const activeTargetId = sections.length && trail.length ? traceSectionTarget(trail[0])
     : current?.children.length ? items.findLast((item) => {
       return positions.get(item.targetId)! <= positions.get(`step-${rowHead(current.rows[0]).id}`)!;
     })?.targetId : undefined;
