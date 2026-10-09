@@ -250,3 +250,17 @@ it("opens a single continuous task directly on its steps", async () => {
   expect(screen.queryByRole("button", { name: "Back to sections" })).not.toBeInTheDocument();
   await load();
 });
+
+it("opens the complete trace from a nested overview while assessments are still loading", async () => {
+  vi.mocked(rmSummarizeSections).mockImplementation(() => new Promise(() => {}));
+  render(<Harness />);
+  fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
+  expect(screen.getByText("Viewing 1–12 of 48")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("Summarizing and scoring");
+  fireEvent.click(screen.getByRole("button", { name: "View all steps" }));
+  for (const row of rows) expect(screen.getAllByLabelText(`Step ${rowSteps(row)[0].index + 1}`)).toHaveLength(1);
+  expect(document.getElementById("step-s47")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(screen.getByRole("region", { name: "Trace explorer" })).toHaveFocus();
+});

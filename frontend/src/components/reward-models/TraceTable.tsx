@@ -55,6 +55,16 @@ function LatestTraceTable({
   const [filters, setFilters] = useState<TraceFilters>({ source: "all", from: "", through: "" });
   const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: TraceSortKey; direction: TraceSortDirection }>({ key: "imported", direction: "descending" });
+  // Keep the browse list's ordering when opening a trace and coming back. The
+  // training picker has its own preference so it cannot overwrite the list.
+  const sortStorageKey = `stash-traces-sort:${mode}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(sortStorageKey) ?? "null");
+      if (saved && COLUMNS.some((column) => column.key === saved.key)
+        && (saved.direction === "ascending" || saved.direction === "descending")) setSort(saved);
+    } catch { /* Sorting still works when browser storage is unavailable. */ }
+  }, [sortStorageKey]);
   // Keep the anchor by ID so incoming traces cannot move it during a background refresh.
   const anchor = useRef<string | null>(null);
 
@@ -181,7 +191,9 @@ function LatestTraceTable({
                     className="cursor-pointer whitespace-nowrap hover:text-foreground"
                     title={`Sort by ${column.label.toLowerCase()}`}
                     onClick={() => {
-                      setSort({ key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" : "ascending" });
+                      const next = { key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" as const : "ascending" as const };
+                      setSort(next);
+                      try { localStorage.setItem(sortStorageKey, JSON.stringify(next)); } catch { /* Keep the in-memory preference. */ }
                       anchor.current = null;
                     }}
                   >

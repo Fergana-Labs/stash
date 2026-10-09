@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Preserve trace-table sorting when opening a trace and returning to the list.
+- Show the current section's range and offer “View all steps” so nested trace
+  overviews do not look like the end of the trace.
+
 - Select traces with checkboxes or Shift-click ranges in the current sort/filter
   order, then delete the selection together. Failed deletions remain selected
   for retry.

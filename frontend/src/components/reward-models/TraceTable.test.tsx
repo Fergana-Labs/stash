@@ -7,7 +7,7 @@ import TraceTable from "./TraceTable";
 const { push, search, rename } = vi.hoisted(() => ({ push: vi.fn(), search: vi.fn(), rename: vi.fn() }));
 vi.mock("@/lib/api", () => ({ rmListAllTraces: search, rmRenameTraceSource: rename }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
 const traces: RmTraceSummary[] = [20, 3, 10].map((steps) => ({
   id: String(steps), title: `Trace ${steps}`, step_count: steps,
@@ -37,6 +37,36 @@ it("opens a trace from its non-title cells", () => {
   render(<Table />);
   fireEvent.click(screen.getByRole("cell", { name: "20" }));
   expect(push).toHaveBeenCalledWith("/reward-models/traces/20");
+});
+
+it.each(["ascending", "descending"])("restores %s step-count sorting after returning from a trace", (direction) => {
+  const view = render(<Table />);
+  fireEvent.click(screen.getByRole("button", { name: "Steps" }));
+  if (direction === "descending") fireEvent.click(screen.getByRole("button", { name: "Steps" }));
+  fireEvent.click(screen.getByRole("cell", { name: "20" }));
+  view.unmount();
+  render(<Table />);
+  expect(screen.getByRole("columnheader", { name: "Steps" })).toHaveAttribute("aria-sort", direction);
+  expect(screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("link").textContent))
+    .toEqual(direction === "ascending" ? ["Trace 3", "Trace 10", "Trace 20"] : ["Trace 20", "Trace 10", "Trace 3"]);
+});
+
+it("keeps picker sort preferences separate from the browse list", () => {
+  const browse = render(<Table />);
+  fireEvent.click(screen.getByRole("button", { name: "Steps" }));
+  browse.unmount();
+  const picker = render(<Table mode="picker" />);
+  expect(screen.getByRole("columnheader", { name: "Imported" })).toHaveAttribute("aria-sort", "descending");
+  fireEvent.click(screen.getByRole("button", { name: "Trace" }));
+  picker.unmount();
+  render(<Table />);
+  expect(screen.getByRole("columnheader", { name: "Steps" })).toHaveAttribute("aria-sort", "ascending");
+});
+
+it.each(['not json', '{"key":"unknown","direction":"ascending"}'])("ignores invalid saved sorting: %s", (saved) => {
+  localStorage.setItem("stash-traces-sort:browse", saved);
+  render(<Table />);
+  expect(screen.getByRole("columnheader", { name: "Imported" })).toHaveAttribute("aria-sort", "descending");
 });
 
 it("keeps deletion separate from opening the trace", () => {

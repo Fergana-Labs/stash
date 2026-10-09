@@ -5,7 +5,7 @@ import { ChevronRight, ListTree } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
-import { isContextGroup, sectionFallbackTitle, traceExplorerLevel, tracePhases } from "./trace-outline";
+import { groupPath, isContextGroup, sectionFallbackTitle, traceExplorerLevel, tracePhases } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import { rowSteps, type TraceRow } from "./trace-rows";
 import { isGradableAction } from "./automatic-credit";
@@ -115,8 +115,18 @@ export default function TraceExplorer({ groups, path, onPath, onSectionFocus, as
   };
   const title = (node: TraceGroup) => isContextGroup(node) ? "Context" : copy(node)?.title ?? sectionFallbackTitle(node);
   const assessmentStatus = children.length > 0 && status !== "ready"
-    ? <span role="status" className="ml-auto shrink-0 text-[11px] text-muted-foreground">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>
+    ? <span role="status" className="shrink-0 text-[11px] text-muted-foreground">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>
     : null;
+  const overviewActions = children.length > 0 && <div className="ml-auto flex shrink-0 items-center gap-3">
+    {current && <span className="text-[11px] text-muted-foreground tabular-nums">Viewing {range(current).replace(/^Steps? /, "")} of {number(rowHead(taskRows.at(-1)!))}</span>}
+    {assessmentStatus}
+    <button type="button" className="cursor-pointer rounded px-2 py-1 text-xs text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand-500"
+      onClick={() => {
+        const first = selectedFirst ?? rowHead(taskRows[0]).id;
+        onPath(groupPath(groups, first));
+        focusLevel();
+      }}>View all steps</button>
+  </div>;
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
     {trail.length > 0 ? <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
       {canAscend && <button type="button" onClick={() => onPath([])} aria-label="Back to sections" title="Back to sections" className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-surface hover:text-foreground"><ListTree className="size-4" aria-hidden="true" /></button>}
@@ -124,8 +134,8 @@ export default function TraceExplorer({ groups, path, onPath, onSectionFocus, as
         {(canAscend || index > 0) && <ChevronRight className="size-3 shrink-0" aria-hidden="true" />}
         {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
       </span>)}
-      {assessmentStatus}
-    </nav> : assessmentStatus && <div className="mb-2 flex">{assessmentStatus}</div>}
+      {overviewActions}
+    </nav> : overviewActions && <div className="mb-2 flex">{overviewActions}</div>}
     {reading ? <div data-trace-phases>{phases.map(({ node }) => <section key={node.key} id={traceSectionTarget(node)} data-trace-phase aria-label={`Phase: ${title(node)}`}>
       {phases.length > 1 && <div className="flex h-6 items-center gap-3 border-b border-border-subtle text-muted-foreground">
         <h3 className="m-0 min-w-0 flex-1 truncate text-xs font-medium leading-5">{title(node)}</h3>
