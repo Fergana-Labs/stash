@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState, type PointerEvent, type RefObject }
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError, toolLabel, toolSummary } from "./trace-rows";
 import { readableExcerpt } from "./trace-presentation";
-import { visibleStepElement } from "./trace-scroll";
+import { TRACE_STEP_INSET, visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
 import { formatCredit } from "./action-credit";
 import { isGradableAction } from "./automatic-credit";
@@ -72,7 +72,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     const indices = new Map(steps.map((step, index) => [`step-${step.id}`, index]));
     let frame = 0;
     function update() {
-      const element = visibleStepElement(container!, header!);
+      const element = visibleStepElement(container!, header!, TRACE_STEP_INSET);
       if (element === null) return;
       const index = indices.get(element.id);
       if (index !== undefined) setActiveIndex(index);

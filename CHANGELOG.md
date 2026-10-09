@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep the trace minimap marker on the selected step after a jump by matching
+  scroll tracking to the space reserved for the sticky breadcrumb.
+
 - Align trace step numbers with their message headings and move the theme toggle
   to the bottom-left sidebar.
 - Leave sections containing only supplied context ungraded instead of assigning
