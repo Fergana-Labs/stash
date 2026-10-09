@@ -220,7 +220,7 @@ move an output ahead of intervening messages. Source IDs, roles, content, and
 annotation offsets are unchanged.
 
 Long messages have compact previews. Read full message expands in place; a sticky
-Show less control or Escape collapses it and keeps the message in view. There is
+Show less control on the left or Escape collapses it and keeps the message in view. There is
 no separate message reader. Each input
 variable and tool output has one disclosure row and an explicitly named copy
 action. Recognized code and fenced Markdown blocks use syntax highlighting while
