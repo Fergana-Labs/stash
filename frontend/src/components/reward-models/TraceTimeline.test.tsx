@@ -21,11 +21,10 @@ it("separates the task summary from step rows, including a single task starting 
   const scoredAnn = { ...ann, taskScore: () => ({ task: "t1", score: -1, rubricOnly: -1, answer: 0.28, costs: -1.32, hasAnswer: true }) };
   const { container } = render(<TraceTimeline rows={buildRows([call, step(1, "Done", "assistant")])} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />);
   const summary = screen.getByRole("region", { name: "Task 1 score summary" });
-  expect(within(summary).getByText("Steps 1–2 · Entire task")).toBeVisible();
+  expect(within(summary).getByText("Steps 1–2")).toBeVisible();
   expect(summary).toHaveTextContent("Final answer+0.28");
   expect(summary).toHaveTextContent("Total work−1.32");
   expect(summary).toHaveTextContent("Task score−1.00");
-  expect(summary).toHaveTextContent("Limited to −1…+1");
   expect(container.querySelector("#step-s0")?.contains(summary)).toBe(false);
   expect(container.querySelector("#step-s1")?.contains(summary)).toBe(false);
   expect(summary.closest('[aria-label="Assistant turn"]')).toBeNull();
@@ -36,7 +35,7 @@ it("shows a task once with its full range when separate sections split its rows"
   const scoredAnn = { ...ann, taskScore: () => ({ task: "t1", score: 0.25, rubricOnly: 0.25, answer: 0.3, costs: -0.05, hasAnswer: true }) };
   render(<>{rows.map((row) => <TraceTimeline key={row.key} rows={[row]} taskRows={rows} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />)}</>);
   expect(screen.getAllByRole("region", { name: "Task 1 score summary" })).toHaveLength(1);
-  expect(screen.getByRole("region", { name: "Task 1 score summary" })).toHaveTextContent("Steps 1–2 · Entire task");
+  expect(screen.getByRole("region", { name: "Task 1 score summary" })).toHaveTextContent("Steps 1–2");
 });
 
 it("keeps separate task summaries and shows missing answers without inventing a zero score", () => {
@@ -45,7 +44,7 @@ it("keeps separate task summaries and shows missing answers without inventing a 
   render(<TraceTimeline rows={buildRows(source)} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />);
   for (const n of [1, 2]) {
     const summary = screen.getByRole("region", { name: `Task ${n} score summary` });
-    expect(summary).toHaveTextContent(`Step ${n} · Entire task`);
+    expect(summary).toHaveTextContent(`Step ${n}`);
     expect(summary).toHaveTextContent("Final answerNo answer");
     expect(summary).not.toHaveTextContent("Limited to");
   }

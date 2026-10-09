@@ -10,7 +10,7 @@ import type { TraceRow } from "./trace-rows";
 import { TRACE_STEP_INSET, traceScrollMarkers, traceSectionTarget } from "./trace-scroll";
 
 /** A stable whole-trace map, even while the explorer shows a nested subsection. */
-export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, scroller, onPath, onOpenRows, onStep }: {
+export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, scroller, onPath, onStep }: {
   groups: TraceGroup[];
   path: string[];
   rows: TraceRow[];
@@ -18,7 +18,6 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
   stepNumber: (step: RmStep) => number;
   scroller: RefObject<HTMLDivElement | null>;
   onPath: (path: string[]) => void;
-  onOpenRows: (rows: TraceRow[]) => void;
   onStep: (stepId: string) => void;
 }) {
   // A single task still needs useful global destinations along its full trace.
@@ -46,7 +45,6 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
     // ticks open their task from a subsection, without drilling into its leaves.
     if (first) onPath([]);
     else if (node && trail.length) {
-      if (!node.children.length) onOpenRows(node.rows);
       onPath([node.key]);
     } else if (!node) onStep(item.targetId.slice("step-".length));
     requestAnimationFrame(() => {

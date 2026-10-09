@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Start trace messages collapsed, including assistant messages, with previews and
+  consistent neutral row labels. Call assistant messages “Assistant” throughout.
+  Replace task score cards with compact, unboxed headers containing inline values
+  and the step range, without explanatory captions.
+  Use a compact outline icon to return to the sections overview.
+
 - Replace the separate Show less row with a subtle collapse icon in the message's
   left gutter, with a tooltip explaining that it collapses the text to a preview.
 
