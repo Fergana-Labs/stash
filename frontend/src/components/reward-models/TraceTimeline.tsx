@@ -114,8 +114,8 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
 
   return (
     <div ref={frame} onKeyDown={(event) => { if (event.key === "Escape" && open && tall && !forcedOpen) { event.stopPropagation(); event.preventDefault(); collapse(); } }}>
-      {open && tall && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-start bg-background">
-        <button type="button" data-message-collapse onClick={collapse} aria-expanded="true" title="Collapse message (Esc)" className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-dim hover:bg-surface hover:text-foreground"><ChevronDown className="size-3 rotate-180" aria-hidden="true" />Show less</button>
+      {open && tall && !forcedOpen && <div className="sticky top-8 z-[5] h-0">
+        <button type="button" data-message-collapse onClick={collapse} aria-expanded="true" aria-label="Collapse to preview" title="Collapse to preview (Esc)" className="absolute top-0 -left-6 flex size-5 cursor-pointer items-center justify-center rounded text-muted-foreground/60 hover:bg-surface hover:text-foreground focus-visible:text-foreground"><ChevronDown className="size-3 rotate-180" aria-hidden="true" /></button>
       </div>}
       <div
         ref={inner}

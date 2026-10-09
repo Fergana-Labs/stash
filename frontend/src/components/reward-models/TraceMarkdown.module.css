@@ -17,6 +17,7 @@
   letter-spacing: -0.01em;
   margin-top: 1.1em;
 }
+.prose > :first-child { margin-top: 0; }
 .prose h1 { font-size: 17px; }
 .prose h2 { font-size: 15.5px; }
 .prose h3 { font-size: 14.5px; }
