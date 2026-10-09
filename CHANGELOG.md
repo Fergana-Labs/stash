@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Give user messages a quiet tint and accent, and start a new phase with the
+  user's reply or approval. Reduce the completion curve to 30% opacity.
+
 - Add a faint, smooth estimated task-completion curve to the trace minimap with its own 0–100%
   scale, evidence-based checkpoints, and separate segments for independent requests.
 - Outline the selected section on the minimap, shorten visible step ranges, and

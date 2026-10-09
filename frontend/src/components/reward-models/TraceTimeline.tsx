@@ -193,7 +193,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
   step: RmStep; ann: StepAnnotations; repeated: boolean; expanded: boolean; onToggle: () => void;
 }) {
   return (
-    <RowFrame step={step} ann={ann} className="group/row">
+    <RowFrame step={step} ann={ann} className="rounded-sm bg-brand-500/[0.04] before:pointer-events-none before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-500/35 dark:bg-brand-500/[0.07]">
       <RowHeader step={step} ann={ann} className={cn("min-h-6", expanded && "mb-2")}>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
