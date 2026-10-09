@@ -121,9 +121,9 @@ it("does not collapse messages made adjacent only by filtering", () => {
   expect(screen.queryByText(/Repeated user message/)).not.toBeInTheDocument();
 });
 
-it("offers keyboard-accessible tool disclosure and treats the output as part of the same displayed step", () => {
-  const call = { ...step(0, "", "assistant"), tool_name: "lookup_order", tool_input: {}, tool_call_id: "call1" };
-  const result = { ...step(1, "Delivered", "tool"), tool_name: "lookup_order", tool_call_id: "call1" };
+it.each(["call1", null])("offers keyboard-accessible tool disclosure and groups output, with call ID %s", (callId) => {
+  const call = { ...step(0, "", "assistant"), tool_name: "lookup_order", tool_input: {}, tool_call_id: callId };
+  const result = { ...step(1, "Delivered", "tool"), tool_name: "lookup_order", tool_call_id: callId };
   const rows = buildRows([call, result]);
   const onToggle = vi.fn();
   render(<TraceTimeline rows={rows} ann={ann} isExpanded={() => true} onToggle={onToggle} />);
@@ -134,6 +134,14 @@ it("offers keyboard-accessible tool disclosure and treats the output as part of 
   expect(screen.queryByText("Step 2")).not.toBeInTheDocument();
   expect(screen.getByText("Output")).toBeVisible();
   expect(screen.queryByText("Details")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Expand tool output" }));
+  expect(screen.getByText("Delivered")).toBeVisible();
+});
+
+it("labels a separate tool result as output even when collapsed", () => {
+  const result = { ...step(0, "Part found", "tool"), tool_name: "find_parts_for_vehicle" };
+  render(<TraceTimeline rows={buildRows([result])} ann={ann} isExpanded={() => false} onToggle={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Expand Find parts for vehicle tool result" })).toHaveTextContent("Output · Find parts for vehicle");
 });
 
 it("shows the recorded action and exposes tool help and exact inputs on focus", async () => {

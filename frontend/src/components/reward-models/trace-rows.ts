@@ -21,9 +21,16 @@ export function isThinking(step: RmStep): boolean {
 export function buildRows(steps: RmStep[]): TraceRow[] {
   const rows: TraceRow[] = [];
   const pairedResults = new Set<string>();
+  const anonymousCalls = new Map<string, number>();
+  const identifiedCalls = new Map<string, string>();
   let turn = 0;
 
   steps.forEach((step, i) => {
+    // Track outstanding calls even when a result is already rendered with its call.
+    if (step.role === "tool") {
+      if (step.tool_call_id != null) identifiedCalls.delete(step.tool_call_id);
+      else if (step.tool_name) anonymousCalls.set(step.tool_name, Math.max(0, (anonymousCalls.get(step.tool_name) ?? 0) - 1));
+    }
     if (pairedResults.has(step.id)) return;
 
     if (step.role === "system") {
@@ -43,9 +50,19 @@ export function buildRows(steps: RmStep[]): TraceRow[] {
       rows.push({ kind: "assistant", key: step.id, step });
       return;
     }
+    if (step.tool_call_id == null) anonymousCalls.set(step.tool_name, (anonymousCalls.get(step.tool_name) ?? 0) + 1);
+    else identifiedCalls.set(step.tool_call_id, step.tool_name);
+
+    // IDs are authoritative. Some exports omit both IDs; an exact tool name is
+    // sufficient only when this is the sole outstanding call to that tool.
     // Pair adjacent events only: a later result must not leapfrog other messages.
     const next = steps[i + 1];
-    const result = next?.role === "tool" && next.tool_call_id !== null && next.tool_call_id === step.tool_call_id ? next : undefined;
+    const sameId = next?.tool_call_id != null && next.tool_call_id === step.tool_call_id;
+    const sameName = step.tool_call_id == null && next?.tool_call_id == null
+      && !!step.tool_name && next?.tool_name === step.tool_name
+      && anonymousCalls.get(step.tool_name) === 1
+      && !Array.from(identifiedCalls.values()).includes(step.tool_name);
+    const result = next?.role === "tool" && (sameId || sameName) ? next : undefined;
     if (result) pairedResults.add(result.id);
     rows.push({ kind: "tool", key: step.id, call: step, result: result ?? null });
   });

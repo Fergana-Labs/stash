@@ -58,6 +58,73 @@ describe("buildRows", () => {
     const orphan = buildRows([step(0, "tool", { tool_call_id: "x", content: "ok" })]);
     expect(orphan).toEqual([{ kind: "tool", key: "s0", call: null, result: expect.objectContaining({ id: "s0" }) }]);
   });
+
+  it("groups adjacent calls and outputs by exact tool name when both IDs are absent", () => {
+    const source = [
+      step(0, "assistant", { tool_name: "find_parts_for_vehicle", tool_input: { part_description: "wiper blade" } }),
+      step(1, "tool", { tool_name: "find_parts_for_vehicle", content: "## ford-parts — Ford Parts" }),
+      step(2, "assistant", { tool_name: "find_parts_for_vehicle", tool_input: { part_description: "wiper arm" } }),
+      step(3, "tool", { tool_name: "find_parts_for_vehicle", content: "Wiper arm found" }),
+    ];
+    const snapshot = structuredClone(source);
+    const grouped = buildRows(source);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0]).toMatchObject({ call: source[0], result: source[1] });
+    expect(grouped[1]).toMatchObject({ call: source[2], result: source[3] });
+    expect(grouped.flatMap(rowSteps)).toEqual(source);
+    expect(source).toEqual(snapshot);
+  });
+
+  it.each([
+    [null, null, "other_tool"],
+    [undefined, undefined, "other_tool"],
+    [null, null, null],
+    ["call1", "call2", "lookup"],
+    ["call1", null, "lookup"],
+    [null, "call1", "lookup"],
+  ])("does not infer a pair across conflicting names or IDs: %s, %s, %s", (callId, resultId, resultName) => {
+    const source = [
+      step(0, "assistant", { tool_name: "lookup", tool_call_id: callId }),
+      step(1, "tool", { tool_name: resultName, tool_call_id: resultId, content: "Found" }),
+    ];
+    expect(buildRows(source)).toHaveLength(2);
+    expect(buildRows(source).flatMap(rowSteps)).toEqual(source);
+  });
+
+  it("leaves overlapping calls to the same tool separate until their outputs arrive", () => {
+    const source = [
+      step(0, "assistant", { tool_name: "lookup" }),
+      step(1, "assistant", { tool_name: "lookup" }),
+      step(2, "tool", { tool_name: "lookup", content: "One result" }),
+      step(3, "tool", { tool_name: "lookup", content: "Another result" }),
+      step(4, "assistant", { tool_name: "lookup" }),
+      step(5, "tool", { tool_name: "lookup", content: "Unambiguous result" }),
+    ];
+    const grouped = buildRows(source);
+    expect(grouped).toHaveLength(5);
+    expect(grouped[1]).toMatchObject({ call: source[1], result: null });
+    expect(grouped[4]).toMatchObject({ call: source[4], result: source[5] });
+    expect(grouped.flatMap(rowSteps)).toEqual(source);
+  });
+
+  it("does not infer an anonymous pair while an identified call to the same tool is outstanding", () => {
+    const source = [
+      step(0, "assistant", { tool_name: "lookup", tool_call_id: "earlier" }),
+      step(1, "assistant", { tool_name: "lookup" }),
+      step(2, "tool", { tool_name: "lookup", content: "Unknown caller" }),
+    ];
+    expect(buildRows(source)).toHaveLength(3);
+  });
+
+  it("keeps an anonymous output in place when another event separates it from the call", () => {
+    const source = [
+      step(0, "assistant", { tool_name: "lookup" }),
+      step(1, "user", { content: "Wait" }),
+      step(2, "tool", { tool_name: "lookup", content: "Found" }),
+    ];
+    expect(buildRows(source)).toHaveLength(3);
+    expect(buildRows(source).flatMap(rowSteps)).toEqual(source);
+  });
 });
 
 describe("toolSummary", () => {

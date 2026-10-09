@@ -272,7 +272,7 @@ function ToolRow({
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
           <DisclosureIcon expanded={expanded} />
-          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{call ? summary : toolLabel(name)}</span>
+          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{call ? summary : `Output · ${toolLabel(name)}`}</span>
           {!call && !expanded && <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>}
         </button>
         </TooltipTrigger>{call && <TooltipContent side="bottom" align="start" sideOffset={6} collisionPadding={12}
