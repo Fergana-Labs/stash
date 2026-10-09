@@ -14,11 +14,10 @@ import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
 import { traceSectionTarget } from "./trace-scroll";
 
-export default function TraceExplorer({ groups, path, onPath, assessments, ann, isExpanded, onToggle, onOpenRows }: {
+export default function TraceExplorer({ groups, path, onPath, assessments, ann, isExpanded, onToggle }: {
   groups: TraceGroup[]; path: string[]; onPath: (path: string[]) => void; ann: StepAnnotations;
   assessments: ReturnType<typeof useSectionSummaries>;
   isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void;
-  onOpenRows: (rows: TraceRow[]) => void;
 }) {
   const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
@@ -53,7 +52,6 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
   }
   function descend(node: TraceGroup) {
     select(node);
-    if (!node.children.length) onOpenRows(node.rows);
     onPath([...trail.map((item) => item.key), node.key]);
   }
   useEffect(() => {

@@ -229,7 +229,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
           <DisclosureIcon expanded={expanded} />
-          <span className="shrink-0 text-[13px] font-semibold text-amber-700 dark:text-amber-300">{repeated ? "Repeated user message" : "User"}</span>
+          <span className="shrink-0 text-[13px] font-medium text-foreground">{repeated ? "Repeated user message" : "User"}</span>
           {!expanded && !repeated && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
         </button>
         <Labels step={step} ann={ann} className="shrink-0 flex-nowrap" />
@@ -242,21 +242,25 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 
 /* ── assistant message (or reasoning) ───────────────────────────────── */
 
-function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations; first: boolean }) {
+function AssistantRow({ step, ann, first, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; first: boolean; expanded: boolean; onToggle: () => void }) {
   const thinking = isThinking(step);
   return (
     <RowFrame step={step} ann={ann} className={cn("group/row", !first && "pt-3")}>
-      <RowHeader step={step} ann={ann} className="mb-1 min-h-5">
-        <span className={cn(first ? "text-[13px] font-semibold text-blue-600 dark:text-blue-300" : "text-[11px] text-blue-600 dark:text-blue-300")}>
-          {first ? "Assistant" : thinking ? "Thinking" : "Response"}
-        </span>
+      <RowHeader step={step} ann={ann} className="mb-1 min-h-8">
+        <button type="button" onClick={onToggle} aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${thinking ? "thinking" : "assistant"} message`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+          <DisclosureIcon expanded={expanded} />
+          <span className="shrink-0 text-[13px] font-medium text-foreground">Assistant</span>
+          {!expanded && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
+        </button>
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </RowHeader>
-      <ScoreLine step={step} ann={ann} className="mb-1.5" />
-      <div className={cn(thinking && "text-dim italic")}>
+      {expanded && <ScoreLine step={step} ann={ann} className="mb-1.5" />}
+      {expanded && <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
-      </div>
+      </div>}
     </RowFrame>
   );
 }
@@ -284,7 +288,7 @@ function ToolRow({
 
   return (
     <RowFrame step={head} ann={ann} className="group/row">
-      {call && call.content !== "" && (
+      {expanded && call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
@@ -294,7 +298,7 @@ function ToolRow({
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
           <DisclosureIcon expanded={expanded} />
-          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-violet-700 dark:text-violet-300" title={name ?? undefined}>{toolLabel(name)}</span>
+          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
 
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
@@ -318,7 +322,7 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
   return <div id={nested ? `step-${step.id}` : undefined} className="group/output border-t border-border-subtle">
     <div className="flex min-h-7 items-center gap-2">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} tool output`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs">
-        <DisclosureIcon expanded={expanded} /><span className="font-medium text-teal-700 dark:text-teal-300">Output</span>
+        <DisclosureIcon expanded={expanded} /><span className="shrink-0 text-[13px] font-medium text-foreground">Output</span>
         {!expanded && <span className="truncate font-mono text-muted-foreground">{firstLine(step.content)}</span>}
       </button>
       <button type="button" aria-label="Copy tool output" title="Copy tool output" onClick={() => void navigator.clipboard.writeText(step.content).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }).catch(() => toast.error("Couldn’t copy this output."))} className="cursor-pointer p-1 text-muted-foreground opacity-0 group-hover/output:opacity-100 focus:opacity-100">{copied ? <Check className="size-3" /> : <Copy className="size-3" />}</button>
@@ -334,9 +338,9 @@ function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepA
     <RowFrame step={step} ann={ann}>
       <RowHeader step={step} ann={ann} className="group/row min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
-          <DisclosureIcon expanded={expanded} /><span className="shrink-0 font-medium">System</span>
-          {!expanded && <span className="truncate text-xs">{readableExcerpt(step.content)}</span>}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+          <DisclosureIcon expanded={expanded} /><span className="shrink-0 text-[13px] font-medium text-foreground">System</span>
+          {!expanded && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
         </button>
         <StepMetadata step={step} ann={ann} />
       </RowHeader>
@@ -402,7 +406,7 @@ export default function TraceTimeline({
         </div>
       );
     }
-    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} />;
+    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
     return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
   }
 
@@ -413,7 +417,7 @@ export default function TraceTimeline({
         return <div key={group.rows[0].key}>
           {task && <div className="pt-3"><TaskScoreSummary {...task} /></div>}
           <section aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
-            {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
+            {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-medium text-foreground">Assistant</h3>}
             <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
           </section>
         </div>;

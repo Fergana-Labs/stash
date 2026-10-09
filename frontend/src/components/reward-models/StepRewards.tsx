@@ -35,27 +35,25 @@ export function StepScoreChip({ reward }: { reward: StepReward }) {
 
 /** Keep aggregate task scores visually separate from the individual message rows. */
 export function TaskScoreSummary({ heading, score, firstStep, lastStep }: { heading: string; score: TaskScore; firstStep: number; lastStep: number }) {
-  const capped = Math.abs((score.answer ?? 0) + score.costs - score.score) > 0.005;
   return (
-    <section aria-label={`${heading} score summary`} className="mb-4 rounded-lg border border-border-subtle bg-surface/60 px-4 py-3">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="m-0 text-[13px] font-semibold text-foreground">{heading} · Score summary</h3>
-        <p className="m-0 text-[11px] text-muted-foreground">{firstStep === lastStep ? `Step ${firstStep}` : `Steps ${firstStep}–${lastStep}`} · Entire task</p>
+    <section aria-label={`${heading} score summary`} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-border-subtle py-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="m-0 text-[13px] font-medium text-foreground">{heading}</h3>
+        <span aria-hidden="true" className="text-muted-foreground/50">·</span>
+        <p className="m-0 text-[11px] text-muted-foreground">{firstStep === lastStep ? `Step ${firstStep}` : `Steps ${firstStep}–${lastStep}`}</p>
       </div>
-      <dl className="m-0 grid grid-cols-3 gap-3 text-[11px]">
-        <div>
+      <dl className="m-0 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs">
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-muted-foreground">Final answer</dt>
-          <dd className="m-0 mt-1 font-mono text-[16px] tabular-nums text-foreground">{score.hasAnswer && score.answer !== null ? signed(score.answer) : "No answer"}</dd>
+          <dd className="m-0 text-[13px] font-medium tabular-nums text-foreground">{score.hasAnswer && score.answer !== null ? signed(score.answer) : "No answer"}</dd>
         </div>
-        <div>
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-muted-foreground">Total work</dt>
-          <dd className="m-0 mt-1 font-mono text-[16px] tabular-nums text-foreground">{signed(score.costs)}</dd>
-          <p className="m-0 mt-1 text-[10px] text-muted-foreground">All actions in this task</p>
+          <dd className="m-0 text-[13px] font-medium tabular-nums text-foreground">{signed(score.costs)}</dd>
         </div>
-        <div className="border-l border-border-subtle pl-3">
-          <dt className="font-medium text-foreground">Task score</dt>
-          <dd className={cn("m-0 mt-1 font-mono text-[16px] font-semibold tabular-nums", TEXT_TONE[scoreTone(score.score)])}>{signed(score.score)}</dd>
-          {capped && <p className="m-0 mt-1 text-[10px] text-muted-foreground">Limited to −1…+1</p>}
+        <div className="flex items-baseline gap-1.5">
+          <dt className="text-muted-foreground">Task score</dt>
+          <dd className="m-0 text-[13px] font-semibold tabular-nums text-foreground">{signed(score.score)}</dd>
         </div>
       </dl>
     </section>

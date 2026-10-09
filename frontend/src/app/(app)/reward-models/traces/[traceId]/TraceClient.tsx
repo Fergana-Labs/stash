@@ -167,17 +167,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Start with all content visible; only collapse rows the reader explicitly closes. */
+  /** Keep messages compact until the reader opens them. */
   function isExpanded(row: TraceRow): boolean {
-    return rowChoice.get(row.key) ?? true;
-  }
-
-  function openRows(rows: TraceRow[]) {
-    setRowChoice((current) => {
-      const next = new Map(current);
-      for (const row of rows) next.set(row.key, true);
-      return next;
-    });
+    return rowChoice.get(row.key) ?? false;
   }
 
   function toggleRow(row: TraceRow) {
@@ -228,7 +220,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
     setOutlinePath(groupPath(groups, stepId));
     if (!row) return;
-    if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
+    if (!isExpanded(row)) toggleRow(row);
     setFlashStepId(stepId);
     requestAnimationFrame(() => {
       const element = document.getElementById(`step-${stepId}`);
@@ -291,7 +283,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   return (
     <div className="relative flex h-full min-h-0">
-      <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onOpenRows={openRows} onStep={revealStep}
+      <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onStep={revealStep}
         copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
@@ -346,7 +338,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
                 container?.scrollTo({ top: target && container ? container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - TRACE_STEP_INSET : 0, behavior: "instant" });
               });
             }}
-            ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}
+            ann={ann} isExpanded={isExpanded} onToggle={toggleRow}
           />
           {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>

@@ -25,14 +25,14 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks();
 const ann: StepAnnotations = { highlights: () => [], commentCount: () => 0, hasQuotes: () => false, flashing: () => false, onComment: vi.fn(), onSelectAnnotation: vi.fn() };
 const rows = presentTrace(Array.from({ length: 48 }, (_, i): RmStep => ({ id: `s${i}`, index: i, role: i % 12 ? "assistant" : "user", content: `Task ${i}`, tool_name: null, tool_input: null, tool_call_id: null, metadata: i % 12 === 1 || i % 12 === 7 ? { phase: "commentary" } : null }))).rows;
 const groups = buildTraceOutline(rows);
-function Harness({ opened = vi.fn(), outline = groups }: { opened?: () => void; outline?: ReturnType<typeof buildTraceOutline> }) {
+function Harness({ outline = groups }: { outline?: ReturnType<typeof buildTraceOutline> }) {
   const [path, setPath] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
   const { trail, children: sections } = traceExplorerLevel(outline, path);
   const assessments = useSectionSummaries("t1", [...new Map([...sections, ...trail, ...outline].map((node) => [node.key, node])).values()]);
   return <div>
-    <TraceScrollRail groups={outline} path={path} rows={outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} onPath={setPath} onOpenRows={opened} onStep={(id) => setPath(groupPath(outline, id))} />
-    <div ref={scroller}><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} onOpenRows={opened} /></div>
+    <TraceScrollRail groups={outline} path={path} rows={outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} onPath={setPath} onStep={(id) => setPath(groupPath(outline, id))} />
+    <div ref={scroller}><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} /></div>
   </div>;
 }
 async function load() { await act(async () => { await Promise.resolve(); }); }
@@ -92,8 +92,7 @@ it("only makes ancestor breadcrumbs clickable", async () => {
 });
 
 it("uses Up/Down to select, Enter to open, and Escape to return", async () => {
-  const opened = vi.fn();
-  render(<Harness opened={opened} />);
+  render(<Harness />);
   await load();
   const original = screen.getAllByRole("button", { name: /^Explore / });
   expect(original[0]).toHaveAttribute("aria-current", "true");
@@ -106,9 +105,9 @@ it("uses Up/Down to select, Enter to open, and Escape to return", async () => {
   let children = screen.getAllByRole("button", { name: /^Explore / });
   expect(children[0]).toHaveFocus();
   fireEvent.keyDown(children[0], { key: "Enter", repeat: true });
-  expect(opened).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(children.length);
   fireEvent.keyDown(children[0], { key: "Enter" });
-  expect(opened).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /^Collapse .* message$/ })).not.toBeInTheDocument();
   // Entering a subsection must not cut off the rest of the trace.
   expect(screen.getByLabelText("Step 48")).toBeInTheDocument();
   expect(screen.getByLabelText("Step 1")).toBeInTheDocument();
