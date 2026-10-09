@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ArrowUpLeft, LayoutGrid } from "lucide-react";
+import { ChevronRight, ArrowUpLeft, ListTree } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
@@ -87,7 +87,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     : null;
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
     {trail.length > 0 ? <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
-      {canAscend && <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Back to sections</button>}
+      {canAscend && <button type="button" onClick={() => onPath([])} aria-label="Back to sections" title="Back to sections" className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-surface hover:text-foreground"><ListTree className="size-4" aria-hidden="true" /></button>}
       {trail.map((node, index) => <span key={node.key} className="flex min-w-0 items-center gap-1">
         {(canAscend || index > 0) && <ChevronRight className="size-3 shrink-0" aria-hidden="true" />}
         {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
