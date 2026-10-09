@@ -17,7 +17,7 @@ from uuid import UUID
 from rm_worker.release_gate import check_partition
 
 from ...database import get_pool
-from . import automatic_dataset, datasets, feedback
+from . import automatic_dataset, datasets, feedback, training_progress
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
@@ -49,6 +49,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 async def run_worker(module: str, directory: Path) -> None:
     python = required_env("RM_WORKER_PYTHON")
     log_path = directory / "worker.log"
+    job = json.loads((directory / "job.json").read_text())
     with log_path.open("w") as log:
         process = await asyncio.create_subprocess_exec(
             python,
@@ -60,7 +61,10 @@ async def run_worker(module: str, directory: Path) -> None:
             stdout=log,
             stderr=asyncio.subprocess.STDOUT,
         )
-        returncode = await process.wait()
+        if job["kind"] == "train":
+            returncode = await training_progress.watch(process, log_path, UUID(directory.name))
+        else:
+            returncode = await process.wait()
     if returncode != 0:
         raise WorkerFailed(log_path.read_text()[-LOG_TAIL_CHARS:])
 
@@ -68,6 +72,7 @@ async def run_worker(module: str, directory: Path) -> None:
 async def run_training(model_id: UUID) -> None:
     pool = get_pool()
     model = await pool.fetchrow("SELECT * FROM rm_reward_models WHERE id = $1", model_id)
+    await training_progress.stage(model_id, "preparing")
     owner_user_id = model["owner_user_id"]
     config = model.get("training_config")
 
@@ -168,6 +173,7 @@ async def run_training(model_id: UUID) -> None:
     _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
     module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
+    await training_progress.stage(model_id, "starting")
     await run_worker(module, directory)
 
     result = json.loads((directory / "result.json").read_text())

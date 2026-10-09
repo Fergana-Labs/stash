@@ -579,6 +579,47 @@ async def test_training_without_a_configured_runtime_returns_service_unavailable
     assert (await client.get("/api/v1/rm/reward-models", headers=auth)).json() == []
 
 
+async def test_training_eta_uses_only_owners_comparable_runs(client, monkeypatch, pool):
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *args: None)
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, GREETING_TRACE)
+
+    async def create(headers, trace):
+        response = await client.post(
+            "/api/v1/rm/reward-models",
+            json={"name": "timed", "trace_ids": [trace]},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    history = await create(auth, trace_id)
+    await pool.execute(
+        "UPDATE rm_reward_models SET status='succeeded', started_at=now()-interval '20 minutes', "
+        "finished_at=now()-interval '10 minutes' WHERE id=$1",
+        UUID(history["id"]),
+    )
+    queued = await create(auth, trace_id)
+    timing = queued["estimated_timing"]
+    assert timing["sample_count"] == 1
+    assert timing["excludes_queue"] is True
+    assert timing["lower_seconds"] == 420
+    assert timing["upper_seconds"] == 780
+    listed = (await client.get("/api/v1/rm/reward-models", headers=auth)).json()
+    assert next(m for m in listed if m["id"] == queued["id"])["estimated_timing"] == timing
+    detail = (await client.get(f"/api/v1/rm/reward-models/{queued['id']}", headers=auth)).json()
+    assert detail["estimated_timing"] == timing
+
+    other = await _register(client)
+    [other_trace] = await _import(client, other, GREETING_TRACE)
+    assert (await create(other, other_trace))["estimated_timing"] is None
+    await pool.execute(
+        "UPDATE rm_reward_models SET status='failed' WHERE id=$1", UUID(queued["id"])
+    )
+    detail = (await client.get(f"/api/v1/rm/reward-models/{queued['id']}", headers=auth)).json()
+    assert detail["estimated_timing"] is None
+
+
 async def test_gepa_run_needs_a_trained_reward_model(client, monkeypatch):
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
     gepa_queued = []
