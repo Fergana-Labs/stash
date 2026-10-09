@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Replace reward-model cards and the dashed empty-state box with a compact,
+  searchable table, status filters, exact timestamps, and expandable model details.
+- Explain when model training is not configured instead of returning an internal
+  server error, and display creation errors above the training controls.
+
 - Keep the reward-model creation sheet open when clicking outside it, preserving
   trace selections until it is closed with the close button or Escape.
 
