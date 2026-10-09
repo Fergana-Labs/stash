@@ -41,9 +41,13 @@ SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
 # ---------------------------------------------------------------------------
 
 
-async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+async def _list_sessions(
+    owner_user_id: UUID, user_id: UUID, *, end_user_external_id: str | None = None
+) -> list[dict]:
     """Sessions in this scope, sourced from history_events rows."""
-    sessions = await memory_service.list_scope_sessions(owner_user_id, user_id)
+    sessions = await memory_service.list_scope_sessions(
+        owner_user_id, user_id, end_user_external_id=end_user_external_id
+    )
     titles = await session_title_service.titles_for_sessions(owner_user_id, sessions)
     return [
         {

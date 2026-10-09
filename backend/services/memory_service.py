@@ -482,7 +482,9 @@ async def read_session_events_page(
     return [dict(r) for r in rows], total
 
 
-async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+async def list_scope_sessions(
+    owner_user_id: UUID, user_id: UUID, *, end_user_external_id: str | None = None
+) -> list[dict]:
     """One row per session_id in this scope. Powers the spine sessions
     list — replaces a SELECT against session_transcripts.
 
@@ -494,12 +496,17 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     every transcript event on every sidebar load."""
     pool = get_pool()
     readable_session = permission_service.readable_content_condition("session", "s", 2)
+    args = [owner_user_id, user_id]
+    end_user_filter = ""
+    if end_user_external_id is not None:
+        args.append(end_user_external_id)
+        end_user_filter = " AND s.end_user_id IN (SELECT id FROM end_users WHERE external_id = $3) "
     rows = await pool.fetch(
         "WITH readable_sessions AS ( "
         "  SELECT s.id, s.owner_user_id, s.session_id, s.end_user_id "
         "  FROM sessions s "
         "  WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
-        f"    AND {readable_session} "
+        f"    AND {readable_session} {end_user_filter} "
         "), "
         "title_sources AS ( "
         "  SELECT DISTINCT ON (ht.owner_user_id, ht.session_id) "
@@ -507,6 +514,8 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "    ht.session_id, "
         "    LEFT(ht.content, 240) AS title_source "
         "  FROM history_events ht "
+        "  JOIN readable_sessions rs ON rs.owner_user_id = ht.owner_user_id "
+        "    AND rs.session_id = ht.session_id "
         "  WHERE ht.owner_user_id = $1 "
         "    AND ht.session_id IS NOT NULL "
         "    AND NULLIF(BTRIM(ht.content), '') IS NOT NULL "
@@ -540,8 +549,7 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "GROUP BY h.session_id, rs.id, title_sources.title_source, "
         "         eu.external_id, eu.name "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
-        owner_user_id,
-        user_id,
+        *args,
     )
     sessions = [dict(r) for r in rows]
     for session in sessions:
