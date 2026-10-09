@@ -48,6 +48,13 @@ export function automaticAnnotationProgress(evaluation: TraceEvaluationResponse 
     ...current?.credits ?? [],
   ].map((credit) => [credit.step_id, credit]));
   const unscoredReasons = new Map<string, string>();
+  const queue = evaluation?.queue;
+  const pendingReason = queue?.status === "failed" ? "scoring failed"
+    : queue?.status === "running" ? "scoring in progress"
+    : queue?.status === "queued" ? "queued for scoring"
+    : queue?.status === "waiting" ? "waiting for response completion"
+    : evaluation && !evaluation.configured ? "scoring unavailable"
+    : "awaiting score";
   let uncertain = 0;
   let previous = 0;
   let scored = 0;
@@ -60,7 +67,7 @@ export function automaticAnnotationProgress(evaluation: TraceEvaluationResponse 
       uncertain++;
       unscoredReasons.set(action.id, "insufficient evidence");
     } else {
-      unscoredReasons.set(action.id, "awaiting score");
+      unscoredReasons.set(action.id, pendingReason);
     }
   }
   const pending = actions.length - scored - uncertain;
@@ -68,7 +75,6 @@ export function automaticAnnotationProgress(evaluation: TraceEvaluationResponse 
   if (previous) parts.push(`${previous} previous`);
   if (pending) parts.push(`${pending} awaiting scores`);
   if (uncertain) parts.push(`${uncertain} with insufficient evidence`);
-  const queue = evaluation?.queue;
   if (!evaluation) parts.push("Loading annotations…");
   else if (!evaluation.configured) parts.push("Automatic annotation unavailable");
   else if (queue?.status === "failed") parts.push("Annotation update failed");

@@ -38,8 +38,10 @@ python scripts/local_trace_data.py --user YOUR_LOCAL_USER score --watch
 
 This processes one queued trace at a time for that local account using the same
 automatic evaluation pipeline as production. It polls for new queued imports
-every five seconds, so no Redis or general Celery worker is needed for this UI
-loop. Omit `--watch` to process at most one due trace. Ctrl-C stops the worker.
+every five seconds and recovers jobs rejected by the old trace-size limit, so
+no Redis or general Celery worker is needed for this UI loop. Restart this command
+along with the backend when scoring code changes; restarting only Next.js does
+not update an already-running Python worker. Omit `--watch` to process at most one due trace. Ctrl-C stops the worker.
 Inference runs through the remote API; this command never trains or loads a
 model on the laptop. Production data and configuration are not modified.
 

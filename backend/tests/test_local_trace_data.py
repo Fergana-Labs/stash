@@ -8,6 +8,8 @@ import pytest
 
 from scripts.local_trace_data import copy_snapshot, require_local_database
 
+from .test_rm_workbench import model_and_queue_boundaries  # noqa: F401
+
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
 def test_loopback_destination(host):
@@ -88,3 +90,49 @@ async def test_snapshot_checks_source_ownership_before_reading_evidence():
         await copy_snapshot(local, source, uuid4(), uuid4(), uuid4())
     source.fetch.assert_not_called()
     local.execute.assert_not_called()
+
+
+async def test_local_worker_repairs_size_rejections_without_touching_other_jobs(client, pool):
+    from scripts.local_trace_data import reserve_next_trace
+
+    from .test_rm_workbench import account, upload
+
+    owner, other = await account(client), await account(client)
+    failed = await upload(client, owner, "old-limit")
+    running = await upload(client, owner, "already-running")
+    foreign = await upload(client, other, "another-owner")
+    reason = "The trace is 240,479 characters; automatic annotation handles up to 200,000."
+    await pool.execute(
+        "UPDATE rm_wb_queue SET status='failed',error=$2,attempts=3 WHERE trace_id=ANY($1::uuid[])",
+        [failed, foreign],
+        reason,
+    )
+    await pool.execute("UPDATE rm_wb_queue SET status='running' WHERE trace_id=$1", running)
+    untouched = [
+        dict(row)
+        for row in await pool.fetch(
+            "SELECT * FROM rm_wb_queue WHERE trace_id=ANY($1::uuid[]) ORDER BY trace_id",
+            [running, foreign],
+        )
+    ]
+
+    assert await reserve_next_trace(pool, owner["uuid"]) == failed
+    repaired = await pool.fetchrow(
+        "SELECT status,error,attempts,due_at>now() AS reserved FROM rm_wb_queue WHERE trace_id=$1",
+        failed,
+    )
+    assert dict(repaired) == {"status": "queued", "error": None, "attempts": 0, "reserved": True}
+    assert await reserve_next_trace(pool, owner["uuid"]) is None
+    assert [
+        dict(row)
+        for row in await pool.fetch(
+            "SELECT * FROM rm_wb_queue WHERE trace_id=ANY($1::uuid[]) ORDER BY trace_id",
+            [running, foreign],
+        )
+    ] == untouched
+
+    # A worker that stops between reservation and processing does not strand it.
+    await pool.execute(
+        "UPDATE rm_wb_queue SET due_at=now()-interval '1 second' WHERE trace_id=$1", failed
+    )
+    assert await reserve_next_trace(pool, owner["uuid"]) == failed

@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Recover locally rejected long-trace scoring jobs after upgrading the worker.
+  Hover statuses distinguish failed, queued, and running scoring jobs.
+
 - Keep all recorded messages chronological, with compact inline expansion,
   left-gutter step numbers, syntax-highlighted code, and collapsible input and
   output rows. Remove the separate message reader and add a persistent theme toggle.
