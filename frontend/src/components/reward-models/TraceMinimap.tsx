@@ -63,6 +63,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const tooltipId = useId();
+  const map = useRef<HTMLDivElement>(null);
+  const selectedStep = useRef<string | null>(null);
   const drag = useRef<{ pointerId: number; index: number } | null>(null);
 
   useEffect(() => {
@@ -72,6 +74,11 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     const indices = new Map(steps.map((step, index) => [`step-${step.id}`, index]));
     let frame = 0;
     function update() {
+      // Near the bottom, a jump can be clamped before its row reaches the header.
+      // Keep the explicit selection through scrolling, layout shifts and polling.
+      const selected = selectedStep.current === null ? undefined : indices.get(selectedStep.current);
+      if (selected !== undefined) { setActiveIndex(selected); return; }
+      selectedStep.current = null;
       const element = visibleStepElement(container!, header!, TRACE_STEP_INSET);
       if (element === null) return;
       const index = indices.get(element.id);
@@ -81,12 +88,30 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     }
+    function followScroll() { selectedStep.current = null; }
+    function navigateElsewhere(event: globalThis.PointerEvent) {
+      if (!map.current?.contains(event.target as Node)) followScroll();
+    }
+    function scrollWithKeyboard(event: KeyboardEvent) {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (map.current?.contains(target) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) followScroll();
+    }
+    container.addEventListener("wheel", followScroll, { passive: true });
+    container.addEventListener("touchmove", followScroll, { passive: true });
+    document.addEventListener("pointerdown", navigateElsewhere, true);
+    document.addEventListener("keydown", scrollWithKeyboard, true);
     container.addEventListener("scroll", schedule, { passive: true });
     const observer = new ResizeObserver(schedule);
     observer.observe(container);
     if (container.firstElementChild) observer.observe(container.firstElementChild);
     schedule();
     return () => {
+      container.removeEventListener("wheel", followScroll);
+      container.removeEventListener("touchmove", followScroll);
+      document.removeEventListener("pointerdown", navigateElsewhere, true);
+      document.removeEventListener("keydown", scrollWithKeyboard, true);
       container.removeEventListener("scroll", schedule);
       observer.disconnect();
       cancelAnimationFrame(frame);
@@ -98,6 +123,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
+    selectedStep.current = `step-${steps[index].id}`;
     setActiveIndex(index);
     onJump(index);
   }
@@ -134,6 +160,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     <nav aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       <div
+        ref={map}
         className={cn("relative flex min-w-0 flex-1 touch-none items-end border-b border-border-subtle", graded ? "h-[48px]" : "h-6")}
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"

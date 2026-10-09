@@ -237,8 +237,10 @@ the current section is plain text. The left rail remains global.
 Sections without assistant responses or tool calls are context, not agent work.
 They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
-small dots instead of credit heights. Hover previews stay on one line below the
-chart, showing the step number, recorded time, a content excerpt, and available
+small dots instead of credit heights. A clicked step stays selected even when
+the bottom of the trace prevents it from reaching the sticky breadcrumb;
+manual scrolling resumes viewport tracking. Hover previews stay on one line
+below the chart, showing the step number, recorded time, a content excerpt, and available
 credit or pending status. Long previews truncate. The label summary, Labels/Scores
 toggles, scoring explainer, and keyboard hints are omitted; inline labels and
 scores remain available. A small rescore icon shows activity
