@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Align the sticky Show less control with the left edge of message content.
+
 - Default trace credit charts to ±1 and omit the inactive Sections heading at
   the overview level. Fit scaling and navigation within sections remain available.
 
