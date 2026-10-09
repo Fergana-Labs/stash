@@ -103,6 +103,11 @@ it("leaves editing, menus, modified keys, and unrelated controls alone", () => {
     fireEvent.keyDown(outside, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
     fireEvent.keyDown(document.body, { key: "ArrowRight", metaKey: true });
+    const bar = screen.getByRole("button", { name: /^Step 1:/ });
+    bar.focus();
+    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+      fireEvent.keyDown(bar, { key: "ArrowRight", [modifier]: true });
+    }
     expect(onJump).not.toHaveBeenCalled();
   } finally { container.remove(); outside.remove(); }
 });
@@ -183,8 +188,9 @@ it("scrubs across steps, clamps at the ends, and stops on release", () => {
   expect(onJump.mock.calls).toEqual([[0], [1], [2], [0]]);
 });
 
-it("returns focus to the explorer after a pointer jump so Left can go up", async () => {
-  const container = renderMap();
+it("keeps focus on a clicked minimap step so Left/Right scrub chronologically", async () => {
+  const onJump = vi.fn();
+  const container = renderMap(steps, onJump);
   const explorer = document.createElement("section");
   explorer.setAttribute("aria-label", "Trace explorer");
   explorer.tabIndex = -1;
@@ -194,10 +200,41 @@ it("returns focus to the explorer after a pointer jump so Left can go up", async
     const map = screen.getByRole("group", { name: "Step map" });
     map.getBoundingClientRect = () => ({ left: 0, width: 300 }) as DOMRect;
     fireEvent.pointerDown(map, { pointerId: 1, button: 0, clientX: 110 });
-    expect(screen.getByRole("button", { name: /^Step 2:/ })).toHaveFocus();
+    const second = screen.getByRole("button", { name: /^Step 2:/ });
+    expect(second).toHaveFocus();
     fireEvent.pointerUp(map, { pointerId: 1 });
-    await waitFor(() => expect(explorer).toHaveFocus());
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    expect(second).toHaveFocus();
+    expect(explorer).not.toHaveFocus();
+    fireEvent.keyDown(second, { key: "ArrowRight" });
+    const third = screen.getByRole("button", { name: /^Step 3:/ });
+    expect(third).toHaveFocus();
+    fireEvent.keyDown(third, { key: "ArrowLeft" });
+    expect(second).toHaveFocus();
+    expect(onJump.mock.calls).toEqual([[1], [2], [1]]);
   } finally { container.remove(); }
+});
+
+it("continues keyboard scrubbing from the drag destination and clamps at both ends", () => {
+  const onJump = vi.fn();
+  renderMap(steps, onJump);
+  const map = screen.getByRole("group", { name: "Step map" });
+  map.getBoundingClientRect = () => ({ left: 0, width: 300 }) as DOMRect;
+  fireEvent.pointerDown(map, { pointerId: 1, button: 0, clientX: 10 });
+  fireEvent.pointerMove(map, { pointerId: 1, clientX: 290 });
+  fireEvent.pointerUp(map, { pointerId: 1 });
+  const third = screen.getByRole("button", { name: /^Step 3:/ });
+  expect(third).toHaveFocus();
+  fireEvent.keyDown(third, { key: "ArrowRight" });
+  expect(third).toHaveFocus();
+  fireEvent.keyDown(third, { key: "ArrowLeft" });
+  const second = screen.getByRole("button", { name: /^Step 2:/ });
+  expect(second).toHaveFocus();
+  fireEvent.keyDown(second, { key: "ArrowLeft" });
+  const first = screen.getByRole("button", { name: /^Step 1:/ });
+  fireEvent.keyDown(first, { key: "ArrowLeft" });
+  expect(first).toHaveFocus();
+  expect(onJump.mock.calls).toEqual([[0], [2], [2], [1], [0], [0]]);
 });
 
 it("ends scrubbing when the pointer is cancelled and retains keyboard activation", () => {

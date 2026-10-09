@@ -27,11 +27,13 @@ import { annotationStepIds, errorMessage, locateQuote, quoteForStep, relativeTim
 import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
-import { buildTraceOutline, groupPath, traceExplorerLevel } from "@/components/reward-models/trace-outline";
+import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
 import { TRACE_STEP_INSET } from "@/components/reward-models/trace-scroll";
 import { useSectionSummaries } from "@/components/reward-models/use-section-summaries";
+import { useTraceCompletion } from "@/components/reward-models/use-trace-completion";
+import { taskCompletion } from "@/components/reward-models/task-completion";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -58,6 +60,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const evaluation = trace?.automatic_evaluation ?? null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [outlinePath, setOutlinePath] = useState<string[]>([]);
+  const [focusedSection, setFocusedSection] = useState<{ firstStepId: string; lastStepId: string } | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -132,8 +135,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const { trail, children: sectionGroups } = traceExplorerLevel(groups, outlinePath);
   const browsingSections = sectionGroups.length > 0;
   // Retain global map titles if we enter a subsection before its root batch finishes.
-  const assessmentGroups = [...new Map([...sectionGroups, ...trail, ...(groups.length > 1 ? groups : [])].map((group) => [group.key, group])).values()];
+  const assessmentGroups = [...new Map([...sectionGroups, ...trail, ...(groups.length > 1 ? groups : []), ...(!browsingSections ? tracePhases(groups).map(({ node }) => node) : [])].map((group) => [group.key, group])).values()];
   const assessments = useSectionSummaries(traceId, assessmentGroups);
+  const completion = useTraceCompletion(traceId, trace?.steps ?? []);
 
   if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;
   if (!trace || !user) return <TraceSkeleton />;
@@ -265,7 +269,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       focusCard((row ? rowSteps(row) : [step]).flatMap((source) => annotationsOn(source).filter((a) => a.comment !== null).map((a) => a.id)));
     },
     onSelectAnnotation: focusCard,
-    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, taskName: labels.taskName, onJumpToStep: revealStep }),
+    ...(labels.present && { taskHeading: labels.taskHeading, taskName: labels.taskName }),
     ...(stepScores !== null && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
@@ -281,7 +285,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   return (
     <div className="relative flex h-full min-h-0">
-      <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onStep={revealStep}
+      <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onStep={revealStep} focusedStepId={browsingSections ? focusedSection?.firstStepId : undefined}
         copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
@@ -315,7 +319,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} completion={taskCompletion(completion.tasks, presentation.numberById)} completionLoading={completion.loading} focusedRange={browsingSections && focusedSection ? { first: (presentation.numberById.get(focusedSection.firstStepId) ?? 1) - 1, last: (presentation.numberById.get(focusedSection.lastStepId) ?? 1) - 1 } : undefined} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
 
 
         </div>
@@ -325,9 +329,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceExplorer
-            groups={groups} path={outlinePath} assessments={assessments}
-            onPath={(path) => {
+            groups={groups} path={outlinePath} assessments={assessments} onSectionFocus={setFocusedSection}
+            onPath={(path, options) => {
               setOutlinePath(path);
+              if (options?.scroll === false) return;
               const level = traceExplorerLevel(groups, path);
               const first = level.current && !level.children.length ? rowSteps(level.current.rows[0])[0] : null;
               requestAnimationFrame(() => {

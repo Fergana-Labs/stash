@@ -151,6 +151,9 @@ it("shows the recorded action and exposes tool help and exact inputs on focus", 
   fireEvent.blur(disclosure);
   rerender(<TraceTimeline rows={buildRows([call])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
   expect(within(screen.getByLabelText("Tool inputs")).getByText("Inputs")).toBeVisible();
+  const tool = screen.getByRole("group", { name: "Tool" });
+  expect(within(tool).getByLabelText("About Js")).toBeVisible();
+  expect(tool.compareDocumentPosition(screen.getByLabelText("Tool inputs")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByRole("button", { name: "Expand input code" })).toBeVisible();
 });
 

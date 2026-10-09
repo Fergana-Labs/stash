@@ -5,6 +5,20 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Add a faint, smooth estimated task-completion curve to the trace minimap with its own 0–100%
+  scale, evidence-based checkpoints, and separate segments for independent requests.
+- Outline the selected section on the minimap, shorten visible step ranges, and
+  show every step in the side rail with stronger phase markers.
+
+- Keep focus on the selected minimap step after clicking or dragging, so Left and
+  Right continue scrubbing chronologically from that step.
+- Let trace messages scroll continuously between phases, with compact dividers
+  and a breadcrumb that follows the current phase. Remove redundant comment prompts.
+- Show the called tool above its inputs when expanded. Hide descriptive step
+  badges while retaining the underlying annotations and scores.
+- Tighten trace-list and collapsed message rows to 28px and show exact local import timestamps, with
+  the timezone available on hover.
+
 - Show readable action descriptions in tool rows, with raw inputs on hover and
   tool-name explanations. Label expanded tool arguments as Inputs and use neutral
   field labels. Keep section-title descenders visible within compact rows.

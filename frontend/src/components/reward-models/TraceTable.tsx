@@ -13,18 +13,17 @@ import { traceScore, traceScoreLabel, traceCredits } from "./trace-metrics";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmTraceSummary } from "@/lib/types";
-import { relativeTime } from "./rm-text";
 import { selectRange, sortTraces, toggleAllVisible, type TraceSortKey, type TraceSortDirection } from "./trace-selection";
 
 const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
   { key: "title", label: "Trace", className: "" },
-  { key: "steps", label: "Steps", className: "w-20 text-right" },
-  { key: "comments", label: "Comments", className: "w-28 text-right" },
-  { key: "credit", label: "Avg. credit", className: "w-28 text-right" },
+  { key: "steps", label: "Steps", className: "w-16 text-right" },
+  { key: "comments", label: "Comments", className: "w-24 text-right" },
+  { key: "credit", label: "Avg. credit", className: "w-24 text-right" },
   { key: "minCredit", label: "Min. credit", className: "w-24 text-right" },
   { key: "maxCredit", label: "Max. credit", className: "w-24 text-right" },
-  { key: "reward", label: "Trace score", className: "w-36 text-right" },
-  { key: "imported", label: "Imported", className: "w-28 text-right" },
+  { key: "reward", label: "Trace score", className: "w-28 text-right" },
+  { key: "imported", label: "Imported", className: "w-52 text-right" },
 ];
 
 /**
@@ -112,7 +111,7 @@ function LatestTraceTable({
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className={cn("w-full table-fixed border-collapse text-[13px]", mode === "browse" && "min-w-[980px]")}>
           <thead>
-            <tr className="border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            <tr className={cn("border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase", mode === "browse" && "h-7 [&>th]:py-0")}>
               {mode === "picker" && <th className="w-10 py-2 pl-3">
                 <Checkbox
                   checked={visible.length > 0 && selectedVisible === visible.length}
@@ -197,7 +196,8 @@ function TraceRow({
     <tr
       onClick={openRow}
       className={cn(
-        "group h-10 cursor-pointer border-b border-border-subtle select-none last:border-b-0",
+        "group cursor-pointer border-b border-border-subtle select-none last:border-b-0",
+        picker ? "h-10" : "h-7 [&>td]:py-0",
         picker && checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
       )}
     >
@@ -219,7 +219,7 @@ function TraceRow({
       <td className="px-3 py-1.5 text-right" title={traceScoreLabel()}>
         {traceScore(trace) !== null ? <div className="leading-4"><span className="font-mono text-[12px] text-foreground tabular-nums">{traceScore(trace)!.toFixed(2)}</span></div> : <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3 py-1.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
+      <td className="px-3 py-1.5 text-right text-[12px] whitespace-nowrap text-muted-foreground tabular-nums"><ImportTime value={trace.created_at} /></td>
 
       {mode === "browse" && (
         <td className="px-2 py-1.5 text-right">
@@ -239,6 +239,13 @@ function TraceRow({
       )}
     </tr>
   );
+}
+
+function ImportTime({ value }: { value: string }) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return <span>—</span>;
+  const format: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" };
+  return <time dateTime={value} title={date.toLocaleString(undefined, { ...format, timeZoneName: "long" })}>{date.toLocaleString(undefined, format)}</time>;
 }
 
 function Checkbox({

@@ -5,28 +5,36 @@ import { ChevronRight, ListTree } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
-import { isContextGroup, sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
+import { isContextGroup, sectionFallbackTitle, traceExplorerLevel, tracePhases } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import { rowSteps, type TraceRow } from "./trace-rows";
 import { isGradableAction } from "./automatic-credit";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
-import { traceSectionTarget } from "./trace-scroll";
+import { TRACE_STEP_INSET, traceSectionTarget } from "./trace-scroll";
 
-export default function TraceExplorer({ groups, path, onPath, assessments, ann, isExpanded, onToggle }: {
-  groups: TraceGroup[]; path: string[]; onPath: (path: string[]) => void; ann: StepAnnotations;
+export default function TraceExplorer({ groups, path, onPath, onSectionFocus, assessments, ann, isExpanded, onToggle }: {
+  groups: TraceGroup[]; path: string[]; onPath: (path: string[], options?: { scroll: false }) => void; ann: StepAnnotations;
   assessments: ReturnType<typeof useSectionSummaries>;
   isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void;
+  onSectionFocus?: (range: { firstStepId: string; lastStepId: string } | null) => void;
 }) {
   const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
   const taskRows = groups.flatMap((group) => group.rows);
+  const phases = tracePhases(groups);
+  const reading = !!current && !children.length;
   const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
   const pathKey = trail.map((node) => node.key).join("/");
   const selected = children.find((node) => node.key === selections[pathKey]) ?? children[0];
+  const selectedFirst = selected && rowHead(selected.rows[0]).id;
+  const selectedLast = selected && rowHead(selected.rows.at(-1)!).id;
+  useEffect(() => {
+    onSectionFocus?.(selectedFirst && selectedLast ? { firstStepId: selectedFirst, lastStepId: selectedLast } : null);
+  }, [onSectionFocus, selectedFirst, selectedLast]);
   function select(node: TraceGroup, focus = false) {
     setSelections((previous) => previous[pathKey] === node.key ? previous : { ...previous, [pathKey]: node.key });
     if (focus) {
@@ -54,6 +62,29 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     select(node);
     onPath([...trail.map((item) => item.key), node.key]);
   }
+  useEffect(() => {
+    if (!reading) return;
+    const container = explorer.current?.closest<HTMLElement>("[data-trace-scroll]");
+    if (!container) return;
+    let frame = 0;
+    function followPhase() {
+      const boundary = container!.getBoundingClientRect().top + TRACE_STEP_INSET;
+      let active = phases[0];
+      for (const phase of phases) {
+        const element = document.getElementById(traceSectionTarget(phase.node));
+        if (!element || !element.getClientRects().length) continue;
+        if (element.getBoundingClientRect().top <= boundary + 1) active = phase;
+        else break;
+      }
+      if (active && active.node.key !== current?.key) onPath(active.path, { scroll: false });
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(followPhase);
+    }
+    container.addEventListener("scroll", schedule, { passive: true });
+    return () => { container.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
+  });
   useEffect(() => {
     function navigate(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
@@ -95,7 +126,13 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       </span>)}
       {assessmentStatus}
     </nav> : assessmentStatus && <div className="mb-2 flex">{assessmentStatus}</div>}
-    {current && !children.length ? <div key={current.key} id={traceSectionTarget(current)}><TraceTimeline rows={current.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div> :
+    {reading ? <div data-trace-phases>{phases.map(({ node }) => <section key={node.key} id={traceSectionTarget(node)} data-trace-phase aria-label={`Phase: ${title(node)}`}>
+      {phases.length > 1 && <div className="flex h-6 items-center gap-3 border-b border-border-subtle text-muted-foreground">
+        <h3 className="m-0 min-w-0 flex-1 truncate text-xs font-medium leading-5">{title(node)}</h3>
+        <span title={range(node)} className="shrink-0 text-[11px] tabular-nums">{range(node).replace(/^Steps? /, "")}</span>
+      </div>}
+      <TraceTimeline rows={node.rows} taskRows={taskRows} showTaskHeadings={false} ann={ann} isExpanded={isExpanded} onToggle={onToggle} />
+    </section>)}</div> :
       <div ref={cards} data-trace-sections className="flex flex-col">{children.map((node) => {
         const generated = copy(node);
         if (isContextGroup(node)) return <div key={node.key} id={traceSectionTarget(node)} data-trace-section>
@@ -104,7 +141,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
             onFocus={() => select(node)} data-section-key={node.key} data-selected={node.key === selected?.key}
             tabIndex={node.key === selected?.key ? 0 : -1} aria-current={node.key === selected?.key ? "true" : undefined}
             aria-label="Explore Context" className={cn("flex h-7 w-full cursor-pointer items-center gap-2 rounded-sm px-3 text-left text-xs text-muted-foreground hover:bg-surface/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key && "bg-surface/60")}>
-            <ChevronRight className="size-3.5" aria-hidden="true" /><span>Context</span><span className="ml-auto text-[11px]">{range(node)}</span>
+            <ChevronRight className="size-3.5" aria-hidden="true" /><span>Context</span><span title={range(node)} className="ml-auto text-[11px]">{range(node).replace(/^Steps? /, "")}</span>
           </button>
         </div>;
         return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
@@ -118,7 +155,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           <h3 className="m-0 max-w-[45%] shrink-0 truncate text-[13px] font-medium leading-5">{title(node)}</h3>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{generated?.summary}</span>
           {node.children.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{node.children.length} subtasks</span>}
-          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span>
+          <span title={range(node)} className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node).replace(/^Steps? /, "")}</span>
         </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} hasActions={node.rows.some((row) => rowSteps(row).some(isGradableAction))} /></div>;
       })}</div>}
   </section>;

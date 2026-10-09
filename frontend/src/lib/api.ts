@@ -2707,6 +2707,16 @@ export async function rmGetTrace(traceId: string, includeEvaluation = false): Pr
 }
 
 export interface RmSectionRange { first_step_id: string; last_step_id: string }
+export interface RmTaskCompletion extends RmSectionRange {
+  objective: string;
+  checkpoints: { step_id: string; completion: number | null; reason: string }[];
+}
+export async function rmEstimateCompletion(traceId: string): Promise<{
+  tasks: RmTaskCompletion[]; pending: boolean; unavailable: boolean;
+}> {
+  return apiFetch(`${RM}/traces/${traceId}/completion`, { method: "POST" });
+}
+
 export interface RmSectionCopy extends RmSectionRange {
   title: string; summary: string; objective: string; score: number | null; score_reason: string;
 }
