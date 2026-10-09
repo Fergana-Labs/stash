@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Bring in intuition models with a playground, prediction inbox, editable
+  examples and rubrics, and evaluated model versions. Click a trained reward
+  model to score or compare responses using its saved checkpoint, revisit run
+  history, or replay its saved training pairs.
+
 - Remove the compute provider and epoch count from expanded reward-model rows.
 
 - Simplify reward-model creation to a name and selected traces. Use managed

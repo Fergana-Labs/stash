@@ -625,3 +625,40 @@ export interface RmGepaRun {
   started_at: string | null;
   finished_at: string | null;
 }
+
+
+export interface RmPlaygroundInput {
+  prompt?: string;
+  instructions?: string;
+  responses?: string[];
+  example_index?: number;
+  texts?: string[];
+}
+
+export interface RmPlaygroundRun {
+  id: string;
+  reward_model_id: string;
+  status: RmJobStatus;
+  input: RmPlaygroundInput;
+  scores: number[] | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface RmPlaygroundHistory {
+  items: (Pick<RmPlaygroundRun, "id" | "status" | "scores" | "error" | "created_at"> & {
+    prompt: string | null; example_index: string | null;
+  })[];
+  total: number;
+}
+
+export interface RmTrainingExample {
+  index: number;
+  chosen: string;
+  rejected: string;
+  partition: string | null;
+  source: string | null;
+  trace_ids: string[];
+}

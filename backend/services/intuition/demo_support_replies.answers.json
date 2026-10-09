@@ -1,0 +1,2358 @@
+{
+ "answers": {
+  "02641b1b3663dbcfa8dca0d9bf65a0de3f0b0156c14207768cb3ecc1539cafb0": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.86,
+     "true": 0.14
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.75,
+     "1": 0.18,
+     "2": 0.07,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 1.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "08821c70f6ffaf89ae57a0165189eaa8d008782a4178f9c630ffc33aa7667dd0": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.62,
+     "true": 0.38
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.85,
+     "true": 0.15
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.61,
+     "1": 0.35,
+     "2": 0.04,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.13,
+     "neutral": 0.09,
+     "over_apologetic": 0.1,
+     "warm": 0.6799999999999999
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   }
+  },
+  "0dc999cc9ec586f36bce881dd2b991d16d93e57baffd3572d4623666f286ac22": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.03,
+     "2": 0.19,
+     "3": 0.73,
+     "4": 0.05
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   }
+  },
+  "140ca4dde65184409c37e4809e445ee8c39b6d8e60ed4373720c3d49f7dce219": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.52,
+     "true": 0.48
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.32,
+     "1": 0.39,
+     "2": 0.27,
+     "3": 0.02,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.06,
+     "neutral": 0.01,
+     "over_apologetic": 0.01,
+     "warm": 0.92
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   }
+  },
+  "1e24cd87e31832f207054a2b1ae1b588221dedc872fe315437cf7fd77f2c7461": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.97,
+     "3": 0.02,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.82,
+     "over_apologetic": 0.0,
+     "warm": 0.18
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.6799999999999999,
+     "true": 0.32
+    },
+    "type": "noul"
+   }
+  },
+  "24270567e8ef528f045951b44aea4721ea7919f56d49975bf4b4ec3460a99e26": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.19,
+     "1": 0.36,
+     "2": 0.45,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.85,
+     "neutral": 0.06,
+     "over_apologetic": 0.0,
+     "warm": 0.09
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "281731a375d38da221fc8010422190bfbdeed9840082700d014f9f767bf995a3": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.83,
+     "1": 0.16,
+     "2": 0.01,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.77,
+     "neutral": 0.23,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "29f63f033396e195039e64b500e20a4472b8c63e0533847e2279536641ca590e": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 1.0,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.02,
+     "over_apologetic": 0.0,
+     "warm": 0.98
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.83,
+     "true": 0.17
+    },
+    "type": "noul"
+   }
+  },
+  "2ef119b3db980714f914d955cbf0459cd828e7694706f2c4afaab7a439cbc159": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.16,
+     "1": 0.57,
+     "2": 0.27,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.86,
+     "neutral": 0.14,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   }
+  },
+  "3182cfd52145a08e631b18bcfcbdcb92026bd6e725999bd89377e249164898b6": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.0,
+     "3": 0.31,
+     "4": 0.69
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.68,
+     "over_apologetic": 0.0,
+     "warm": 0.32
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   }
+  },
+  "33cf02e4ab3c29e7a06984c1593caa6c85811502ac40dc1db898ea9f93fcf03a": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.09,
+     "3": 0.82,
+     "4": 0.09
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.5800000000000001,
+     "true": 0.42
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.0,
+     "warm": 1.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "378341cce3f6af46e7ecc9c01eff12b267544c96cf671f74720a51b0caa1e0c6": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.98,
+     "3": 0.02,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.41,
+     "over_apologetic": 0.0,
+     "warm": 0.59
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   }
+  },
+  "403cfed8c628d2abe3241049bc057864e8c0b81cb321eb625e00deb989d5d6af": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.01,
+     "1": 0.1,
+     "2": 0.89,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.02,
+     "neutral": 0.17,
+     "over_apologetic": 0.0,
+     "warm": 0.81
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   }
+  },
+  "419c79650b9136da954e40dba7472cee59212c70fb3dad8d3142df4f89494049": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.89,
+     "1": 0.06,
+     "2": 0.03,
+     "3": 0.01,
+     "4": 0.01
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.6,
+     "neutral": 0.25,
+     "over_apologetic": 0.0,
+     "warm": 0.15
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "4678e45f31193f7b30e69f80a4ae0440bd365cb4c490003346f05abe885da7b8": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.14,
+     "2": 0.45,
+     "3": 0.41,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "4b259dd0b43172e1695b62cbf6c3e52cf16207c7dabbd631f6f1bcb73678aacb": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 1.0,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.87,
+     "over_apologetic": 0.0,
+     "warm": 0.13
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "4cc7d29ad11a13f4d435a9febd48bed2a9f8a924da4f071747bdf08f43f34b3c": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.01,
+     "1": 0.08,
+     "2": 0.9,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.03,
+     "over_apologetic": 0.01,
+     "warm": 0.96
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   }
+  },
+  "4ee301b76812c2c3e93bd5524175fabdc0dca362a33c0d234bb82a0cfb5dd399": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.03,
+     "2": 0.97,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.01,
+     "over_apologetic": 0.0,
+     "warm": 0.99
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.47,
+     "true": 0.53
+    },
+    "type": "noul"
+   }
+  },
+  "54077411c4f72f83aeb187b94c9c114e14ad507ececc952547c4ec7619697478": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.96,
+     "3": 0.03,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.02,
+     "over_apologetic": 0.0,
+     "warm": 0.98
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   }
+  },
+  "5824bcab75613d628f73e75b394755ea5c552a45c87d806e82a3c6a589344861": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.96,
+     "3": 0.03,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.30000000000000004,
+     "true": 0.7
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.75,
+     "over_apologetic": 0.0,
+     "warm": 0.25
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   }
+  },
+  "61d458865872fcb69522186f2041b5d592ede77d1c62ce2efb59c334f09c309f": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.92,
+     "1": 0.04,
+     "2": 0.03,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.42,
+     "neutral": 0.14,
+     "over_apologetic": 0.0,
+     "warm": 0.44
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "742c818bc948d457d8dd28ea4f94c1127a6384d8169138fee526357f3f2d1545": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.12,
+     "2": 0.19,
+     "3": 0.62,
+     "4": 0.07
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.71,
+     "true": 0.29
+    },
+    "type": "noul"
+   }
+  },
+  "78497f770c4adab330a08c4aaa3688180c7d74db182f388fb02211486dffe2a3": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.32999999999999996,
+     "true": 0.67
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.44,
+     "1": 0.31,
+     "2": 0.25,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.5900000000000001,
+     "true": 0.41
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.1,
+     "neutral": 0.34,
+     "over_apologetic": 0.0,
+     "warm": 0.56
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   }
+  },
+  "7abfe983ca9ea0fb7074e69b5e8c187bf6afb4c2f8e5cb371bc5e12130de1709": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.99,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.56,
+     "over_apologetic": 0.0,
+     "warm": 0.44
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.69,
+     "true": 0.31
+    },
+    "type": "noul"
+   }
+  },
+  "800671ea06acb0f04baea791928da1fde9c0b3e9fd16999d2979dcffdc664f62": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 1.0,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.1,
+     "over_apologetic": 0.0,
+     "warm": 0.9
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.43999999999999995,
+     "true": 0.56
+    },
+    "type": "noul"
+   }
+  },
+  "82b2217893ad1f4136bb75ac533f76be3d4e82c4e25f2438934a5e4224c48236": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.02,
+     "1": 0.23,
+     "2": 0.6,
+     "3": 0.15,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   }
+  },
+  "88e69d1d8fd836dd9888a3c11b937a980a818cc1ccc9c7e6a1c298240a2347b6": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.01,
+     "3": 0.44,
+     "4": 0.55
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.98,
+     "over_apologetic": 0.0,
+     "warm": 0.02
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.77,
+     "true": 0.23
+    },
+    "type": "noul"
+   }
+  },
+  "8a2a06a731ab941837ed823f51aab5ad7bb1718e7fa01fc94a787731a259b46e": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.98,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.01,
+     "over_apologetic": 0.0,
+     "warm": 0.99
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.38,
+     "true": 0.62
+    },
+    "type": "noul"
+   }
+  },
+  "902989ab93231937855a79c5df1769b6c9ba57db242d5da80973713e9d7e75e5": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.02,
+     "2": 0.47,
+     "3": 0.5,
+     "4": 0.01
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   }
+  },
+  "918876be2d875a72846cf6ab033ac9684bcaed3590155b108e997743546ea404": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.99,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.88,
+     "over_apologetic": 0.0,
+     "warm": 0.12
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.5900000000000001,
+     "true": 0.41
+    },
+    "type": "noul"
+   }
+  },
+  "9332f926a4d0d2f95879bd2ec9187922cd417802aa58b737d4313a4631ae3c9e": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.71,
+     "true": 0.29
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.28,
+     "1": 0.32,
+     "2": 0.39,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.20999999999999996,
+     "true": 0.79
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 1.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   }
+  },
+  "94a23eed3d484f984d2b85543d541e81fa84e9be5cc9ca8018d2b997c48eb7bc": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.01,
+     "1": 0.2,
+     "2": 0.43,
+     "3": 0.35,
+     "4": 0.01
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   }
+  },
+  "99442606ab646a1cb5637b5d66ef8030f9ad85ea04ccc7e6c89c5313e9bb977a": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.09,
+     "1": 0.33,
+     "2": 0.58,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.61,
+     "true": 0.39
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.02,
+     "neutral": 0.07,
+     "over_apologetic": 0.02,
+     "warm": 0.89
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   }
+  },
+  "a07d34a283757b6f8342d8e74ed9865293bf4ae21f9d92919c8db4fd26e780e9": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.65,
+     "1": 0.3,
+     "2": 0.05,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.86,
+     "true": 0.14
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.98,
+     "neutral": 0.02,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "ad1acf3f7e608deaa787aef269ecec7fb5ca8be84856d1fa8e8636859356e3df": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.78,
+     "true": 0.22
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.41,
+     "1": 0.42,
+     "2": 0.15,
+     "3": 0.02,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 1.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "b275b279fc961f905940e05be26b34126a05ce20950c89e9e7041e24c82c5bef": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.99,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.38,
+     "over_apologetic": 0.0,
+     "warm": 0.62
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.86,
+     "true": 0.14
+    },
+    "type": "noul"
+   }
+  },
+  "b3f3a7371d6d389389cffca997ed762122ec0524d01e466e72a1ee8cc9ea708c": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.75,
+     "true": 0.25
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.37,
+     "1": 0.45,
+     "2": 0.18,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.91,
+     "true": 0.09
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.99,
+     "neutral": 0.01,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "bdbde112819f4aa47e9df7393d8fe913827f961c688af1fc4a054dd12fe8482f": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.97,
+     "3": 0.03,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.41,
+     "over_apologetic": 0.0,
+     "warm": 0.59
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.62,
+     "true": 0.38
+    },
+    "type": "noul"
+   }
+  },
+  "caa4f52798377d391bd20625e2f6ef74daa7074f70d8a7b835ee875ef5ff2dbb": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.97,
+     "3": 0.02,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.51,
+     "true": 0.49
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.84,
+     "over_apologetic": 0.0,
+     "warm": 0.16
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "cd6954f3c3350723670bab524815fa52ce7eb964eca752206e127a36f8109dc1": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.060000000000000005,
+     "1": 0.36000000000000004,
+     "2": 0.5700000000000001,
+     "3": 0.010000000000000002,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.7,
+     "true": 0.3
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.01,
+     "neutral": 0.47,
+     "over_apologetic": 0.0,
+     "warm": 0.52
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.18999999999999995,
+     "true": 0.81
+    },
+    "type": "noul"
+   }
+  },
+  "d19b5e134782f229d9947967564ce6fff3ebec03d14f3e260e9baed7e5e5ba79": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.16,
+     "3": 0.82,
+     "4": 0.02
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 1.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   }
+  },
+  "d881a0e6b1042e9bf3cb57a2372af17d4b4e8d4285fee0d859e46b678da44e9d": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.02,
+     "1": 0.27,
+     "2": 0.71,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.07,
+     "neutral": 0.91,
+     "over_apologetic": 0.0,
+     "warm": 0.02
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.6,
+     "true": 0.4
+    },
+    "type": "noul"
+   }
+  },
+  "e029da3355515802279537b5f0ab32a7a206bac9e36cd36d6d766e6d2ae82972": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.6799999999999999,
+     "true": 0.32
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.61,
+     "1": 0.31,
+     "2": 0.08,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 1.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.0,
+     "warm": 0.0
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "e21d80cf75b9ed7d403f524c36a8f8ed25d341e44b491a03c36151c3dc64e51b": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.01,
+     "3": 0.63,
+     "4": 0.36
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.18000000000000005,
+     "true": 0.82
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.0,
+     "over_apologetic": 0.18,
+     "warm": 0.8200000000000001
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   }
+  },
+  "e2629adc034a2cd26c6659c42df362af36836e3ab4d9b6f937149f540f241d78": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.12,
+     "2": 0.88,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.93,
+     "over_apologetic": 0.0,
+     "warm": 0.07
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   }
+  },
+  "e4b7e9b8b5daff6b140f6644de06fbbbdacf00d9bfc837ae378b66871bf1c1f9": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.0,
+     "2": 0.99,
+     "3": 0.01,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.77,
+     "true": 0.23
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.04,
+     "over_apologetic": 0.0,
+     "warm": 0.96
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "e8edf0541b167038fa1a3d73a1136de1c660bf2e85179c69a34eeaf771708bb7": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.96,
+     "3": 0.03,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.42,
+     "over_apologetic": 0.0,
+     "warm": 0.58
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   }
+  },
+  "f43381ad73fa0d0e151301c12fb1994a08c422d6a3e8b6bed970ecd32d341615": {
+   "answers_question": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "blames_customer": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "length": {
+    "probabilities": {
+     "0": 0.0,
+     "1": 0.01,
+     "2": 0.99,
+     "3": 0.0,
+     "4": 0.0
+    },
+    "type": "score"
+   },
+   "next_step": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "tone": {
+    "probabilities": {
+     "curt": 0.0,
+     "neutral": 0.96,
+     "over_apologetic": 0.0,
+     "warm": 0.04
+    },
+    "type": "choice"
+   },
+   "unsupported_promise": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   }
+  }
+ },
+ "provider": "jev",
+ "provider_model": "jev-1.13.0"
+}

@@ -51,6 +51,11 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
 
             run(directory)
             outputs = ["result.json", "action_scores.jsonl", "scores.jsonl"]
+        elif kind == "playground":
+            from rm_worker.playground_run import run
+
+            run(directory)
+            outputs = ["result.json"]
         elif kind == "evaluate":
             from rm_worker.evaluate_run import run
 
@@ -74,6 +79,7 @@ def main() -> None:
     names = {
         "train": ["job.json", "pairs.jsonl", "score_items.jsonl", "action_score_items.jsonl"],
         "score": ["job.json", "action_score_items.jsonl", "score_items.jsonl"],
+        "playground": ["job.json"],
         "evaluate": ["job.json", "evaluation_pairs.jsonl"],
         "gepa": ["job.json", "gepa_examples.jsonl"],
     }[job["kind"]]

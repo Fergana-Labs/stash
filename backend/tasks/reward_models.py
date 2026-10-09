@@ -7,7 +7,7 @@ from uuid import UUID
 
 from ..celery_app import celery
 from ..database import get_pool
-from ..services.rm import evaluator, jobs
+from ..services.rm import evaluator, jobs, playground
 from ._celery_helpers import run_async
 
 ERROR_CHARS = 2000
@@ -93,3 +93,17 @@ def train_reward_model(model_id: str) -> None:
 @celery.task(name="backend.tasks.reward_models.run_gepa")
 def run_gepa(run_id: str) -> None:
     run_async(run_gepa_async(UUID(run_id)))
+
+
+async def playground_async(run_id: UUID) -> None:
+    claimed = await get_pool().fetchval(
+        "UPDATE rm_playground_runs SET status = 'running', started_at = now() WHERE id = $1 AND status = 'queued' RETURNING id",
+        run_id,
+    )
+    if claimed is not None:
+        await _run_tracked("rm_playground_runs", run_id, playground.run_prediction)
+
+
+@celery.task(name="backend.tasks.reward_models.playground_score")
+def playground_score(run_id: str) -> None:
+    run_async(playground_async(UUID(run_id)))
