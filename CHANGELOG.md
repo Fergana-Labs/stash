@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Simplify trace navigation and remove the label summary, Labels/Scores toggles,
+  scoring explainer, and redundant navigation hints. Keep long-message collapse
+  controls visible while scrolling, use warm Stash colors in dark mode, and show
+  ungraded messages as minimap dots with single-line previews below the chart.
+
 - Recover locally rejected long-trace scoring jobs after upgrading the worker.
   Hover statuses distinguish failed, queued, and running scoring jobs.
 

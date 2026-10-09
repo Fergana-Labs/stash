@@ -219,20 +219,26 @@ Only adjacent tool calls and results share a displayed step, so pairing cannot
 move an output ahead of intervening messages. Source IDs, roles, content, and
 annotation offsets are unchanged.
 
-Long messages have compact previews. Read full message expands in place; Show
-less or Escape collapses it. There is no separate message reader. Each input
+Long messages have compact previews. Read full message expands in place; a sticky
+Show less control or Escape collapses it and keeps the message in view. There is
+no separate message reader. Each input
 variable and tool output has one disclosure row and an explicitly named copy
 action. Recognized code and fenced Markdown blocks use syntax highlighting while
 preserving annotation offsets. Displayed step numbers live in the left gutter.
-The theme control applies Stash's existing light/dark tokens and remembers the
-choice. Model creation/training status links to the current user's model that
+The theme control remembers the choice; dark mode uses warm charcoal surfaces,
+cream text, and Stash's orange accents. Model creation/training status links to the current user's model that
 was trained on this trace; another reviewer's private models are not exposed.
 
 Entering a leaf section scrolls to its first step in the complete chronological
-trace. Scrolling continues across section boundaries, and the sticky Sections
-control returns to the logical task/subtask cards. The left rail remains global.
-The top minimap remains navigable before grades arrive; ungraded actions have
-only a baseline tick, not a credit height. A small rescore icon shows activity
+trace. Scrolling continues across section boundaries, and Back to sections
+returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
+the current section is plain text. The left rail remains global.
+The top minimap remains navigable before grades arrive; ungraded messages have
+small dots instead of credit heights. Hover previews stay on one line below the
+chart, showing the step number, recorded time, a content excerpt, and available
+credit or pending status. Long previews truncate. The label summary, Labels/Scores
+toggles, scoring explainer, and keyboard hints are omitted; inline labels and
+scores remain available. A small rescore icon shows activity
 and exposes failure details on demand without a persistent error banner.
 
 Automatic step labeling uses overlapping windows bounded by

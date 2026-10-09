@@ -48,6 +48,10 @@ model on the laptop. Production data and configuration are not modified.
 Use a separate isolated database for tests; the backend test fixtures truncate
 their database. Do not point tests at the database serving your local UI.
 
+If an imported trace stores attachments locally, start the backend with
+`STASH_TRACE_IMAGE_DIR` pointing to the same folder used during import. Keep that
+setting across restarts; the database holds image references, not their bytes.
+
 `STEP_LABELING_MAX_CHUNKS` (80) and `STEP_LABELING_MAX_CHARS` (200000) bound
 individual context windows. Long recordings are split with overlap; large
 message bodies are excerpted with omission markers. No steps are dropped from
