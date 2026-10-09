@@ -60,7 +60,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     expose:
       - "3456"
@@ -83,7 +83,7 @@ services:
       start_period: 30s
 
   worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     depends_on:
       postgres:
@@ -105,7 +105,7 @@ services:
   # a 30-min task. Concurrency 2 keeps 2 children x 800MB (see
   # worker_max_memory_per_child) plus the parent inside a 2GB box.
   heavy-worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     depends_on:
       postgres:
@@ -123,7 +123,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "heavy"]
 
   sync-worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     depends_on:
       postgres:
@@ -141,7 +141,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "sync"]
 
   reward-worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     depends_on:
       postgres:
@@ -159,7 +159,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=1", "-Q", "reward"]
 
   beat:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.418
+    image: ghcr.io/fergana-labs/stash-backend:0.1.419
     restart: always
     depends_on:
       redis:
@@ -175,7 +175,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
-    image: ghcr.io/fergana-labs/stash-frontend:0.1.418
+    image: ghcr.io/fergana-labs/stash-frontend:0.1.419
     restart: always
     expose:
       - "3457"
