@@ -106,7 +106,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   function labelFor(step: RmStep) {
     const kind = KINDS[kindOf(step)];
     const score = actionScores?.get(step.id);
-    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "";
+    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
     return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : missingReason ? `, ${missingReason}` : ""}`;
   }
 
@@ -174,7 +174,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              {!score && isGradableAction(step) && <span aria-hidden="true" className={cn("absolute bottom-0 h-px w-full opacity-40", kind.color)} />}
+              {!score && <span aria-hidden="true" data-unscored-marker className={cn("absolute bottom-0.5 left-1/2 size-1 max-w-full -translate-x-1/2 rounded-full opacity-70", kind.color)} />}
               <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "0px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color)} />
             </button>
           );

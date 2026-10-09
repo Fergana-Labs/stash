@@ -73,18 +73,19 @@
 }
 
 [data-theme="dark"] {
-  --bg-base: #1E293B;
-  --bg-surface: #273548;
-  --bg-raised: #334155;
-  --border-color: #3E4E63;
-  --border-subtle-color: #2D3D50;
-  --text-primary: #F1F5F9;
-  --text-dim: #94A3B8;
-  --text-muted: #64748B;
-  --divider-color: #4C5C73;
+  /* Stash's tan-and-orange palette, with warm charcoal surfaces at night. */
+  --bg-base: #24211E;
+  --bg-surface: #2D2925;
+  --bg-raised: #38322C;
+  --border-color: #4D443A;
+  --border-subtle-color: #37312B;
+  --text-primary: #F6F0E6;
+  --text-dim: #C3B7A7;
+  --text-muted: #AA9D8E;
+  --divider-color: #594F43;
   /* Chrome layering in dark mode: rail (deepest) → sidebar → content. */
-  --rail: #141C2A;
-  --sidebar: #1B2536;
+  --rail: #191613;
+  --sidebar: #211D19;
 }
 
 @theme inline {

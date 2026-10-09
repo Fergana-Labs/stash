@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RmStep } from "@/lib/types";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
@@ -34,12 +34,35 @@ it("expands a long message inline and collapses it on a second click or Escape",
     const body = container.querySelector('[style="max-height: 160px;"]')!;
     fireEvent.click(read);
     expect((body as HTMLElement).style.maxHeight).toBe("");
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
     expect(body).toHaveStyle({ maxHeight: "160px" });
-    fireEvent.click(read);
+    fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
     fireEvent.keyDown(screen.getByRole("button", { name: "Show less" }), { key: "Escape" });
     expect(body).toHaveStyle({ maxHeight: "160px" });
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  } finally { height.mockRestore(); }
+});
+
+it("keeps the collapse control above long content and restores the message in view", () => {
+  const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(4000);
+  let nextFrame: FrameRequestCallback | undefined;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
+  try {
+    const { container } = render(<div data-trace-scroll><TraceTimeline rows={buildRows([step(0, "Long text", "system")])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} /></div>);
+    const scroller = container.firstElementChild as HTMLElement;
+    scroller.scrollTop = 2000;
+    scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+    scroller.scrollTo = vi.fn();
+    fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
+    const close = screen.getByRole("button", { name: "Show less" });
+    expect(close.parentElement).toHaveClass("sticky", "top-8");
+    const frame = close.parentElement!.parentElement!;
+    frame.getBoundingClientRect = () => ({ top: -1500 }) as DOMRect;
+    fireEvent.click(close);
+    act(() => nextFrame?.(0));
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 360, behavior: "instant" });
+    expect(screen.getByRole("button", { name: "Read full message" })).toHaveFocus();
   } finally { height.mockRestore(); }
 });
 

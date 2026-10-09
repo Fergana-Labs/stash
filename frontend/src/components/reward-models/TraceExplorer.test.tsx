@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
 import TraceExplorer from "./TraceExplorer";
@@ -49,10 +49,28 @@ it("replaces request excerpts with generated titles and reuses them on return", 
   expect(screen.queryByText("Task 0")).not.toBeInTheDocument();
   fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
   await load();
-  fireEvent.click(screen.getByRole("button", { name: "Sections" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back to sections" }));
   await load();
   expect(rmSummarizeSections).toHaveBeenCalledTimes(2);
   expect(screen.getAllByRole("button", { name: /^Explore Checking site/ })).toHaveLength(4);
+});
+
+it("only makes ancestor breadcrumbs clickable", async () => {
+  render(<Harness />);
+  await load();
+  const hierarchy = screen.getByRole("navigation", { name: "Trace hierarchy" });
+  expect(within(hierarchy).queryByRole("button")).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
+  await load();
+  const current = hierarchy.querySelector('[aria-current="location"]')!;
+  expect(current.tagName).toBe("SPAN");
+  expect(current.closest("button")).toBeNull();
+  fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
+  await load();
+  // The parent now leads somewhere; the final breadcrumb remains plain text.
+  fireEvent.click(within(hierarchy).getByRole("button", { name: "Checking site 1" }));
+  await load();
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
 });
 
 it("navigates with arrows, expands leaf steps, and restores selection when going back", async () => {

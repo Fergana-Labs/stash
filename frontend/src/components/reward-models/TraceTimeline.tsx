@@ -75,8 +75,25 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
 function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: number; open: boolean }) {
   const [open, setOpen] = useState(false);
   const [tall, setTall] = useState(false);
+  const frame = useRef<HTMLDivElement | null>(null);
   const inner = useRef<HTMLDivElement | null>(null);
   const expanded = open || forcedOpen;
+
+  useLayoutEffect(() => {
+    if (open) frame.current?.querySelector<HTMLButtonElement>("[data-message-collapse]")?.focus({ preventScroll: true });
+  }, [open]);
+
+  function collapse() {
+    const container = frame.current?.closest<HTMLElement>("[data-trace-scroll]");
+    const aboveViewport = container && frame.current!.getBoundingClientRect().top < container.getBoundingClientRect().top + 40;
+    setOpen(false);
+    requestAnimationFrame(() => {
+      // Keep the collapsed message in view instead of jumping into later steps
+      // when thousands of pixels of expanded text disappear above the viewport.
+      if (aboveViewport && frame.current) container.scrollTo({ top: container.scrollTop + frame.current.getBoundingClientRect().top - container.getBoundingClientRect().top - 40, behavior: "instant" });
+      frame.current?.querySelector<HTMLButtonElement>("[data-message-expand]")?.focus({ preventScroll: true });
+    });
+  }
 
   useLayoutEffect(() => {
     const measure = () => setTall(inner.current!.scrollHeight > max + 40);
@@ -87,7 +104,10 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
   }, [children, max]);
 
   return (
-    <div onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); event.preventDefault(); setOpen(false); } }}>
+    <div ref={frame} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); event.preventDefault(); collapse(); } }}>
+      {open && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-end bg-background">
+        <button type="button" data-message-collapse onClick={collapse} aria-expanded="true" title="Collapse message (Esc)" className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-dim hover:bg-surface hover:text-foreground"><ChevronDown className="size-3 rotate-180" aria-hidden="true" />Show less</button>
+      </div>}
       <div
         ref={inner}
         style={expanded ? undefined : { maxHeight: max }}
@@ -95,14 +115,15 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
       >
         {children}
       </div>
-      {tall && !forcedOpen && (
+      {tall && !expanded && (
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setOpen(!open)}
+          data-message-expand
+          onClick={() => setOpen(true)}
           className="mt-1.5 cursor-pointer text-[12px] font-medium text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
         >
-          {open ? "Show less" : "Read full message"}
+          Read full message
         </button>
       )}
     </div>

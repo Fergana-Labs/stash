@@ -5,7 +5,7 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -21,8 +21,6 @@ import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
 import TraceTrainingStatus from "@/components/reward-models/TraceTrainingStatus";
 import TraceScore from "@/components/reward-models/TraceScore";
 import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
-import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
-import { ScoringExplainer } from "@/components/reward-models/StepRewards";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
 import { rubricSummary, stepReward } from "@/components/reward-models/step-rewards";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
@@ -65,8 +63,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [outlinePath, setOutlinePath] = useState<string[]>([]);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [showLabels, setShowLabels] = useState(true);
-  const [showScores, setShowScores] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
@@ -152,9 +148,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   // Step labels say what each step is; the scores are built from them. Steps are numbered as the page shows them.
   const numberOf = (step: RmStep) => presentation.numberById.get(step.id) ?? step.index + 1;
   const labels = buildTraceLabels(trace.steps, numberOf);
-  const labelsOn = labels.present && showLabels;
   const stepScores = rubricSummary(trace.step_scores);
-  const scoresOn = stepScores !== null && showScores;
   const taskScores = new Map((stepScores?.episodes ?? []).map((task) => [task.task, task]));
 
 
@@ -297,7 +291,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const ann: StepAnnotations = {
     stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
-    actionScore: (step) => showScores ? actionScores.get(step.id) : undefined,
+    actionScore: (step) => actionScores.get(step.id),
     commentCount: (step) => {
       const row = rows.find((r) => r.key === step.id);
       return (row ? rowSteps(row) : [step]).reduce((count, source) => count + annotationsOn(source).filter((a) => a.comment !== null).length, 0);
@@ -306,8 +300,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
     onSelectAnnotation: focusCard,
-    ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
-    ...(scoresOn && {
+    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
+    ...(stepScores !== null && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
       stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? numberOf(step) : null; },
@@ -353,19 +347,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           <TraceMinimap steps={presentation.mapSteps} annotations={trace.annotations.map((annotation) => ({ ...annotation, step_id: annotation.step_id ? presentation.mapSteps[(presentation.numberById.get(annotation.step_id) ?? 0) - 1]?.id ?? annotation.step_id : null }))} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
-          {(labels.present || stepScores !== null) && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
-              <span className="flex-1" />
-              {scoresOn && <ScoringExplainer />}
-              {labels.present && <ViewToggle active={showLabels} onClick={() => setShowLabels(!showLabels)}>Labels</ViewToggle>}
-              {stepScores !== null && <ViewToggle active={showScores} onClick={() => setShowScores(!showScores)}>Scores</ViewToggle>}
-            </div>
-          )}
+
 
         </div>
         </div>
-        <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div ref={scroller} data-trace-scroll className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")} onMouseUp={onCanvasMouseUp}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceExplorer
@@ -418,16 +404,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         onDelete={(a) => void deleteAnnotation(a)}
       />
     </div>
-  );
-}
-
-function ViewToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn("inline-flex h-6 cursor-pointer items-center border-b-2 px-1.5 text-[12px] transition-colors",
-        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-      {children}
-    </button>
   );
 }
 

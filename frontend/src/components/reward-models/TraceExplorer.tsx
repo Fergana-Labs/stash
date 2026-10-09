@@ -84,13 +84,12 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
   const title = (node: TraceGroup) => copy(node)?.title ?? sectionFallbackTitle(node);
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
     <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
-      <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Sections</button>
+      {canAscend ? <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Back to sections</button> : <span className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"><LayoutGrid className="size-3.5" />Sections</span>}
       {trail.map((node, index) => <span key={node.key} className="flex min-w-0 items-center gap-1">
         <ChevronRight className="size-3 shrink-0" aria-hidden="true" />
-        <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>
+        {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
       </span>)}
       {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
-      <span className="ml-auto hidden shrink-0 text-[11px] sm:inline">↑↓ select · → open · ← back</span>
       {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav>
     {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
@@ -104,7 +103,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           aria-label={`Explore ${title(node)}`} className={cn("flex min-h-28 w-full cursor-pointer flex-col justify-center overflow-hidden rounded-xl border bg-surface/25 py-4 pr-32 pl-4 text-left transition-colors hover:border-foreground/20 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key ? "border-brand-500/50 bg-brand-500/5" : "border-border-subtle")}>
           <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
           {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span><span>{node.children.length ? `${node.children.length} subtasks` : "Open steps"}</span></div>
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span>{node.children.length > 0 && <span>{node.children.length} subtasks</span>}</div>
         </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} /></div>;
       })}</div>}
   </section>;
