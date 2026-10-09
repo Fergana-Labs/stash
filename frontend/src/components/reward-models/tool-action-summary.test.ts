@@ -39,8 +39,8 @@ describe("tool action summaries", () => {
   });
 });
 
-it("explains execution tools and keeps unknown tool identities intact", () => {
+it("explains known tools without inventing documentation for unknown tools", () => {
   expect(toolExplanation("js")).toContain("JavaScript execution tool");
   expect(toolExplanation("exec")).toContain("can call other tools");
-  expect(toolExplanation("lookup_order")).toContain("Recorded tool: lookup_order");
+  expect(toolExplanation("lookup_order")).toBeNull();
 });
