@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Show reward-model training stages and time estimates from comparable completed
+  runs or live batch timing, with explicit queue waits and unknown estimates.
+
 - Replace reward-model cards and the dashed empty-state box with a compact,
   searchable table, status filters, exact timestamps, and expandable model details.
 - Explain when model training is not configured instead of returning an internal

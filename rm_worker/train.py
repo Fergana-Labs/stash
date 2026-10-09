@@ -8,6 +8,7 @@ and result.json (see docs/reward-models/DESIGN.md, "Job directory contract").
 
 import argparse
 import json
+import math
 import random
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from transformers import AutoModelForSequenceClassification
 
 from rm_worker.artifacts import upload_model
 from rm_worker.evaluation import action_score_rows, reward_stats, split_pairs
+from rm_worker.progress import Reporter
 from rm_worker.release_gate import check_partition
 from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
 
@@ -68,6 +70,8 @@ def pairwise_accuracy(model, tokenizer, pairs: list[dict], device) -> float | No
 
 def train(job_dir: Path) -> dict:
     started = time.monotonic()
+    progress = Reporter()
+    progress.update("loading")
     job = json.loads((job_dir / "job.json").read_text())
     base_model = job["base_model"]
     epochs = job["epochs"]
@@ -101,11 +105,14 @@ def train(job_dir: Path) -> dict:
 
     shuffler = random.Random(0)
     final_loss = 0.0
+    batch_size = 1 if input_version == 3 else BATCH_SIZE
+    steps_per_epoch = math.ceil(len(train_pairs) / batch_size)
+    total_steps = epochs * steps_per_epoch
+    progress.update("training", 0, total_steps)
     for epoch in range(1, epochs + 1):
         model.train()
         shuffler.shuffle(train_pairs)
         epoch_losses: list[float] = []
-        batch_size = 1 if input_version == 3 else BATCH_SIZE
         for start in range(0, len(train_pairs), batch_size):
             chosen, rejected = pair_rewards(
                 model, tokenizer, train_pairs[start : start + batch_size], device
@@ -115,16 +122,21 @@ def train(job_dir: Path) -> dict:
             loss.backward()
             optimizer.step()
             epoch_losses.append(loss.item())
+            progress.update(
+                "training", (epoch - 1) * steps_per_epoch + len(epoch_losses), total_steps
+            )
             log(f"epoch {epoch}/{epochs} step {len(epoch_losses)} loss {loss.item():.4f}")
         final_loss = sum(epoch_losses) / len(epoch_losses)
         log(f"epoch {epoch}/{epochs} mean loss {final_loss:.4f}")
 
+    progress.update("evaluating")
     eval_accuracy = pairwise_accuracy(model, tokenizer, eval_pairs, device)
     log(f"eval accuracy {eval_accuracy} on {len(eval_pairs)} trace-disjoint held-out pairs")
 
     model.save_pretrained(job_dir / "model")
     tokenizer.save_pretrained(job_dir / "model")
 
+    progress.update("scoring")
     scores = score_texts(
         model, tokenizer, [item["text"] for item in score_items], device, BATCH_SIZE
     )
@@ -162,6 +174,11 @@ def train(job_dir: Path) -> dict:
             stats,
         )
     write_jsonl(job_dir / "action_scores.jsonl", action_scores)
+    # These evaluations used to run after upload; complete them before reporting
+    # the final upload stage so progress follows the work actually being done.
+    action_accuracy = pairwise_accuracy(model, tokenizer, action_eval, device)
+    tool_accuracy = pairwise_accuracy(model, tokenizer, tool_eval, device)
+    progress.update("uploading")
     upload_model(job_dir / "model", job["artifact_key"])
 
     result = {
@@ -181,9 +198,9 @@ def train(job_dir: Path) -> dict:
             else None,
             "action_train_pairs": len(action_train),
             "action_eval_pairs": len(action_eval),
-            "action_eval_accuracy": pairwise_accuracy(model, tokenizer, action_eval, device),
+            "action_eval_accuracy": action_accuracy,
             "tool_eval_pairs": len(tool_eval),
-            "tool_eval_accuracy": pairwise_accuracy(model, tokenizer, tool_eval, device),
+            "tool_eval_accuracy": tool_accuracy,
             # Mean Bradley–Terry loss over the last epoch's training batches.
             "final_loss": final_loss,
             "epochs": epochs,

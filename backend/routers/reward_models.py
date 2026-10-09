@@ -30,6 +30,7 @@ from ..services.rm import (
     trace_images,
     trace_sections,
     traces,
+    training_timing,
 )
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..services.rm.feedback import RUBRIC
@@ -445,7 +446,7 @@ async def create_reward_model(
         config,
     )
     rm_tasks.train_reward_model.delay(str(row["id"]))
-    return _reward_model(row)
+    return _reward_model(row, await _timing_history(row))
 
 
 @router.get("/reward-models")
@@ -454,7 +455,7 @@ async def list_reward_models(current_user: dict = Depends(get_current_user)) -> 
         "SELECT * FROM rm_reward_models WHERE owner_user_id = $1 AND scope = 'personal' ORDER BY created_at DESC",
         current_user["id"],
     )
-    return [_reward_model(row) for row in rows]
+    return [_reward_model(row, rows) for row in rows]
 
 
 @router.get("/reward-models/{model_id}")
@@ -466,7 +467,11 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Reward model not found")
-    return {**_reward_model(row), "trace_ids": row["trace_ids"], "feedback": row["feedback"]}
+    return {
+        **_reward_model(row, await _timing_history(row)),
+        "trace_ids": row["trace_ids"],
+        "feedback": row["feedback"],
+    }
 
 
 @router.get("/reward-models/{model_id}/weights")
@@ -504,12 +509,26 @@ REWARD_MODEL_FIELDS = (
     "started_at",
     "finished_at",
     "training_config",
+    "progress",
 )
 
 
-def _reward_model(row) -> dict:
+async def _timing_history(row):
+    if row["status"] not in ("queued", "running"):
+        return []
+    return await get_pool().fetch(
+        "SELECT * FROM rm_reward_models WHERE owner_user_id=$1 AND scope='personal' "
+        "AND status='succeeded' AND base_model=$2 AND compute=$3 ORDER BY created_at DESC LIMIT 20",
+        row["owner_user_id"],
+        row["base_model"],
+        row["compute"],
+    )
+
+
+def _reward_model(row, history=()) -> dict:
     model = {key: row[key] for key in REWARD_MODEL_FIELDS}
     model["trace_count"] = len(row["trace_ids"])
+    model["estimated_timing"] = training_timing.estimate(model, history)
     return model
 
 

@@ -554,6 +554,22 @@ export interface RmRewardModel {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  progress?: {
+    stage: "preparing" | "starting" | "loading" | "training" | "evaluating" | "scoring" | "uploading";
+    completed: number;
+    total: number;
+    elapsed_seconds: number;
+    updated_at: string;
+  } | null;
+  estimated_timing?: {
+    basis: "history" | "batches";
+    scope: "job" | "training";
+    sample_count: number;
+    lower_seconds: number;
+    upper_seconds: number;
+    overdue: boolean;
+    excludes_queue: boolean;
+  } | null;
 }
 
 /** GET /reward-models/{id} also returns which traces it trained on. */

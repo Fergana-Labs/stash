@@ -48,7 +48,7 @@ it("keeps the table headers visible in the empty state", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([]);
   render(<RewardModelsPage />);
   await screen.findByText("No reward models yet");
-  expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Base model", "Traces", "Eval accuracy", "Created"]);
+  expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Est. remaining", "Base model", "Traces", "Eval accuracy", "Created"]);
   expect(screen.getByRole("button", { name: "New model" })).toBeVisible();
 });
 
