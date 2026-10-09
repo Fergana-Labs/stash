@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Default trace credit charts to ±1 and omit the inactive Sections heading at
+  the overview level. Fit scaling and navigation within sections remain available.
+
 - Add Fit / ±1 trace-credit scaling and use baseline ticks for unscored steps.
   Separate task score summaries from message rows, with the task's step range,
   final answer, total work, and capped score. Show every suggested training base
