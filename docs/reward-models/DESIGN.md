@@ -261,9 +261,14 @@ range and separates the final answer's score, total work across the task, and
 the combined task score. When the combined value exceeds the −1..+1 range,
 the card notes the limit. These summaries remain outside numbered step rows.
 
-The training picker shows all suggested base models and accepts a custom Hugging
-Face model ID. Training requires at least two source traces so evaluation can
-hold out whole traces; the UI does not claim to verify semantic independence.
+The current training picker asks for a model name and selected traces. It submits
+`training_config: {input_version: 3, annotation_source: "automatic"}` and leaves
+the base model, epochs, and rubric to the server defaults. There is no manual
+reward-criteria field, base-model picker, or Options menu. This uses the existing
+automatic assessment pipeline and fixed defaults; it does not introduce automatic
+hyperparameter tuning. The API still accepts explicit settings for programmatic
+clients. Training requires at least two source traces so evaluation can hold out
+whole traces; the UI does not claim to verify semantic independence.
 
 ### Trace sources and training selection
 
@@ -765,7 +770,8 @@ Labels are `positive | negative | unclear`, confidence is `high | low`, and
 that met the minimum size, not confirmation that the training worker succeeded.
 
 Personal models can opt into action input version 3 with `training_config`;
-the UI uses this version. It records custom criteria, sampled action limits,
+the UI uses this version with the server's default criteria. The configuration
+can also record API-supplied criteria, sampled action limits,
 and a frozen task-group evaluation split, and preserves separate context sections
 in a 4,096-token window. Its learning report adds `original_action`,
 `alternative_action`, and `included_in_evaluation`. See

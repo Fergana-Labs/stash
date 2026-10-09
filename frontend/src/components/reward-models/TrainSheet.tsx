@@ -31,6 +31,7 @@ export default function TrainSheet({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/15 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
         <DialogPrimitive.Content
+          aria-describedby={undefined}
           onInteractOutside={(event) => event.preventDefault()}
           className="fixed inset-y-0 right-0 z-50 flex w-[min(1280px,96vw)] flex-col border-l border-border bg-background shadow-2xl outline-none data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right"
         >
@@ -68,9 +69,6 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
           <DialogPrimitive.Title className="m-0 font-display text-[17px] font-semibold text-foreground">
             Create new reward model
           </DialogPrimitive.Title>
-          <DialogPrimitive.Description className="m-0 mt-0.5 text-[12.5px] text-muted-foreground">
-            We extract user feedback and assess response quality automatically. No manual annotations required.
-          </DialogPrimitive.Description>
         </div>
         <DialogPrimitive.Close asChild>
           <Button variant="ghost" size="icon-sm" aria-label="Close">

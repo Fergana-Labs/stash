@@ -60,8 +60,9 @@ export default function TrainingPage() {
 
       <H2>Start a personal training job</H2>
       <P>
-        In the app, select traces and choose <strong>Create new reward model</strong>. There is no
-        separate Auto mode or rating control in the UI. The experiment is enabled for new accounts;
+        In the app, name your model, select at least two traces, and choose <strong>Create new reward model</strong>.
+        Stash uses automatic assessment and server defaults for the base model and training settings.
+        The API also accepts explicit settings for custom training jobs. The experiment is enabled for new accounts;
         accounts that existed at rollout receive 404 from reward-model APIs.
       </P>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
@@ -69,8 +70,8 @@ export default function TrainingPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "name": "refund-policy-v2",
-    "trace_ids": ["<trace_id>"],
-    "epochs": 2
+    "trace_ids": ["<trace_id_1>", "<trace_id_2>"],
+    "training_config": {"input_version": 3, "annotation_source": "automatic"}
   }'`}</CodeBlock>
       <ParamTable
         params={[
@@ -78,6 +79,7 @@ export default function TrainingPage() {
           { name: "trace_ids", type: "string[]", desc: "At least one trace UUID owned by you. Only these traces supply training pairs.", required: true },
           { name: "base_model", type: "string", desc: "Hugging Face model id to fine-tune. Default Qwen/Qwen3-0.6B." },
           { name: "epochs", type: "integer", desc: "Passes over the training pairs. Default 1." },
+          { name: "training_config", type: "object", desc: "The app uses input_version: 3 and annotation_source: automatic to train from automatic assessments with task context." },
           { name: "max_pairs", type: "integer", desc: "Cap on combined API-rating and feedback-derived pairs. Default 4000." },
         ]}
       />
@@ -114,7 +116,7 @@ export default function TrainingPage() {
       />
       <P>These are fixed in the worker; the request sets only the fields above.</P>
 
-      <H2>Choosing a base model</H2>
+      <H2>Choosing a base model through the API</H2>
       <P>
         The base model must support <Code>AutoModelForSequenceClassification</Code> and fit the deployment&apos;s memory and time limits.
         Start with the default, <Code>Qwen/Qwen3-0.6B</Code>, on a worker with sufficient memory, such as the hosted Modal GPU. Move to a

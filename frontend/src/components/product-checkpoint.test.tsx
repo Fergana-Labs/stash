@@ -75,7 +75,22 @@ it("restores the original single-trace training payload without the new rubric c
 it("keeps current training constraints for other accounts", async () => {
   render(<TrainPanel traceIds={[trace.id]} summary={{ count: 1 }} optionsPlacement="below" onTrained={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Create new reward model" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Options" }));
-  expect(screen.getByRole("textbox", { name: "Reward criteria" })).toBeVisible();
-  await waitFor(() => expect(api.list).toHaveBeenCalled());
+  expect(screen.getByRole("textbox", { name: "Model name" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Options" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Reward criteria" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "Base model" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("spinbutton", { name: "Epochs" })).not.toBeInTheDocument();
+  expect(api.list).not.toHaveBeenCalled();
+});
+
+it("accepts a name inline and uses automatic training without client-side hyperparameters", async () => {
+  render(<TrainPanel traceIds={["one", "two"]} summary={{ count: 2 }} optionsPlacement="below" onTrained={vi.fn()} />);
+  const create = screen.getByRole("button", { name: "Create new reward model" });
+  expect(create).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "Model name" }), { target: { value: " Parts quality " } });
+  fireEvent.click(create);
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({
+    trace_ids: ["one", "two"], name: "Parts quality",
+    training_config: { input_version: 3, annotation_source: "automatic" },
+  }));
 });
