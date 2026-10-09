@@ -36,6 +36,13 @@ NOT_SKILLS_NAMED = 5
 FRONTMATTER_SCAN_BYTES = 8192
 
 
+class AmbiguousSkillError(ValueError):
+    def __init__(self, name: str, matches: list[dict]):
+        super().__init__(f"More than one skill is named {name!r}. Read one by its ID.")
+        self.name = name
+        self.matches = matches
+
+
 def skill_md_template(name: str, description: str) -> str:
     return (
         f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
@@ -329,10 +336,8 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
 async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID) -> dict | None:
     """Read a source-backed skill: the upstream document is the instructions.
 
-    Addressed by `source_ref` — the upstream file's own id — because our row is
-    keyed on the document's path and is therefore destroyed and recreated when
-    its author renames it in Drive. The file id survives that; a row id does
-    not, and a skill's address must outlive a rename.
+    Addressed by `source_ref` — the upstream file's own id — so the address
+    survives renames, path disambiguation, and rebuilding the local cache.
 
     A document that does not declare itself a skill reads as None — it is not
     a broken skill, it is a file that happens to live on the shelf, and the
@@ -392,18 +397,18 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
     an agent can load the whole skill in one call."""
     pool = get_pool()
     skills = await list_skills(owner_user_id, user_id)
-    match = next(
-        (s for s in skills if s["name"] == name or s["folder_id"] == name),
-        None,
-    )
-    if not match:
-        # Fall back to folder name match (case-insensitive)
-        match = next(
-            (s for s in skills if s["name"].lower() == name.lower()),
-            None,
-        )
-    if not match:
+    # Explicit identities remain usable when two documents declare the same
+    # frontmatter name. Never choose a body by database/list ordering.
+    matches = [s for s in skills if name in (s["folder_id"], s.get("source_ref"))]
+    if not matches:
+        matches = [s for s in skills if s["name"] == name]
+    if not matches:
+        matches = [s for s in skills if s["name"].lower() == name.lower()]
+    if len(matches) > 1:
+        raise AmbiguousSkillError(name, matches)
+    if not matches:
         return None
+    match = matches[0]
 
     if match["backing"] == "source":
         return await read_source_skill(owner_user_id, match["source_ref"], user_id)

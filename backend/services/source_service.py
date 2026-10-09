@@ -899,6 +899,7 @@ async def upsert_drive_document(
     name: str,
     external_ref: str,
     external_updated_at,
+    connection=None,
 ) -> UUID | None:
     """Record a Drive folder file, and say whether its body needs extracting.
 
@@ -907,21 +908,26 @@ async def upsert_drive_document(
     expensive — a scanned catalog is a Claude-vision call — so it is keyed on
     Drive's own `modifiedTime` rather than re-run on every sync. A 'failed' row
     rests once retries are spent; only a new version of the file revives it."""
-    pool = get_pool()
+    pool = connection or get_pool()
     existing = await pool.fetchrow(
-        "SELECT id, name, external_ref, external_updated_at, extraction_status, deleted_at "
-        "FROM drive_documents WHERE source_id = $1 AND path = $2",
+        "SELECT id, path, name, external_updated_at, extraction_status, deleted_at "
+        "FROM drive_documents WHERE source_id = $1 AND external_ref = $2",
         source_id,
-        path,
+        external_ref,
     )
     unchanged = (
         existing
         and existing["deleted_at"] is None
-        and existing["name"] == name
-        and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
     )
     if unchanged:
+        if existing["path"] != path or existing["name"] != name:
+            await pool.execute(
+                "UPDATE drive_documents SET path = $2, name = $3, updated_at = now() WHERE id = $1",
+                existing["id"],
+                path,
+                name,
+            )
         if existing["extraction_status"] in SETTLED_EXTRACTION_STATUSES:
             return None
         return existing["id"]
@@ -931,8 +937,8 @@ async def upsert_drive_document(
         "(source_id, owner_user_id, path, name, kind, external_ref, external_updated_at, "
         " extraction_status, extraction_attempts) "
         "VALUES ($1, $2, $3, $4, 'file', $5, $6, 'pending', 0) "
-        "ON CONFLICT (source_id, path) DO UPDATE SET "
-        "name = EXCLUDED.name, external_ref = EXCLUDED.external_ref, "
+        "ON CONFLICT (source_id, external_ref) DO UPDATE SET "
+        "path = EXCLUDED.path, name = EXCLUDED.name, "
         "external_updated_at = EXCLUDED.external_updated_at, "
         # Any text we already hold stays put while the new extraction runs. It is
         # at most one sync interval stale, which beats making the document
@@ -949,6 +955,41 @@ async def upsert_drive_document(
         external_updated_at,
     )
     return row["id"]
+
+
+async def sync_drive_documents(
+    source_id: UUID, owner_user_id: UUID, documents: list[dict]
+) -> list[UUID]:
+    """Apply a complete folder crawl atomically, preserving each file's row/body.
+
+    Paths can change when a duplicate is added/removed or two files swap names.
+    Defer path uniqueness until the whole snapshot is in place, and serialize
+    crawls of this source. No Google requests run inside this transaction.
+    """
+    stale = []
+    async with get_pool().acquire() as conn, conn.transaction():
+        source = await conn.fetchval(
+            "SELECT id FROM user_sources WHERE id = $1 FOR UPDATE", source_id
+        )
+        if source is None:
+            return []  # The source was disconnected during the crawl.
+        await conn.execute("SET CONSTRAINTS drive_documents_source_id_path_key DEFERRED")
+        for document in documents:
+            row_id = await upsert_drive_document(
+                source_id=source_id,
+                owner_user_id=owner_user_id,
+                connection=conn,
+                **document,
+            )
+            if row_id is not None:
+                stale.append(row_id)
+        await conn.execute(
+            "DELETE FROM drive_documents WHERE source_id = $1 "
+            "AND (external_ref IS NULL OR NOT (external_ref = ANY($2::text[])))",
+            source_id,
+            [document["external_ref"] for document in documents],
+        )
+    return stale
 
 
 async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:

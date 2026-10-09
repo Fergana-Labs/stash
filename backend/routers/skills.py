@@ -219,7 +219,25 @@ async def get_local_skill(
     owner_user_id: UUID = Depends(get_scope),
 ):
     """Read a skill by name: SKILL.md + sibling files concatenated."""
-    skill = await skill_service.read_skill(owner_user_id, name, current_user["id"])
+    try:
+        skill = await skill_service.read_skill(owner_user_id, name, current_user["id"])
+    except skill_service.AmbiguousSkillError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ambiguous",
+                "message": str(exc),
+                "candidates": [
+                    {
+                        "name": match["name"],
+                        "folder_id": match["folder_id"],
+                        "source_ref": match.get("source_ref"),
+                        "source_name": match.get("source_name"),
+                    }
+                    for match in exc.matches
+                ],
+            },
+        ) from exc
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill
@@ -233,8 +251,7 @@ async def read_source_skill(
 ):
     """Read one source-backed skill by the upstream file that backs it.
     Addressed by file rather than name because a shelf can hold two documents
-    with the same title, and by the upstream id rather than ours because a
-    rename in Drive replaces our row."""
+    with the same title. The upstream ID survives renames and reindexing."""
     skill = await skill_service.read_source_skill(owner_user_id, source_ref, current_user["id"])
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")

@@ -397,10 +397,9 @@ async def _read_skill(args: dict) -> dict:
     # Two shelves can hold a skill of the same name. Picking one silently is a
     # wrong answer that looks like a right one, so the ambiguity comes back to
     # the model with the shelves to choose between.
-    matches = [
-        s for s in await skill_service.list_skills(owner_user_id, user_id) if s["name"] == name
-    ]
-    if len(matches) > 1:
+    try:
+        skill = await skill_service.read_skill(owner_user_id, name, user_id)
+    except skill_service.AmbiguousSkillError as exc:
         return _text_result(
             json.dumps(
                 {
@@ -417,13 +416,12 @@ async def _read_skill(args: dict) -> dict:
                                 else _source_skill_app_url(m["source_ref"])
                             ),
                         }
-                        for m in matches
+                        for m in exc.matches
                     ],
                 }
             )
         )
 
-    skill = await skill_service.read_skill(owner_user_id, name, user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     if not skill["has_instructions"]:

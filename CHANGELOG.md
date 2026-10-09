@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep same-named files in connected Google Drive folders separately indexed,
+  preserving each file's contents through renames and repeat syncs. Report
+  duplicate skill names with the documents to choose from instead of silently
+  loading one of them.
+
 - Simplify trace navigation and remove the label summary, Labels/Scores toggles,
   scoring explainer, and redundant navigation hints. Keep long-message collapse
   controls visible while scrolling, use warm Stash colors in dark mode, and show

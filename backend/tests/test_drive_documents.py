@@ -53,7 +53,7 @@ async def _row(source_id: UUID, owner_id: UUID, path: str, **fields) -> UUID:
         "INSERT INTO drive_documents "
         "(source_id, owner_user_id, path, name, external_ref, content, "
         " extraction_status, extraction_error) "
-        "VALUES ($1, $2, $3, $4, 'drive-file-id', $5, $6, $7) RETURNING id",
+        "VALUES ($1, $2, $3, $4, $8, $5, $6, $7) RETURNING id",
         source_id,
         owner_id,
         path,
@@ -61,6 +61,7 @@ async def _row(source_id: UUID, owner_id: UUID, path: str, **fields) -> UUID:
         cols["content"],
         cols["extraction_status"],
         cols["extraction_error"],
+        f"drive-{path}",
     )
     return row["id"]
 
