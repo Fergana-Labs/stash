@@ -203,6 +203,88 @@ async def test_annotations_trace_step_and_comment_only(client):
     assert summary["comment_count"] == 2
 
 
+def _multi_quote(steps):
+    segments = [
+        {"step_id": step["id"], "text": step["content"], "prefix": "", "suffix": ""}
+        for step in steps
+    ]
+    return {
+        "text": "\n\n".join(s["text"] for s in segments),
+        "prefix": "",
+        "suffix": "",
+        "segments": segments,
+    }
+
+
+async def test_multi_step_comment_round_trip_and_reimport(client):
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, REFUND_TRACE)
+    steps = (await _detail(client, auth, trace_id))["steps"]
+    quote = _multi_quote(steps[:2])  # System messages can be part of the selection.
+    saved = await _annotate(
+        client, auth, trace_id, comment="These messages belong together", quote=quote
+    )
+    assert saved["step_id"] is None
+    assert saved["quote"] == quote
+    detail = await _detail(client, auth, trace_id)
+    assert detail["comment_count"] == 1
+    assert detail["annotations"][0]["quote"] == quote
+    [exported] = _ndjson((await client.get("/api/v1/rm/export/annotations", headers=auth)).text)
+    assert exported["quote"] == quote
+
+    # A cross-message comment must not silently become a whole-trace rating.
+    response = await client.patch(
+        f"/api/v1/rm/annotations/{saved['id']}", json={"rating": 1}, headers=auth
+    )
+    assert response.status_code == 422
+    await _annotate(client, auth, trace_id, comment="Whole trace")
+    await _import(client, auth, REFUND_TRACE)
+    remaining = (await _detail(client, auth, trace_id))["annotations"]
+    assert [a["comment"] for a in remaining] == ["Whole trace"]
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "foreign_step",
+        "duplicate",
+        "reversed",
+        "missing_text",
+        "wrong_context",
+        "wrong_summary",
+        "rating",
+        "step_id",
+        "single_segment",
+    ],
+)
+async def test_invalid_multi_step_quotes_are_rejected(client, invalid):
+    auth = await _register(client)
+    [trace_id, other_id] = await _import(client, auth, REFUND_TRACE, GREETING_TRACE)
+    steps = (await _detail(client, auth, trace_id))["steps"]
+    quote = _multi_quote(steps[:2])
+    body = {"comment": "Review this", "quote": quote}
+    if invalid == "foreign_step":
+        quote["segments"][1]["step_id"] = (await _detail(client, auth, other_id))["steps"][0]["id"]
+    elif invalid == "duplicate":
+        quote["segments"][1] = quote["segments"][0]
+    elif invalid == "reversed":
+        quote["segments"].reverse()
+    elif invalid == "missing_text":
+        quote["segments"][0]["text"] = "Not in the message"
+    elif invalid == "wrong_context":
+        quote["segments"][0]["prefix"] = "Not the prefix"
+    elif invalid == "wrong_summary":
+        quote["text"] = "Not what was selected"
+    elif invalid == "single_segment":
+        quote["segments"].pop()
+    else:
+        body[invalid] = 1 if invalid == "rating" else steps[0]["id"]
+    response = await client.post(
+        f"/api/v1/rm/traces/{trace_id}/annotations", json=body, headers=auth
+    )
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize(
     "body",
     [

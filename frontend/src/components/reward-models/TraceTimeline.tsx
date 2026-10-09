@@ -36,6 +36,8 @@ export interface StepAnnotations {
   commentCount: (step: RmStep) => number;
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
+  /** In the latest viewer, row controls only open existing comments. */
+  commentsViaContextMenu?: boolean;
   onComment: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
 }
@@ -58,6 +60,7 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
   return (
     <div
       id={`step-${step.id}`}
+      data-step-id={step.id}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
         "pr-2 pl-8",
@@ -81,17 +84,13 @@ function RowHeader({ step, ann, children, className }: { step: RmStep; ann: Step
   );
 }
 
-/** Long content starts clipped. `open` forces it open (a quoted step must show its highlights). */
+/** Content starts expanded. `open` forces quoted content to keep its highlights visible. */
 function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: number; open: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [tall, setTall] = useState(false);
   const frame = useRef<HTMLDivElement | null>(null);
   const inner = useRef<HTMLDivElement | null>(null);
   const expanded = open || forcedOpen;
-
-  useLayoutEffect(() => {
-    if (open) frame.current?.querySelector<HTMLButtonElement>("[data-message-collapse]")?.focus({ preventScroll: true });
-  }, [open]);
 
   function collapse() {
     const container = frame.current?.closest<HTMLElement>("[data-trace-scroll]");
@@ -114,8 +113,8 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
   }, [children, max]);
 
   return (
-    <div ref={frame} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); event.preventDefault(); collapse(); } }}>
-      {open && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-start bg-background">
+    <div ref={frame} onKeyDown={(event) => { if (event.key === "Escape" && open && tall && !forcedOpen) { event.stopPropagation(); event.preventDefault(); collapse(); } }}>
+      {open && tall && !forcedOpen && <div className="sticky top-8 z-[5] flex h-7 items-center justify-start bg-background">
         <button type="button" data-message-collapse onClick={collapse} aria-expanded="true" title="Collapse message (Esc)" className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-dim hover:bg-surface hover:text-foreground"><ChevronDown className="size-3 rotate-180" aria-hidden="true" />Show less</button>
       </div>}
       <div
@@ -130,7 +129,10 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
           type="button"
           aria-expanded={expanded}
           data-message-expand
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            requestAnimationFrame(() => frame.current?.querySelector<HTMLButtonElement>("[data-message-collapse]")?.focus({ preventScroll: true }));
+          }}
           className="mt-1.5 cursor-pointer text-[12px] font-medium text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
         >
           Read full message
@@ -143,6 +145,7 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
 /** Keep empty comment controls quiet until the row is focused or hovered. */
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const comments = ann.commentCount(step);
+  if (ann.commentsViaContextMenu && comments === 0) return null;
   const quiet = comments === 0;
   return (
     <span
@@ -155,11 +158,11 @@ function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
       <button
         type="button"
         onClick={() => ann.onComment(step)}
-        title="Comment on this step"
-        aria-label="Comment on this step"
+        title={ann.commentsViaContextMenu ? "View comments on this step" : "Comment on this step"}
+        aria-label={ann.commentsViaContextMenu ? "View comments on this step" : "Comment on this step"}
         className={cn("inline-flex h-5 cursor-pointer items-center gap-1 text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4", comments === 0 && "opacity-0 group-hover/row:opacity-100 focus:opacity-100")}
       >
-        Comment{comments > 0 && ` (${comments})`}
+        {ann.commentsViaContextMenu ? "Comments" : "Comment"}{comments > 0 && ` (${comments})`}
       </button>
     </span>
   );

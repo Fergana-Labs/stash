@@ -57,10 +57,18 @@ class ImportRequest(BaseModel):
     data: str
 
 
+class QuoteSegment(BaseModel):
+    step_id: UUID
+    text: str = Field(min_length=1)
+    prefix: str
+    suffix: str
+
+
 class Quote(BaseModel):
     text: str = Field(min_length=1)
     prefix: str
     suffix: str
+    segments: list[QuoteSegment] | None = Field(default=None, min_length=2)
 
 
 class CreateAnnotationRequest(BaseModel):
@@ -295,7 +303,7 @@ async def create_annotation(
     req: CreateAnnotationRequest,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    quote = req.quote.model_dump() if req.quote else None
+    quote = req.quote.model_dump(mode="json", exclude_none=True) if req.quote else None
     try:
         annotation = await annotations.create(
             current_user["id"], trace_id, req.step_id, req.rating, req.comment, quote

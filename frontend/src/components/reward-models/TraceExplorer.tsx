@@ -62,10 +62,10 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       const target = event.target;
       if (!(target instanceof HTMLElement) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
       if (target !== document.body && !explorer.current?.contains(target)) return;
-      if ((event.key === "ArrowLeft" || event.key === "Escape") && canAscend) {
+      if (event.key === "Escape" && canAscend) {
         event.preventDefault();
         if (!event.repeat) ascend();
-      } else if (event.key === "ArrowRight" && selected) {
+      } else if (event.key === "Enter" && selected && (target === document.body || target === explorer.current || target.closest("[data-section-key]"))) {
         event.preventDefault();
         if (!event.repeat) { descend(selected); focusLevel(); }
       } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && children.length) {

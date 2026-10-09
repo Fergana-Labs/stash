@@ -61,18 +61,18 @@ it("gives every recorded role a number in the left gutter without a separate rea
   expect(screen.queryByText("System instructions")).not.toBeInTheDocument();
 });
 
-it("expands a long message inline and collapses it on a second click or Escape", () => {
+it("starts a long message expanded and supports collapsing and reopening it", () => {
   const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
   try {
     const { container } = render(<TraceTimeline rows={buildRows([step(0, "Long text", "assistant")])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
-    const read = screen.getByRole("button", { name: "Read full message" });
-    const body = container.querySelector('[style="max-height: 160px;"]')!;
-    fireEvent.click(read);
+    const body = container.querySelector('[data-step-content]')!.parentElement!;
     expect((body as HTMLElement).style.maxHeight).toBe("");
-    expect(screen.getByRole("button", { name: "Show less" })).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Read full message" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show less" })).not.toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
     expect(body).toHaveStyle({ maxHeight: "160px" });
     fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
+    expect((body as HTMLElement).style.maxHeight).toBe("");
     fireEvent.keyDown(screen.getByRole("button", { name: "Show less" }), { key: "Escape" });
     expect(body).toHaveStyle({ maxHeight: "160px" });
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -89,7 +89,6 @@ it("keeps the collapse control above long content and restores the message in vi
     scroller.scrollTop = 2000;
     scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
     scroller.scrollTo = vi.fn();
-    fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
     const close = screen.getByRole("button", { name: "Show less" });
     expect(close.parentElement).toHaveClass("sticky", "top-8");
     const frame = close.parentElement!.parentElement!;

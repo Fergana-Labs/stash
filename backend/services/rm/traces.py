@@ -143,6 +143,10 @@ async def store_traces(
             [span.model_dump() for span in trace.spans],
         )
         # Step-level annotations cascade away with the replaced steps.
+        # Multi-step quotes store their anchors in JSON, so remove those explicitly.
+        await conn.execute(
+            "DELETE FROM rm_annotations WHERE trace_id = $1 AND quote ? 'segments'", trace_id
+        )
         await conn.execute("DELETE FROM rm_trace_steps WHERE trace_id = $1", trace_id)
         await conn.executemany(
             """

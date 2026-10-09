@@ -5,11 +5,12 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
+import TraceCommentMenu from "@/components/reward-models/TraceCommentMenu";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import { wbAssess } from "@/lib/workbench-api";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
@@ -22,8 +23,8 @@ import TraceScore from "@/components/reward-models/TraceScore";
 import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
 import { rubricSummary, stepReward } from "@/components/reward-models/step-rewards";
-import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
-import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
+import { annotationStepIds, errorMessage, locateQuote, quoteForStep, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
+import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import { buildTraceOutline, groupPath, traceExplorerLevel } from "@/components/reward-models/trace-outline";
@@ -39,11 +40,6 @@ import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
 const PENDING_ID = "pending";
-
-function stepContentElement(node: Node | null): HTMLElement | null {
-  const element = node instanceof HTMLElement ? node : node?.parentElement;
-  return element?.closest<HTMLElement>("[data-step-content]") ?? null;
-}
 
 function highlightClass(a: RmAnnotation, active: boolean): string {
   return cn(
@@ -153,7 +149,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
-    return trace!.annotations.filter((a) => a.step_id === step.id);
+    return trace!.annotations.filter((a) => annotationStepIds(a).includes(step.id));
   }
 
   function highlightsFor(step: RmStep): Highlight[] {
@@ -161,24 +157,19 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       .filter((a) => a.quote !== null)
       .sort((a, b) => Number(a.label_error) - Number(b.label_error))
       .flatMap((a) => {
-        const range = locateQuote(step.content, a.quote!);
+        const range = locateQuote(step.content, quoteForStep(step.id, a.quote, a.step_id)!);
         return range ? [{ id: a.id, ...range, className: highlightClass(a, a.id === activeId) }] : [];
       });
-    if (composer?.stepId !== step.id || composer.quote === null) return saved;
-    const pending = locateQuote(step.content, composer.quote);
+    const pendingQuote = composer && quoteForStep(step.id, composer.quote, composer.stepId);
+    if (!pendingQuote) return saved;
+    const pending = locateQuote(step.content, pendingQuote);
     if (pending === null) return saved;
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Every role starts readable, with long content clipped by the inline expansion control. */
+  /** Start with all content visible; only collapse rows the reader explicitly closes. */
   function isExpanded(row: TraceRow): boolean {
-    const choice = rowChoice.get(row.key);
-    if (choice !== undefined) return choice;
-    if (row.kind === "system") return true;
-    if (row.kind !== "prompt") return false;
-    const index = rows.findIndex((item) => item.key === row.key);
-    const previous = rows[index - 1];
-    return !(previous?.kind === "prompt" && previous.step.content === row.step.content && previous.step.index + 1 === row.step.index);
+    return rowChoice.get(row.key) ?? true;
   }
 
   function openRows(rows: TraceRow[]) {
@@ -226,33 +217,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     await mutateAnnotation(annotation, () => rmDeleteAnnotation(annotation.id));
   }
 
-  function openComposer(stepId: string | null) {
+  function openComposer(target: ComposerTarget) {
     setCommentsOpen(true);
-    setComposer({ stepId, quote: null });
-  }
-
-  // Text selected inside one step's content opens the composer on that span.
-  // Offsets come from the rendered runs' source offsets, so a quote made on
-  // rendered markdown is stored against the raw step content.
-  function onCanvasMouseUp(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("button, input, textarea")) return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    const contentEl = stepContentElement(selection.anchorNode);
-    if (!contentEl || contentEl !== stepContentElement(selection.focusNode)) return;
-
-    const step = trace!.steps.find((s) => s.id === contentEl.dataset.stepContent)!;
-    const range = selection.getRangeAt(0);
-    const start = domSourceOffset(range.startContainer, range.startOffset);
-    const end = domSourceOffset(range.endContainer, range.endOffset);
-    if (start === null || end === null) {
-      toast.error("That selection starts or ends on formatted text that can't be quoted. Select plain words.");
-      return;
-    }
-    if (end <= start || step.content.slice(start, end).trim() === "") return;
-
-    setCommentsOpen(true);
-    setComposer({ stepId: step.id, quote: quoteFromOffsets(step.content, start, end) });
+    setComposer(target);
+    window.getSelection()?.removeAllRanges();
   }
 
   /** Scrolls to a step, opening its row if needed. */
@@ -273,11 +241,12 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   function focusAnnotation(annotation: RmAnnotation) {
     setActiveId(annotation.id);
-    if (annotation.step_id === null) {
+    const stepId = annotationStepIds(annotation)[0];
+    if (!stepId) {
       canvas.current!.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    revealStep(annotation.step_id);
+    revealStep(stepId);
   }
 
   function focusCard(ids: string[]) {
@@ -294,11 +263,15 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     actionScore: (step) => actionScores.get(step.id),
     commentCount: (step) => {
       const row = rows.find((r) => r.key === step.id);
-      return (row ? rowSteps(row) : [step]).reduce((count, source) => count + annotationsOn(source).filter((a) => a.comment !== null).length, 0);
+      return new Set((row ? rowSteps(row) : [step]).flatMap((source) => annotationsOn(source).filter((a) => a.comment !== null).map((a) => a.id))).size;
     },
-    hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
+    hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || !!(composer && quoteForStep(step.id, composer.quote, composer.stepId)),
     flashing: (step) => flashStepId === step.id,
-    onComment: (step) => openComposer(step.id),
+    commentsViaContextMenu: true,
+    onComment: (step) => {
+      const row = rows.find((r) => r.key === step.id);
+      focusCard((row ? rowSteps(row) : [step]).flatMap((source) => annotationsOn(source).filter((a) => a.comment !== null).map((a) => a.id)));
+    },
     onSelectAnnotation: focusCard,
     ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
     ...(stepScores !== null && {
@@ -308,6 +281,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       onJumpToChunk: (chunk: string) => { const step = labels.stepForChunk(chunk); if (step) revealStep(step.id); },
     }),
   };
+
+  const mapStepId = (id: string) => presentation.mapSteps[(presentation.numberById.get(id) ?? 0) - 1]?.id ?? id;
+  const mapAnnotations = trace.annotations.map((annotation) => ({
+    ...annotation,
+    step_id: annotation.step_id ? mapStepId(annotation.step_id) : null,
+    quote: annotation.quote?.segments ? { ...annotation.quote, segments: annotation.quote.segments.map((segment) => ({ ...segment, step_id: mapStepId(segment.step_id) })) } : annotation.quote,
+  }));
 
   return (
     <div className="relative flex h-full min-h-0">
@@ -345,13 +325,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          <TraceMinimap steps={presentation.mapSteps} annotations={trace.annotations.map((annotation) => ({ ...annotation, step_id: annotation.step_id ? presentation.mapSteps[(presentation.numberById.get(annotation.step_id) ?? 0) - 1]?.id ?? annotation.step_id : null }))} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
 
 
         </div>
         </div>
         <div ref={scroller} data-trace-scroll className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")} onMouseUp={onCanvasMouseUp}>
+        <TraceCommentMenu steps={trace.steps} onComment={openComposer}>
+        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceExplorer
             groups={groups} path={outlinePath} assessments={assessments}
@@ -369,6 +350,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           />
           {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>
+        </TraceCommentMenu>
         </div>
       </div>
 
@@ -376,7 +358,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       <AnnotationSidebar
         visible={commentsOpen}
         onClose={() => setCommentsOpen(false)}
-        onAddComment={() => openComposer(null)}
         composer={
           composer && (
             <AnnotationComposer
@@ -407,6 +388,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 }
 
 function composerLabel(target: ComposerTarget, trace: RmTraceDetail, numbers: Map<string, number>): string {
+  if (target.quote?.segments) {
+    const selectedNumbers = [...new Set(target.quote.segments.map((segment) => numbers.get(segment.step_id)).filter((number) => number !== undefined))];
+    return `Comment on selection in ${selectedNumbers.length === 1 ? `step ${selectedNumbers[0]}` : `steps ${selectedNumbers[0]}–${selectedNumbers.at(-1)}`}`;
+  }
   if (target.stepId === null) return "Comment on the whole trace";
   const step = trace.steps.find((s) => s.id === target.stepId)!;
   const number = numbers.get(step.id);

@@ -37,6 +37,7 @@ export default function AnchoredText({
   className?: string;
 }) {
   function onClick(e: MouseEvent) {
+    if (!window.getSelection()?.isCollapsed) return;
     const mark = (e.target as HTMLElement).closest<HTMLElement>("mark[data-ids]");
     if (mark) onSelectAnnotation(mark.dataset.ids!.split(" "));
   }
