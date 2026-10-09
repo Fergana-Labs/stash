@@ -5,7 +5,8 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceMinimap"
 
 import { useEffect, useId, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
-import { isThinking, looksLikeError } from "./trace-rows";
+import { isThinking, looksLikeError, toolLabel, toolSummary } from "./trace-rows";
+import { readableExcerpt } from "./trace-presentation";
 import { visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
 import { formatCredit } from "./action-credit";
@@ -28,6 +29,25 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   if (isThinking(step)) return "thinking";
   if (step.role === "tool") return looksLikeError(step.content) ? "error" : "result";
   return step.tool_name == null ? "assistant" : "call";
+}
+
+function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionScore; status?: string }) {
+  const timestamp = step.metadata?.timestamp;
+  const time = typeof timestamp === "string" ? new Date(timestamp) : null;
+  const recordedTitle = step.tool_input?.title ?? step.tool_input?.description;
+  const detail = typeof recordedTitle === "string" && recordedTitle.trim()
+    ? recordedTitle : toolSummary(step.tool_input);
+  const summary = readableExcerpt(step.content, 180) || (step.tool_name
+    ? `${toolLabel(step.tool_name)}${detail ? `: ${detail.replace(/\s+/g, " ").trim()}` : ""}`
+    : step.images?.length ? "Attached an image" : `${KINDS[kindOf(step)].label} message`);
+  return <>
+    <div className="flex items-center gap-2 text-[11px] tabular-nums opacity-70">
+      <span>({step.index + 1})</span>
+      {time && Number.isFinite(time.getTime()) && <time dateTime={timestamp as string}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>}
+    </div>
+    <p className="m-0 mt-1 line-clamp-3 break-words leading-relaxed">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</p>
+    {(score || status) && <div className="mt-1 text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? " · previous annotation" : ""}` : status}</div>}
+  </>;
 }
 
 function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, unscoredReasons, scroller, navigation, onJump }: {
@@ -106,7 +126,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   function labelFor(step: RmStep) {
     const kind = KINDS[kindOf(step)];
     const score = actionScores?.get(step.id);
-    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
+    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "";
     return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : missingReason ? `, ${missingReason}` : ""}`;
   }
 
@@ -185,7 +205,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           role="tooltip"
           className="pointer-events-none absolute bottom-full z-20 mb-2 w-64 max-w-full rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-md"
           style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 8rem), max(0px, calc(100% - 16rem)))` }}
-        >{labelFor(steps[hoveredIndex])}</div>}
+        ><StepPreview step={steps[hoveredIndex]} score={actionScores?.get(steps[hoveredIndex].id)} status={isGradableAction(steps[hoveredIndex]) ? unscoredReasons?.get(steps[hoveredIndex].id) ?? "awaiting score" : undefined} /></div>}
       </div>
       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
     </nav>
