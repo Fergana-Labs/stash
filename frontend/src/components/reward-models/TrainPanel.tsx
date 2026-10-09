@@ -74,26 +74,28 @@ function LatestTrainPanel({
   }
 
   return (
-    <div className="relative flex items-center gap-3">
+    <div className="relative flex min-w-0 flex-col items-end gap-2">
       <TrainStatus summary={summary} error={error} />
-      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-        <span>Base model</span>
-        <div className="flex flex-col gap-1">
-          <Select aria-label="Base model" value={customBaseModel ? "custom" : baseModel} onChange={(value) => {
-            setCustomBaseModel(value === "custom");
-            setBaseModel(value === "custom" ? "" : value);
-          }} options={[...BASE_MODEL_SUGGESTIONS.map((value) => ({ value, label: value })), { value: "custom", label: "Custom model…" }]} className="h-8 w-48 px-2 text-[12px]" />
-          {customBaseModel && <Input aria-label="Custom base model" value={baseModel} onChange={(e) => setBaseModel(e.target.value)} placeholder="Hugging Face model ID" className="h-8 w-48 text-[12px]" />}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <span>Base model</span>
+          <div className="flex flex-col gap-1">
+            <Select aria-label="Base model" value={customBaseModel ? "custom" : baseModel} onChange={(value) => {
+              setCustomBaseModel(value === "custom");
+              setBaseModel(value === "custom" ? "" : value);
+            }} options={[...BASE_MODEL_SUGGESTIONS.map((value) => ({ value, label: value })), { value: "custom", label: "Custom model…" }]} className="h-8 w-48 px-2 text-[12px]" />
+            {customBaseModel && <Input aria-label="Custom base model" value={baseModel} onChange={(e) => setBaseModel(e.target.value)} placeholder="Hugging Face model ID" className="h-8 w-48 text-[12px]" />}
+          </div>
         </div>
+        <Button variant="outline" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions}>
+          Options
+          <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
+        </Button>
+        <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2 || !baseModel.trim()}>
+          {submitting && <Loader2 className="animate-spin" />}
+          {submitting ? "Queuing…" : "Create new reward model"}
+        </Button>
       </div>
-      <Button variant="outline" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions}>
-        Options
-        <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
-      </Button>
-      <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2 || !baseModel.trim()}>
-        {submitting && <Loader2 className="animate-spin" />}
-        {submitting ? "Queuing…" : "Create new reward model"}
-      </Button>
 
       {showOptions && (
         <div
@@ -121,7 +123,7 @@ function LatestTrainPanel({
 }
 
 function TrainStatus({ summary, error }: { summary: SelectionSummary; error: string | null }) {
-  if (error) return <p className="m-0 max-w-sm text-right text-[12px] leading-snug text-red-600">{error}</p>;
+  if (error) return <p role="alert" className="m-0 max-w-sm text-right text-[12px] leading-snug text-red-600">{error}</p>;
   if (summary.count > 1) return null;
   return (
     <p className="m-0 max-w-xs text-right text-[12px] leading-snug text-amber-700 dark:text-amber-400">

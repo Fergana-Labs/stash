@@ -5,6 +5,8 @@ its owner; another owner's id is a 404, never a 403, so ids don't leak.
 """
 
 import json
+import logging
+import os
 import re
 from typing import Annotated, Literal
 from uuid import UUID
@@ -22,7 +24,6 @@ from ..services.rm import (
     annotations,
     datasets,
     evaluator,
-    jobs,
     otel_ingest,
     query,
     trace_completion,
@@ -418,9 +419,15 @@ async def create_reward_model(
                 detail="max_pairs must allow at least two targets per selected trace",
             )
 
-    compute = jobs.required_env("RM_COMPUTE")
+    compute = os.environ.get("RM_COMPUTE")
     if compute not in ("local", "modal"):
-        raise ValueError("RM_COMPUTE must be local or modal")
+        logging.getLogger(__name__).error(
+            "Reward-model training unavailable: RM_COMPUTE must be local or modal"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Model training is not configured on this server.",
+        )
     row = await get_pool().fetchrow(
         """
         INSERT INTO rm_reward_models

@@ -558,6 +558,27 @@ async def test_training_pair_limit_must_allow_training_and_evaluation(client, mo
     assert queued == [resp.json()["id"]]
 
 
+@pytest.mark.parametrize("compute", [None, "", "invalid"])
+async def test_training_without_a_configured_runtime_returns_service_unavailable(
+    client, monkeypatch, compute
+):
+    queued = []
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", queued.append)
+    if compute is None:
+        monkeypatch.delenv("RM_COMPUTE", raising=False)
+    else:
+        monkeypatch.setenv("RM_COMPUTE", compute)
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, GREETING_TRACE)
+    resp = await client.post(
+        "/api/v1/rm/reward-models", json={"name": "m", "trace_ids": [trace_id]}, headers=auth
+    )
+    assert resp.status_code == 503
+    assert "Model training is not configured" in resp.json()["detail"]
+    assert queued == []
+    assert (await client.get("/api/v1/rm/reward-models", headers=auth)).json() == []
+
+
 async def test_gepa_run_needs_a_trained_reward_model(client, monkeypatch):
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
     gepa_queued = []
