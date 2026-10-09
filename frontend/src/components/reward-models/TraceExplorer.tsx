@@ -115,7 +115,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           aria-label={`Explore ${title(node)}`} title={generated?.summary}
           className={cn("flex h-7 w-full cursor-pointer items-center gap-3 overflow-hidden rounded-sm pr-24 pl-3 text-left hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key && "bg-surface")}>
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <h3 className="m-0 max-w-[45%] shrink-0 truncate text-[13px] font-medium leading-none">{title(node)}</h3>
+          <h3 className="m-0 max-w-[45%] shrink-0 truncate text-[13px] font-medium leading-5">{title(node)}</h3>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{generated?.summary}</span>
           {node.children.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{node.children.length} subtasks</span>}
           <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span>

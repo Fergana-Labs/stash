@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Show readable action descriptions in tool rows, with raw inputs on hover and
+  tool-name explanations. Label expanded tool arguments as Inputs and use neutral
+  field labels. Keep section-title descenders visible within compact rows.
+
 - Keep trace sections scoped to their own steps, with Left/Right navigating up
   and into sections. Remove the duplicate Back control. Add message comment
   icons and a contextual menu for selected text, including multi-message quotes.

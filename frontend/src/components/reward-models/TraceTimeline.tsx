@@ -11,11 +11,13 @@ import { StepScoreChip, TaskScoreSummary } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
 import type { StepReward, TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
-import { firstLine, isThinking, looksLikeError, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
+import { firstLine, isThinking, looksLikeError, rowSteps, toolLabel, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import { Check, Copy, ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
 import ToolInput from "./ToolInput";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toolActionSummary, toolExplanation } from "./tool-action-summary";
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
@@ -261,7 +263,7 @@ function ToolRow({
   const head = (call ?? result)!;
   const name = call?.tool_name ?? result!.tool_name;
   const isError = result !== null && looksLikeError(result.content);
-  const summary = call ? toolSummary(call.tool_input)
+  const summary = call ? toolActionSummary(call)
     : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
@@ -271,19 +273,27 @@ function ToolRow({
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
       )}
-      <RowHeader step={head} ann={ann} className="min-h-8">
+      <TooltipProvider delayDuration={400}><RowHeader step={head} ann={ann} className="min-h-8">
+        <Tooltip><TooltipTrigger asChild>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
           <DisclosureIcon expanded={expanded} />
-          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
-
-          <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
+          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{call ? summary : toolLabel(name)}</span>
+          {!call && !expanded && <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>}
         </button>
+        </TooltipTrigger>{call && <TooltipContent side="bottom" align="start" sideOffset={6} collisionPadding={12}
+          className="block w-max max-w-[min(40rem,calc(100vw-2rem))] p-3 shadow-md">
+          <div className="mb-1.5 text-[11px] font-medium opacity-70">Inputs</div>
+          <pre className="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">{JSON.stringify(call.tool_input ?? {}, null, 2)}</pre>
+        </TooltipContent>}</Tooltip>
+        {call && <Tooltip><TooltipTrigger asChild>
+          <span tabIndex={0} aria-label={`About ${toolLabel(name)}`} className="max-w-36 shrink-0 cursor-help truncate rounded text-[11px] text-muted-foreground focus-visible:outline-2 focus-visible:outline-brand-500">{toolLabel(name)}</span>
+        </TooltipTrigger><TooltipContent side="top" sideOffset={6} className="max-w-72 leading-relaxed">{toolExplanation(name)}</TooltipContent></Tooltip>}
         {isError && <span className="text-[11px] text-red-600">Error</span>}
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann} />
-      </RowHeader>
+      </RowHeader></TooltipProvider>
       {expanded && <div className="mb-2 ml-5 text-[13px]">
         {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
         {result && <ToolOutput step={result} ann={ann} nested={call !== null} />}

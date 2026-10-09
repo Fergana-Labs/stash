@@ -4,7 +4,7 @@ import type { RmStep } from "@/lib/types";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import { buildRows } from "./trace-rows";
 
-beforeEach(() => vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }));
+beforeEach(() => vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => vi.unstubAllGlobals());
 
 function step(index: number, content: string, role: RmStep["role"] = "user"): RmStep {
@@ -134,6 +134,24 @@ it("offers keyboard-accessible tool disclosure and treats the output as part of 
   expect(screen.queryByText("Step 2")).not.toBeInTheDocument();
   expect(screen.getByText("Output")).toBeVisible();
   expect(screen.queryByText("Details")).not.toBeInTheDocument();
+});
+
+it("shows the recorded action and exposes tool help and exact inputs on focus", async () => {
+  const input = { title: "Inspect Slack notifications", code: "await tab.getAXState();" };
+  const call = { ...step(0, "", "assistant"), tool_name: "js", tool_input: input, tool_call_id: "call1" };
+  const { rerender } = render(<TraceTimeline rows={buildRows([call])} ann={ann} isExpanded={() => false} onToggle={vi.fn()} />);
+  const disclosure = screen.getByRole("button", { name: "Expand Js tool call" });
+  expect(disclosure).toHaveTextContent(input.title);
+  expect(screen.queryByText(input.code)).not.toBeInTheDocument();
+  fireEvent.focus(screen.getByLabelText("About Js"));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("JavaScript execution tool");
+  fireEvent.blur(screen.getByLabelText("About Js"));
+  fireEvent.focus(disclosure);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(JSON.stringify(input, null, 2).replace(/\s+/g, " "));
+  fireEvent.blur(disclosure);
+  rerender(<TraceTimeline rows={buildRows([call])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
+  expect(within(screen.getByLabelText("Tool inputs")).getByText("Inputs")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Expand input code" })).toBeVisible();
 });
 
 it("shows learned credit on a collapsed tool call and response, with no badge on its observation", () => {
