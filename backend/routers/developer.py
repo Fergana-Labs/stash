@@ -2,7 +2,7 @@
 
 Self-serve counterpart to the admin workspace endpoints. A developer activates
 the platform (creating a one-man, invite-only workspace when they have none),
-mints machine keys on the workspace's scope user, and manages the end users
+mints developer keys on the workspace's scope user, and manages the end users
 their product's sessions create. User listing and editing are scope-based like
 every other surface: the console sends X-Stash-Scope with the workspace's
 scope user id.
@@ -93,7 +93,7 @@ async def mint_developer_key(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """Mint a machine key on the developer workspace's scope user — the key a
+    """Mint a developer key on the developer workspace's scope user — the key a
     product backend (e.g. Heavi) uses for every Stash call. Console sends
     X-Stash-Scope to pick the workspace."""
     if req.access not in API_KEY_ACCESS_LEVELS:
@@ -103,7 +103,11 @@ async def mint_developer_key(
         datetime.now(UTC) + timedelta(days=req.expires_in_days) if req.expires_in_days else None
     )
     key = await create_api_key(
-        scope_user_id, name=req.name, key_type="machine", access=req.access, expires_at=expires_at
+        scope_user_id,
+        name=req.name,
+        key_type="developer",
+        access=req.access,
+        expires_at=expires_at,
     )
     return {
         "workspace_id": str(workspace["id"]),
@@ -115,13 +119,13 @@ async def mint_developer_key(
 
 @router.get("/keys")
 async def list_developer_keys(scope_user_id: UUID = Depends(get_scope)):
-    """The workspace's machine keys — names, access, and usage. Key material
+    """The workspace's developer keys — names, access, and usage. Key material
     is never returned; a key is shown once, at mint time."""
     await _require_active_workspace(scope_user_id)
     rows = await get_pool().fetch(
         "SELECT id, name, access, created_at, last_used_at, key_prefix, key_suffix, expires_at "
         "FROM user_api_keys "
-        "WHERE user_id = $1 AND key_type = 'machine' AND revoked_at IS NULL "
+        "WHERE user_id = $1 AND key_type = 'developer' AND revoked_at IS NULL "
         "ORDER BY created_at DESC",
         scope_user_id,
     )
@@ -130,12 +134,12 @@ async def list_developer_keys(scope_user_id: UUID = Depends(get_scope)):
 
 @router.delete("/keys/{key_id}")
 async def revoke_developer_key(key_id: UUID, scope_user_id: UUID = Depends(get_scope)):
-    """Revoke one machine key — takes effect on the key's next request.
+    """Revoke one developer key — takes effect on the key's next request.
     Revocation, not deletion: the row stays for the audit trail."""
     await _require_active_workspace(scope_user_id)
     status = await get_pool().execute(
         "UPDATE user_api_keys SET revoked_at = now() "
-        "WHERE id = $1 AND user_id = $2 AND key_type = 'machine' AND revoked_at IS NULL",
+        "WHERE id = $1 AND user_id = $2 AND key_type = 'developer' AND revoked_at IS NULL",
         key_id,
         scope_user_id,
     )

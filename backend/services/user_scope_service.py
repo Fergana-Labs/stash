@@ -30,11 +30,11 @@ async def can_manage_scope(owner_user_id: UUID | None, user_id: UUID | None) -> 
     workspace's scope user is login-less, so without the creator branch nobody
     could manage a workspace's sources from the app at all: a one-man developer
     workspace could not connect a customer's Drive folder without minting a
-    machine key first.
+    developer key first.
 
     Deliberately narrower than membership. A teammate reads the workspace's
     Drive; they don't get to disconnect it or widen a Slack allowlist. Admin-
-    provisioned workspaces have no `created_by` and so stay machine-key only.
+    provisioned workspaces have no `created_by` and so stay developer-key only.
     """
     from ..database import get_pool
 
