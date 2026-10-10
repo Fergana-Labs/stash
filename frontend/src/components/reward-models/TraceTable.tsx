@@ -30,8 +30,8 @@ const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
 ];
 
 /**
- * Browse rows open the trace. Selection and shift-click ranges belong to
- * the training picker, where clicking anywhere on a row toggles it.
+ * Browse rows open the trace; checkboxes and shift-click select ranges.
+ * In the training picker, clicking anywhere on a row toggles it.
  */
 function LatestTraceTable({
   traces,
@@ -40,6 +40,7 @@ function LatestTraceTable({
   mode,
   onDelete,
   deletingId,
+  selectionDisabled = false,
 }: {
   traces: RmTraceSummary[];
   selected: Set<string>;
@@ -47,14 +48,27 @@ function LatestTraceTable({
   mode: "browse" | "picker";
   onDelete?: (trace: RmTraceSummary) => void;
   deletingId?: string | null;
+  selectionDisabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [assessmentFilter, setAssessmentFilter] = useState("all");
   const [filters, setFilters] = useState<TraceFilters>({ source: "all", from: "", through: "" });
   const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: TraceSortKey; direction: TraceSortDirection }>({ key: "imported", direction: "descending" });
-  // Index (in the visible list) of the last row clicked without shift: the anchor for shift-click ranges.
-  const anchor = useRef<number | null>(null);
+  // Keep the browse list's ordering when opening a trace and coming back. The
+  // training picker has its own preference so it cannot overwrite the list.
+  const sortStorageKey = `stash-traces-sort:${mode}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(sortStorageKey) ?? "null");
+      if (saved && COLUMNS.some((column) => column.key === saved.key)
+        && (saved.direction === "ascending" || saved.direction === "descending")) setSort(saved);
+    } catch { /* Sorting still works when browser storage is unavailable. */ }
+  }, [sortStorageKey]);
+  // Keep the anchor by ID so incoming traces cannot move it during a background refresh.
+  const anchor = useRef<string | null>(null);
+
+  useEffect(() => { if (selected.size === 0) anchor.current = null; }, [selected.size]);
 
   const [searchResults, setSearchResults] = useState<RmTraceSummary[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -82,7 +96,7 @@ function LatestTraceTable({
     || (assessmentFilter === "scored" && traceScore(trace) !== null)
     || (assessmentFilter === "unscored" && traceScore(trace) === null));
   const visible = sortTraces(filtered, sort.key, sort.direction, "automatic");
-  const visibleIds = visible.map((t) => t.id);
+  const visibleIds = visible.filter((t) => mode === "picker" || t.can_score !== false).map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
   const hiddenSelected = traces.filter((trace) => selected.has(trace.id)).length - selectedVisible;
   const hasFilters = filters.source !== "all" || !!filters.from || !!filters.through;
@@ -93,15 +107,18 @@ function LatestTraceTable({
     anchor.current = null;
   }
 
-  function toggleRow(index: number, shiftKey: boolean) {
-    const id = visibleIds[index];
+  function toggleRow(id: string, shiftKey: boolean) {
+    if (selectionDisabled) return;
+    const index = visibleIds.indexOf(id);
+    if (index < 0) return;
     const value = !selected.has(id);
-    if (shiftKey && anchor.current !== null) {
-      onSelectedChange(selectRange(visibleIds, selected, anchor.current, index, value));
+    const from = anchor.current === null ? -1 : visibleIds.indexOf(anchor.current);
+    if (shiftKey && from >= 0) {
+      onSelectedChange(selectRange(visibleIds, selected, from, index, value));
     } else {
       onSelectedChange(selectRange(visibleIds, selected, index, index, value));
     }
-    anchor.current = index;
+    anchor.current = id;
   }
 
   return (
@@ -148,8 +165,8 @@ function LatestTraceTable({
         </span>
       </div>
 
-      {mode === "picker" && <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
-        <Button variant="outline" size="xs" disabled={searching || !!searchError || visible.length === 0} onClick={() => { onSelectedChange(new Set(visibleIds)); anchor.current = null; }}>Select only shown</Button>
+      {(mode === "picker" || selected.size > 0) && <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
+        <Button variant="outline" size="xs" disabled={selectionDisabled || searching || !!searchError || visibleIds.length === 0} onClick={() => { onSelectedChange(new Set(visibleIds)); anchor.current = null; }}>Select only shown</Button>
         <span>{selectedVisible} shown selected{hiddenSelected > 0 && ` · ${hiddenSelected} selected outside these filters`}</span>
       </div>}
       {invalidDates && <p role="alert" className="mb-3 text-xs text-red-600">The end date must be on or after the start date.</p>}
@@ -158,14 +175,15 @@ function LatestTraceTable({
         <table className="w-full min-w-[1140px] table-fixed border-collapse text-[13px]">
           <thead>
             <tr className={cn("border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase", mode === "browse" && "h-7 [&>th]:py-0")}>
-              {mode === "picker" && <th className="w-10 py-2 pl-3">
+              <th className="w-8 py-2 pl-3">
                 <Checkbox
-                  checked={visible.length > 0 && selectedVisible === visible.length}
-                  indeterminate={selectedVisible > 0 && selectedVisible < visible.length}
-                  onClick={() => onSelectedChange(toggleAllVisible(visibleIds, selected))}
+                  checked={visibleIds.length > 0 && selectedVisible === visibleIds.length}
+                  indeterminate={selectedVisible > 0 && selectedVisible < visibleIds.length}
+                  disabled={selectionDisabled || visibleIds.length === 0}
+                  onClick={() => { onSelectedChange(toggleAllVisible(visibleIds, selected)); anchor.current = null; }}
                   label="Select all shown traces"
                 />
-              </th>}
+              </th>
               {COLUMNS.map((column) => (
                 <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction : "none"} className={cn("px-3 py-2 font-medium", column.className)}>
                   <button
@@ -173,7 +191,9 @@ function LatestTraceTable({
                     className="cursor-pointer whitespace-nowrap hover:text-foreground"
                     title={`Sort by ${column.label.toLowerCase()}`}
                     onClick={() => {
-                      setSort({ key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" : "ascending" });
+                      const next = { key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" as const : "ascending" as const };
+                      setSort(next);
+                      try { localStorage.setItem(sortStorageKey, JSON.stringify(next)); } catch { /* Keep the in-memory preference. */ }
                       anchor.current = null;
                     }}
                   >
@@ -185,15 +205,16 @@ function LatestTraceTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((trace, index) => (
+            {visible.map((trace) => (
               <TraceRow
                 key={trace.id}
                 trace={trace}
                 mode={mode}
                 checked={selected.has(trace.id)}
-                onToggle={(e) => toggleRow(index, e.shiftKey)}
+                onToggle={(e) => toggleRow(trace.id, e.shiftKey)}
+                selectionDisabled={selectionDisabled || (mode === "browse" && trace.can_score === false)}
                 deleting={deletingId === trace.id}
-                onDelete={onDelete && (() => onDelete(trace))}
+                onDelete={trace.can_score !== false && onDelete ? (() => onDelete(trace)) : undefined}
               />
             ))}
           </tbody>
@@ -213,11 +234,13 @@ function TraceRow({
   onToggle,
   deleting,
   onDelete,
+  selectionDisabled,
 }: {
   trace: RmTraceSummary;
   mode: "browse" | "picker";
   checked: boolean;
   onToggle: (e: MouseEvent) => void;
+  selectionDisabled: boolean;
   deleting: boolean;
   onDelete: (() => void) | undefined;
 }) {
@@ -227,7 +250,9 @@ function TraceRow({
 
   function openRow(event: MouseEvent) {
     if ((event.target as Element).closest("a, button, input")) return;
-    if (picker) {
+    if (picker || event.shiftKey) {
+      event.preventDefault();
+      if (selectionDisabled) return;
       onToggle(event);
       return;
     }
@@ -244,17 +269,17 @@ function TraceRow({
       className={cn(
         "group cursor-pointer border-b border-border-subtle select-none last:border-b-0",
         picker ? "h-10" : "h-7 [&>td]:py-0",
-        picker && checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
+        checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
       )}
     >
-      {picker && <td className="py-1.5 pl-3" onClick={(e) => e.stopPropagation()}>
-        <Checkbox checked={checked} onClick={onToggle} label={`Select ${trace.title}`} />
-      </td>}
+      <td className="py-1.5 pl-3" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={checked} disabled={selectionDisabled} onClick={onToggle} label={`Select ${trace.title}`} />
+      </td>
       <td className="px-3 py-1.5">
         {picker ? (
           <div className="truncate font-medium text-foreground">{trace.title}</div>
         ) : (
-          <Link href={href} className="block truncate font-medium text-foreground hover:text-brand-600">
+          <Link href={href} onClick={(e) => { if (e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (!selectionDisabled) onToggle(e); } }} className="block truncate font-medium text-foreground hover:text-brand-600">
             {trace.title}
           </Link>
         )}
@@ -275,7 +300,7 @@ function TraceRow({
               variant="ghost"
               size="icon-xs"
               onClick={onDelete}
-              disabled={deleting}
+              disabled={deleting || selectionDisabled}
               aria-label="Delete trace"
               className="opacity-0 group-hover:opacity-100 hover:text-red-600 disabled:opacity-100"
             >
@@ -300,9 +325,11 @@ function Checkbox({
   indeterminate = false,
   onClick,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   indeterminate?: boolean;
+  disabled?: boolean;
   onClick: (e: MouseEvent) => void;
   label: string;
 }) {
@@ -315,10 +342,11 @@ function Checkbox({
       ref={ref}
       type="checkbox"
       checked={checked}
+      disabled={disabled}
       onChange={() => {}}
       onClick={onClick}
       aria-label={label}
-      className="size-3.5 cursor-pointer accent-brand-500"
+      className="size-3.5 cursor-pointer accent-brand-500 disabled:cursor-default disabled:opacity-40"
     />
   );
 }
