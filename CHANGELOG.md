@@ -10,6 +10,17 @@ everything before it is captured in git history (`git log`), not here.
   model to score or compare responses using its saved checkpoint, revisit run
   history, or replay its saved training pairs.
 
+- Continue into the next trace subsection with Down at the last row, or the
+  previous subsection with Up at the first row.
+
+- Preserve trace-table sorting when opening a trace and returning to the list.
+- Show the current section's range and offer “View all steps” so nested trace
+  overviews do not look like the end of the trace.
+
+- Select traces with checkboxes or Shift-click ranges in the current sort/filter
+  order, then delete the selection together. Failed deletions remain selected
+  for retry.
+
 - Remove the compute provider and epoch count from expanded reward-model rows.
 
 - Simplify reward-model creation to a name and selected traces. Use managed
