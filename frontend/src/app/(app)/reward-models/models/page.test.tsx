@@ -56,8 +56,8 @@ it("searches names and base models, filters status, and sorts rows", async () =>
   const user = userEvent.setup();
   vi.mocked(rmListRewardModels).mockResolvedValue([ready, queued]);
   render(<RewardModelsPage />);
-  await screen.findByRole("button", { name: ready.name });
-  const names = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("button").textContent);
+  await screen.findByRole("link", { name: ready.name });
+  const names = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("link").textContent);
   expect(names()).toEqual([queued.name, ready.name]);
   await user.click(screen.getByRole("button", { name: "Created" }));
   expect(names()).toEqual([ready.name, queued.name]);
@@ -94,15 +94,22 @@ it("expands from a model link, preserves zero accuracy, and opens the source tra
   expect(time).toHaveAttribute("title");
   fireEvent.click(within(details).getByRole("button", { name: "Trained on 4 traces" }));
   await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/reward-models?selected=t1,t2"));
-  fireEvent.click(screen.getByRole("button", { name: ready.name }));
+  fireEvent.click(screen.getByRole("button", { name: `${ready.name} details` }));
   expect(screen.queryByRole("region", { name: `${ready.name} details` })).not.toBeInTheDocument();
 });
 
 it("shows a failed model’s log when its row is expanded", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([{ ...ready, status: "failed", metrics: null, error: "Worker log\nTraining failed: no usable pairs" }]);
   render(<RewardModelsPage />);
-  fireEvent.click(await screen.findByRole("button", { name: ready.name }));
+  fireEvent.click(await screen.findByRole("button", { name: `${ready.name} details` }));
   expect(screen.getByText("Training failed: no usable pairs")).toBeVisible();
   expect(screen.getByText("Show log")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
+});
+
+
+it("opens the model playground from the model name", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
+  render(<RewardModelsPage />);
+  expect(await screen.findByRole("link", { name: ready.name })).toHaveAttribute("href", "/reward-models/models/ready");
 });

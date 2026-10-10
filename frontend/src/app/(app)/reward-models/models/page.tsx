@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Download, Loader2, Plus, Search } from "lucide-react";
@@ -156,9 +157,12 @@ function ModelRow({ model }: { model: RmRewardModel }) {
     <Fragment>
       <tr id={`model-${model.id}`} data-model-row className={cn("h-8 scroll-mt-4 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 target:bg-brand-500/5 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
         <td>
-          <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="flex h-7 w-full cursor-pointer items-center gap-2 text-left font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50" title={model.name}>
-            <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground", expanded && "rotate-90")} /><span className="truncate">{model.name}</span>
-          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">
+              <ChevronRight className={cn("size-3.5 text-muted-foreground", expanded && "rotate-90")} />
+            </button>
+            <Link href={`/reward-models/models/${model.id}`} className="truncate py-1 font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</Link>
+          </div>
         </td>
         <td><span className="inline-flex items-center gap-1.5 text-[12px]">
           {isActiveJob(model.status) ? <Loader2 className="size-3 animate-spin text-muted-foreground motion-reduce:animate-none" /> : <span className={cn("size-1.5 rounded-full", model.status === "succeeded" ? "bg-emerald-600/70 dark:bg-emerald-400/70" : "bg-red-500")} />}

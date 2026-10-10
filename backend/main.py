@@ -35,6 +35,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    intuitions,
     machine,
     marketing,
     mcp_servers,
@@ -158,6 +159,7 @@ app.include_router(reward_models.router)
 app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
+app.include_router(intuitions.router)
 app.include_router(mcp_servers.router)
 app.include_router(publish.router)
 app.include_router(security_audit.router)

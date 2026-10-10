@@ -28,6 +28,9 @@ import {
   RmQuote,
   RmRewardModel,
   RmRewardModelDetail,
+  RmPlaygroundRun,
+  RmPlaygroundHistory,
+  RmTrainingExample,
   RmTraceDetail,
   RmTraceSummary,
   RmScoringRun,
@@ -2816,4 +2819,23 @@ export async function rmDownloadSkill(runId: string): Promise<string> {
 /** Short-lived, owner-authorized URL for the browser's native download manager. */
 export function rmDownloadWeights(modelId: string): Promise<{ url: string }> {
   return apiFetch(`${RM}/reward-models/${modelId}/weights`);
+}
+
+
+export function rmRunPlayground(modelId: string, input: {
+  prompt?: string; instructions?: string; responses?: string[]; example_index?: number;
+}): Promise<RmPlaygroundRun> {
+  return apiFetch(`${RM}/reward-models/${modelId}/playground`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function rmGetPlaygroundRun(modelId: string, runId: string): Promise<RmPlaygroundRun> {
+  return apiFetch(`${RM}/reward-models/${modelId}/playground/${runId}`);
+}
+
+export function rmListPlaygroundRuns(modelId: string, offset = 0): Promise<RmPlaygroundHistory> {
+  return apiFetch(`${RM}/reward-models/${modelId}/playground?offset=${offset}`);
+}
+
+export function rmGetTrainingExamples(modelId: string, offset = 0): Promise<{ items: RmTrainingExample[]; total: number }> {
+  return apiFetch(`${RM}/reward-models/${modelId}/examples?offset=${offset}`);
 }

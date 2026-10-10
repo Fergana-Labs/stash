@@ -1048,6 +1048,164 @@ def stash_optimization_abandon_run(run_id: str, reason: str) -> str:
         )
 
 
+# ── Intuition models (personal judges) ───────────────────────────
+
+
+def _item(value: str):
+    """Items are text, or a JSON object when the string parses as one."""
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return value
+    return parsed if isinstance(parsed, dict) else value
+
+
+@mcp.tool()
+def stash_intuition_list() -> str:
+    """List the user's intuition models: personal judges trained from their labels
+    and comparisons. Use one whenever a decision should follow the user's taste
+    (e.g. "would I send this reply?"); call stash_intuition_predict with its id."""
+    with _client() as client:
+        return _json(client._get("/api/v1/intuitions"))
+
+
+@mcp.tool()
+def stash_intuition_get(model_id: str) -> str:
+    """Full definition of one intuition model: description, output labels, rubric
+    questions, head weights, held-out metrics, versions and data counts."""
+    with _client() as client:
+        return _json(client._get(f"/api/v1/intuitions/{model_id}"))
+
+
+@mcp.tool()
+def stash_intuition_predict(model_id: str, item: str, caller: str = "agent") -> str:
+    """Judge one item with the user's active intuition model. `item` is text or a
+    JSON object string shaped like the model's examples. Returns the label,
+    per-label probabilities, confidence, the rubric answers and each answer's
+    contribution. Low-confidence results deserve a human check. The call is
+    logged; if the user corrects it, send the correction with
+    stash_intuition_review so the model learns."""
+    with _client() as client:
+        return _json(
+            client._post(
+                f"/api/v1/intuitions/{model_id}/predict",
+                json={"item": _item(item), "caller": caller},
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_compare(model_id: str, item_a: str, item_b: str, caller: str = "agent") -> str:
+    """Ask a preference-type intuition model which of two items the user would
+    prefer. Returns p_a_wins, the winner, and the reasons (per-answer contributions)."""
+    with _client() as client:
+        return _json(
+            client._post(
+                f"/api/v1/intuitions/{model_id}/compare",
+                json={"item_a": _item(item_a), "item_b": _item(item_b), "caller": caller},
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_review(
+    model_id: str, prediction_id: str, label: str = "", dismiss: bool = False
+) -> str:
+    """Record the user's verdict on a served prediction (from predict/compare): the
+    correct label ('a'/'b' for comparisons), or dismiss=True. Labeled reviews become
+    training examples for the next version."""
+    with _client() as client:
+        return _json(
+            client._post(
+                f"/api/v1/intuitions/{model_id}/predictions/{prediction_id}/review",
+                json={"label": label or None, "dismiss": dismiss, "source": "agent"},
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_add_examples(model_id: str, examples: list[dict]) -> str:
+    """Add labeled examples the user gave you. Each: {"item": text|object, "label": ...}
+    for single items, or {"item": A, "item_b": B, "label": "a"|"b"} for comparisons
+    (preference models). Optional "split": "train"|"eval" and "note"."""
+    with _client() as client:
+        return _json(
+            client._post(
+                f"/api/v1/intuitions/{model_id}/examples",
+                json={"examples": examples, "source": "agent"},
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_create(
+    name: str,
+    output_type: str,
+    description: str,
+    labels: list[dict] | None = None,
+    rubric: list[dict] | None = None,
+) -> str:
+    """Create an intuition model. output_type 'choice' needs labels
+    [{"id": "send", "description": ...}, ...]; 'preference' learns a score from
+    comparisons. Rubric questions (optional now; see stash_intuition_get for the
+    shape) are typed: noul (yes/no), choice, or score."""
+    with _client() as client:
+        return _json(
+            client._post(
+                "/api/v1/intuitions",
+                json={
+                    "name": name,
+                    "output_type": output_type,
+                    "description": description,
+                    "labels": labels or [],
+                    "rubric": rubric or [],
+                },
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_edit_draft(
+    model_id: str,
+    description: str = "",
+    labels: list[dict] | None = None,
+    rubric: list[dict] | None = None,
+) -> str:
+    """Edit the draft version (created from the active one if needed). Only the
+    fields you pass change. Changed rubric questions are re-asked on the next train."""
+    body = {
+        k: v
+        for k, v in {"description": description or None, "labels": labels, "rubric": rubric}.items()
+        if v is not None
+    }
+    with _client() as client:
+        return _json(client._patch(f"/api/v1/intuitions/{model_id}/draft", json=body))
+
+
+@mcp.tool()
+def stash_intuition_train(model_id: str, l2: float = 0.005) -> str:
+    """Grade any ungraded examples under the draft, refit its head, and return
+    held-out metrics plus the promotion gate versus the active version."""
+    with _client() as client:
+        for _ in range(100):
+            graded = client._post(f"/api/v1/intuitions/{model_id}/draft/grade", json={"limit": 25})
+            if graded["remaining"] == 0:
+                break
+            if graded["graded"] == 0:
+                return _json({"error": "grading made no progress", **graded})
+        return _json(client._post(f"/api/v1/intuitions/{model_id}/draft/fit", json={"l2": l2}))
+
+
+@mcp.tool()
+def stash_intuition_promote(model_id: str, force: bool = False) -> str:
+    """Make the draft the active version. Refused when the gate fails unless
+    force=True; only force when the user explicitly asks."""
+    with _client() as client:
+        return _json(
+            client._post(f"/api/v1/intuitions/{model_id}/draft/promote", json={"force": force})
+        )
+
+
 # ── Entry point ───────────────────────────────────────────────────
 
 

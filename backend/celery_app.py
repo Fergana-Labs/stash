@@ -72,6 +72,7 @@ celery.conf.update(
         "backend.tasks.viz.precompute": {"queue": "heavy"},
         "backend.tasks.reward_models.train_reward_model": {"queue": "reward"},
         "backend.tasks.reward_models.run_gepa": {"queue": "reward"},
+        "backend.tasks.reward_models.playground_score": {"queue": "reward"},
         "backend.tasks.reward_models.score_trace": {"queue": "reward"},
         "backend.tasks.reward_models.collect_examples": {"queue": "reward"},
         "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},

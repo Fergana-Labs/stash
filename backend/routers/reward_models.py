@@ -13,7 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from rm_worker.artifacts import download_url
@@ -25,6 +25,7 @@ from ..services.rm import (
     datasets,
     evaluator,
     otel_ingest,
+    playground,
     query,
     trace_completion,
     trace_images,
@@ -132,6 +133,30 @@ class CreateGepaRunRequest(BaseModel):
 
 class ScoreTraceRequest(BaseModel):
     reward_model_id: UUID | None = None
+
+
+class PlaygroundRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt: str | None = Field(default=None, max_length=12000)
+    instructions: str = Field(default="", max_length=12000)
+    responses: list[Annotated[str, Field(min_length=1, max_length=12000)]] | None = Field(
+        default=None, min_length=1, max_length=2
+    )
+    example_index: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_input(self):
+        if self.example_index is not None:
+            if self.prompt is not None or self.responses is not None or self.instructions:
+                raise ValueError("Use a saved example or enter a new prompt and responses")
+        elif (
+            not self.prompt
+            or not self.prompt.strip()
+            or not self.responses
+            or not all(response.strip() for response in self.responses)
+        ):
+            raise ValueError("Enter a task and at least one response")
+        return self
 
 
 class ContributionRequest(BaseModel):
@@ -491,6 +516,133 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
         "trace_ids": row["trace_ids"],
         "feedback": row["feedback"],
     }
+
+
+@router.get("/reward-models/{model_id}/examples")
+async def reward_model_examples(
+    model_id: UUID,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=25),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    model = await playground.model_for_owner(current_user["id"], model_id)
+    pairs = model["training_pairs"] or []
+    return {
+        "total": len(pairs),
+        "items": [
+            {
+                "index": i,
+                "chosen": pair["chosen"],
+                "rejected": pair["rejected"],
+                "partition": pair.get("partition"),
+                "source": pair.get("source"),
+                "trace_ids": pair.get("trace_ids")
+                or ([pair["trace_id"]] if pair.get("trace_id") else []),
+            }
+            for i, pair in enumerate(pairs[offset : offset + limit], start=offset)
+        ],
+    }
+
+
+@router.post("/reward-models/{model_id}/playground", status_code=202)
+async def create_playground_run(
+    model_id: UUID,
+    req: PlaygroundRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    owner = current_user["id"]
+    model = await playground.model_for_owner(owner, model_id)
+    if model["status"] != "succeeded" or not model["artifact_key"]:
+        raise HTTPException(409, "This model is not ready to score responses yet")
+    if not os.environ.get("RM_WORKER_PYTHON"):
+        raise HTTPException(503, "Model scoring is not configured on this server")
+    if req.example_index is not None:
+        pairs = model["training_pairs"] or []
+        if req.example_index >= len(pairs):
+            raise HTTPException(404, "Training example not found")
+        pair = pairs[req.example_index]
+        data = {"example_index": req.example_index, "texts": [pair["chosen"], pair["rejected"]]}
+    else:
+        data = req.model_dump(exclude={"example_index"})
+    pool = get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        # Serialize requests across this owner's models, bounding concurrent GPU use.
+        await conn.fetchval("SELECT id FROM users WHERE id = $1 FOR UPDATE", owner)
+        await conn.execute(
+            """UPDATE rm_playground_runs SET status = 'failed', finished_at = now(),
+            error = 'Scoring timed out. Please try again.' WHERE owner_user_id = $1
+            AND status IN ('queued', 'running') AND created_at < now() - interval '35 minutes'""",
+            owner,
+        )
+        active = await conn.fetchrow(
+            "SELECT * FROM rm_playground_runs WHERE owner_user_id = $1 AND status IN ('queued', 'running')",
+            owner,
+        )
+        if active:
+            if active["reward_model_id"] == model_id and active["input"] == data:
+                return dict(active)
+            raise HTTPException(
+                409, "A playground run is already in progress. Wait for it to finish."
+            )
+        run = await conn.fetchrow(
+            "INSERT INTO rm_playground_runs(owner_user_id, reward_model_id, input) VALUES ($1, $2, $3) RETURNING *",
+            owner,
+            model_id,
+            data,
+        )
+    try:
+        rm_tasks.playground_score.delay(str(run["id"]))
+    except Exception:
+        logging.getLogger(__name__).exception("Could not dispatch playground run %s", run["id"])
+        await pool.execute(
+            "UPDATE rm_playground_runs SET status = 'failed', error = 'Could not start scoring. Please try again.', finished_at = now() WHERE id = $1 AND status = 'queued'",
+            run["id"],
+        )
+        raise HTTPException(503, "Could not start scoring. Please try again.") from None
+    return dict(run)
+
+
+@router.get("/reward-models/{model_id}/playground")
+async def list_playground_runs(
+    model_id: UUID,
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    owner = current_user["id"]
+    await playground.model_for_owner(owner, model_id)
+    await playground.expire_runs(owner)
+    rows = await get_pool().fetch(
+        """SELECT id, status, scores, error, created_at, input->>'example_index' AS example_index,
+        left(input->>'prompt', 160) AS prompt FROM rm_playground_runs
+        WHERE owner_user_id = $1 AND reward_model_id = $2 ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET $3""",
+        owner,
+        model_id,
+        offset,
+    )
+    total = await get_pool().fetchval(
+        "SELECT count(*) FROM rm_playground_runs WHERE owner_user_id = $1 AND reward_model_id = $2",
+        owner,
+        model_id,
+    )
+    return {"items": [dict(row) for row in rows], "total": total}
+
+
+@router.get("/reward-models/{model_id}/playground/{run_id}")
+async def get_playground_run(
+    model_id: UUID,
+    run_id: UUID,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    await playground.expire_runs(current_user["id"])
+    row = await get_pool().fetchrow(
+        "SELECT * FROM rm_playground_runs WHERE owner_user_id = $1 AND reward_model_id = $2 AND id = $3",
+        current_user["id"],
+        model_id,
+        run_id,
+    )
+    if row is None:
+        raise HTTPException(404, "Playground run not found")
+    return dict(row)
 
 
 @router.get("/reward-models/{model_id}/weights")
