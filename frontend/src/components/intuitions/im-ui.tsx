@@ -11,7 +11,6 @@ export { inputClass } from "@/components/workbench/workbench-ui";
 
 export const TABS = [
   { id: "playground", label: "Playground" },
-  { id: "inbox", label: "Inbox" },
   { id: "examples", label: "Examples" },
   { id: "versions", label: "Versions" },
 ] as const;

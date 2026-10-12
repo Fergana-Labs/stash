@@ -11,7 +11,6 @@ import { workingVersion } from "./im-helpers";
 import { IntuitionProvider, isTabId, LoadError, TABS, type IntuitionCtx, type TabId } from "./im-ui";
 import IntuitionHeader from "./IntuitionHeader";
 import PlaygroundTab from "./PlaygroundTab";
-import InboxTab from "./InboxTab";
 import ExamplesTab from "./ExamplesTab";
 import VersionsTab from "./VersionsTab";
 
@@ -97,7 +96,6 @@ export default function IntuitionDetail({ id }: { id: string }) {
           <TabBar tab={tab} detail={ctx.detail} examples={examples} onSelect={(t) => goTo(t)} />
           <div role="tabpanel" id={`im-panel-${tab}`} aria-labelledby={`im-tab-${tab}`} className={tab === "playground" ? "pt-0" : "pt-5"}>
             {tab === "playground" && <PlaygroundTab />}
-            {tab === "inbox" && <InboxTab />}
             {tab === "examples" && <ExamplesTab />}
             {tab === "versions" && <VersionsTab />}
           </div>
@@ -111,7 +109,6 @@ function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: Model
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const needsReview = examples?.filter((e) => e.needs_review).length ?? detail.counts.needs_review;
   const counts: Partial<Record<TabId, { n: number; strong?: boolean; title: string }>> = {
-    inbox: detail.counts.inbox ? { n: detail.counts.inbox, strong: true, title: "Unreviewed predictions" } : undefined,
     examples: { n: examples?.length ?? detail.counts.total, strong: needsReview > 0, title: needsReview ? `${needsReview} need review` : "Examples" },
   };
 

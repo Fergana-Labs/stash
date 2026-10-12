@@ -15,16 +15,16 @@ vi.mock("@/lib/intuition-api", () => ({
 }));
 vi.mock("./IntuitionHeader", () => ({ default: () => null }));
 vi.mock("./PlaygroundTab", () => ({ default: () => <p>Trace playground</p> }));
-vi.mock("./InboxTab", () => ({ default: () => null }));
 vi.mock("./ExamplesTab", () => ({ default: () => null }));
 vi.mock("./VersionsTab", () => ({ default: () => null }));
 
-it.each(["rubric", "train"])("opens the playground for a retired %s tab URL", async (tab) => {
+it.each(["rubric", "train", "inbox"])("opens the playground for a retired %s tab URL", async (tab) => {
   route.tab = tab;
   render(<IntuitionDetail id="model" />);
   expect(await screen.findByText("Trace playground")).toBeVisible();
   expect(screen.getByRole("tab", { name: "Playground" })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByRole("tab", { name: "Rubric" })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Train" })).not.toBeInTheDocument();
-  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.queryByRole("tab", { name: "Inbox" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("tab")).toHaveLength(3);
 });

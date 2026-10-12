@@ -170,7 +170,7 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
     <td>{model.active_number === null ? "Draft" : `Ready · v${model.active_number}`}</td>
     <td className="text-muted-foreground">—</td>
     <td className="text-muted-foreground">Rubric-based</td>
-    <td className="text-right tabular-nums"><span title={`${model.inbox} predictions to review`}>{model.examples}</span></td>
+    <td className="text-right tabular-nums">{model.examples}</td>
     <td className="text-right tabular-nums">{accuracy == null ? "—" : `${(accuracy * 100).toFixed(1)}%`}</td>
     <td className="text-right text-[11.5px] text-muted-foreground"><time dateTime={model.created_at}>{new Date(model.created_at).toLocaleString()}</time></td>
   </tr>
@@ -179,7 +179,6 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
         <div className="flex flex-wrap items-center gap-4 text-xs">
           <Link href={`${sandbox}?tab=playground`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">Open playground</Link>
           <Link href={`${sandbox}?tab=examples`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">{model.examples} labeled examples</Link>
-          <Link href={`${sandbox}?tab=inbox`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">{model.inbox} predictions to review</Link>
         </div>
         <dl className="m-0 mt-3 flex flex-wrap gap-x-8 gap-y-3 border-t border-border-subtle pt-3">
           <Metric label="Output" value={model.output_type === "choice" ? "Classifier" : "Preference"} />

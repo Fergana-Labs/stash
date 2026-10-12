@@ -143,7 +143,7 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   const details = screen.getByRole("region", { name: "Support reply details" });
   expect(within(details).getByRole("link", { name: "Open playground" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=playground");
-  expect(within(details).getByRole("link", { name: "3 predictions to review" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=inbox");
+  expect(within(details).queryByRole("link", { name: /predictions to review/ })).not.toBeInTheDocument();
   await userEvent.setup().click(toggle);
   expect(screen.queryByRole("region", { name: "Support reply details" })).not.toBeInTheDocument();
   await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Rubric-based");
