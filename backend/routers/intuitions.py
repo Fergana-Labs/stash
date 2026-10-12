@@ -36,10 +36,12 @@ class CreateModel(Body):
     description: str = Field(default="", max_length=6000)
     labels: list[dict] = Field(default_factory=list)
     rubric: list[dict] = Field(default_factory=list)
+    when_to_use: str = Field(default="", max_length=2000)
 
 
-class Rename(Body):
-    name: str = Field(min_length=1, max_length=160)
+class EditModel(Body):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    when_to_use: str | None = Field(default=None, max_length=2000)
 
 
 class EditDraft(Body):
@@ -109,6 +111,21 @@ class Compare(Body):
     caller: str = Field(default="api", max_length=100)
 
 
+class Check(Body):
+    item: Item
+    model_ids: list[UUID] | None = Field(default=None, max_length=service.MAX_CHECK_MODELS)
+    task: str | None = Field(default=None, max_length=4000)
+    caller: str = Field(default="agent", max_length=100)
+
+
+class Batch(Body):
+    items: list[Item] = Field(min_length=1, max_length=service.MAX_BATCH)
+    labels: list[str | None] | None = None
+    version: Which = "active"
+    log: bool = False
+    caller: str = Field(default="batch", max_length=100)
+
+
 class Review(Body):
     label: str | None = None
     dismiss: bool = False
@@ -142,10 +159,34 @@ async def create_model(req: CreateModel, user: User):
     return await checked(service.create_model(user["id"], **req.model_dump()))
 
 
-@router.post("/examples/support-replies", status_code=201)
-async def load_example(user: User):
-    """Create the bundled, pre-graded demo model so the UI is playable without a judge key."""
-    return await checked(demo.load(user["id"]))
+@router.get("/examples")
+async def list_examples_catalog(user: User):
+    """Bundled, pre-graded example models that can be loaded in one click."""
+    return {"examples": demo.catalog()}
+
+
+@router.post("/examples/{slug}", status_code=201)
+async def load_example(slug: str, user: User):
+    """Create a bundled demo model; its judge answers are pre-recorded, so loading is free."""
+    if slug not in demo.DEMOS:
+        raise HTTPException(404, "Unknown example")
+    return await checked(demo.load(user["id"], slug))
+
+
+@router.get("/find")
+async def find(task: str, user: User, limit: int = 5):
+    """The owner's intuitions that apply to a task, for agents choosing which to consult."""
+    return {"models": await checked(service.find_models(user["id"], task, min(max(limit, 1), 10)))}
+
+
+@router.post("/check")
+async def check(req: Check, user: User):
+    """Lint one item with several intuitions (given, or routed from `task`)."""
+    return await checked(
+        service.check(
+            user["id"], req.item, model_ids=req.model_ids, task=req.task, caller=req.caller
+        )
+    )
 
 
 @router.get("/{model_id}")
@@ -154,8 +195,8 @@ async def detail(model_id: UUID, user: User):
 
 
 @router.patch("/{model_id}")
-async def rename(model_id: UUID, req: Rename, user: User):
-    return await checked(service.rename_model(user["id"], model_id, req.name))
+async def edit_model(model_id: UUID, req: EditModel, user: User):
+    return await checked(service.update_model(user["id"], model_id, **req.model_dump()))
 
 
 @router.delete("/{model_id}", status_code=204)
@@ -266,6 +307,22 @@ async def compare(model_id: UUID, req: Compare, user: User):
     return await checked(
         service.compare_items(
             user["id"], model_id, req.item_a, req.item_b, which=req.version, caller=req.caller
+        )
+    )
+
+
+@router.post("/{model_id}/batch")
+async def batch(model_id: UUID, req: Batch, user: User):
+    """Run the model over a dataset (an eval): per-item outputs and a summary."""
+    return await checked(
+        service.batch(
+            user["id"],
+            model_id,
+            req.items,
+            labels=req.labels,
+            which=req.version,
+            log=req.log,
+            caller=req.caller,
         )
     )
 

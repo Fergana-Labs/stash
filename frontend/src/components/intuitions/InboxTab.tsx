@@ -8,16 +8,28 @@ import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
 import { EmptyState } from "@/components/reward-models/rm-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
-import { imPredictions, imReview, type LoggedPrediction } from "@/lib/intuition-api";
-import { allowedLabels, labelText, pct } from "./im-helpers";
-import { LabelTag, LoadError, Segmented, useIntuition } from "./im-ui";
+import { imPredictions, imReview, type Driver, type LoggedPrediction, type RubricAnswers } from "@/lib/intuition-api";
+import { allowedLabels, isFlagged, labelText, pct } from "./im-helpers";
+import { FlagTag, LabelTag, LoadError, Segmented, useIntuition } from "./im-ui";
 import ItemView from "./ItemView";
+import DriverBars from "./DriverBars";
 
 type Status = "unreviewed" | "labeled" | "dismissed" | "all";
 
 function predictedOf(p: LoggedPrediction): string {
   const out = p.output as Record<string, unknown>;
   return p.kind === "compare" ? String(out.winner ?? "") : String(out.label ?? "");
+}
+
+function driversOf(p: LoggedPrediction): Driver[] | undefined {
+  const drivers = (p.output as Record<string, unknown>).drivers;
+  return Array.isArray(drivers) ? (drivers as Driver[]) : undefined;
+}
+
+function answersOf(p: LoggedPrediction, side: "a" | "b"): RubricAnswers | undefined {
+  const out = p.output as Record<string, unknown>;
+  const value = p.kind === "compare" ? out[side === "a" ? "rubric_a" : "rubric_b"] : side === "a" ? out.rubric : undefined;
+  return value && typeof value === "object" ? (value as RubricAnswers) : undefined;
 }
 
 export default function InboxTab() {
@@ -109,11 +121,14 @@ export default function InboxTab() {
             const kind = p.kind === "compare" ? "pair" : "item";
             const predicted = predictedOf(p);
             const options = allowedLabels(outputType, kind, labels);
+            const drivers = driversOf(p);
+            const flagged = kind === "item" && (outputType === "choice" ? isFlagged(labels, predicted) : predicted === "bad");
             return (
               <li key={p.id} className="rounded-lg border border-border bg-background">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2 text-[11.5px] text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
                     Predicted <LabelTag label={labelText(predicted, kind)} tone="brand" />
+                    {flagged && <FlagTag />}
                   </span>
                   <span>
                     <span className={cn("font-mono", (p.confidence ?? 1) < 0.6 ? "text-yellow-700 dark:text-yellow-400" : "text-foreground")}>{pct(p.confidence)}</span> confident
@@ -143,6 +158,17 @@ export default function InboxTab() {
                     <ItemView item={p.input.item} />
                   )}
                 </div>
+                {drivers && drivers.length > 0 && (
+                  <div className="border-t border-border-subtle px-4 py-2.5">
+                    <div className="mb-1.5 flex items-baseline gap-2">
+                      <span className="text-[11.5px] font-medium text-dim">Why</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {kind === "pair" ? `push toward ${predicted.toUpperCase()} winning` : `push toward “${labelText(predicted, kind)}”`}
+                      </span>
+                    </div>
+                    <DriverBars drivers={drivers} rubric={version?.rubric} answers={answersOf(p, "a")} answersB={kind === "pair" ? answersOf(p, "b") : undefined} limit={3} compact />
+                  </div>
+                )}
                 {p.status === "unreviewed" && (
                   <div className="flex flex-wrap items-center gap-1.5 border-t border-border-subtle px-4 py-2">
                     <span className="mr-1 text-[12px] text-dim">Correct label:</span>

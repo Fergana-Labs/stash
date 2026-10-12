@@ -9,7 +9,8 @@ export type ExampleSource = "human" | "agent" | "generated" | "production";
 export type Split = "train" | "eval";
 export type Item = string | Record<string, unknown>;
 
-export interface OutputLabel { id: string; description: string }
+/** `flag`: this label means "needs fixing"; checks report it as a finding. */
+export interface OutputLabel { id: string; description: string; flag?: boolean }
 /** noul: criteria {true, false}; choice: {option: description}; score: ordered level descriptions. */
 export interface RubricQuestion { id: string; type: QuestionType; prompt: string; criteria: Record<string, string> | string[] }
 
@@ -35,7 +36,24 @@ export interface Evaluation {
   rows: EvalRow[];
 }
 export interface FitOptions { l2: number; train_on: "train" | "all"; sources: ExampleSource[] | null; calibrate: boolean; rows: number }
-export interface Metrics { train: Evaluation; eval: Evaluation; ungraded_examples: number; fit_options: FitOptions | null }
+/** Per-question diagnostics from the last fit (spec: service._question_diagnostics). */
+export interface QuestionAblation { accuracy_without: number | null; log_loss_without: number | null; accuracy_drop: number | null; log_loss_rise: number | null }
+export interface QuestionDiagnostic {
+  question_id: string;
+  /** label (or "preferred"/"not preferred" for pairs) -> feature name -> mean feature value. */
+  by_label: Record<string, Record<string, number>>;
+  /** Held-out effect of refitting without this question; null with too few held-out examples. */
+  ablation: QuestionAblation | null;
+}
+export interface QuestionDiagnostics { baseline: { accuracy: number | null; log_loss: number | null } | null; questions: QuestionDiagnostic[] }
+export interface Metrics {
+  train: Evaluation;
+  eval: Evaluation;
+  ungraded_examples: number;
+  fit_options: FitOptions | null;
+  /** Missing on older or hand-edited heads. */
+  questions?: QuestionDiagnostics | null;
+}
 export interface GateCheck { name: string; passed: boolean; detail: string }
 export interface Gate {
   passed: boolean;
@@ -77,7 +95,7 @@ export interface VersionSummary {
 export interface JudgeStatus { provider: "jev"; configured: boolean; model: string }
 
 export interface ModelSummary {
-  id: string; name: string; output_type: OutputType;
+  id: string; name: string; output_type: OutputType; when_to_use?: string;
   active_version_id: string | null; draft_version_id: string | null;
   created_at: string; updated_at: string;
   active_number: number | null; active_metrics: Metrics | null;
@@ -86,7 +104,7 @@ export interface ModelSummary {
 }
 
 export interface ModelDetail {
-  model: { id: string; name: string; output_type: OutputType; active_version_id: string | null; draft_version_id: string | null; created_at: string; updated_at: string };
+  model: { id: string; name: string; output_type: OutputType; when_to_use?: string; active_version_id: string | null; draft_version_id: string | null; created_at: string; updated_at: string };
   active: Version | null;
   draft: Version | null;
   versions: VersionSummary[];
@@ -102,6 +120,12 @@ export interface Example {
 }
 export interface NewExample { item: Item; item_b?: Item | null; label?: string | null; split?: Split; needs_review?: boolean; note?: string }
 
+/**
+ * One question's push on a decision: toward the predicted label (choice), the score
+ * (preference item), or A over B (compare). Sorted by |contribution|.
+ */
+export interface Driver { question_id: string; prompt: string; contribution: number }
+
 /** Rubric answers keyed by question id, then option -> probability. */
 export type RubricAnswers = Record<string, Record<string, number>>;
 
@@ -113,6 +137,7 @@ export interface Prediction {
   /** Per output class, each feature's contribution to that class's logit (preference: key "score"). */
   contributions: Record<string, Record<string, number>>;
   rubric: RubricAnswers;
+  drivers?: Driver[];
   version: number;
   score?: number;
 }
@@ -120,6 +145,7 @@ export interface Comparison {
   prediction_id: string | null;
   score_a: number; score_b: number; p_a_wins: number; winner: "a" | "b"; confidence: number;
   contributions: Record<string, number>;
+  drivers?: Driver[];
   rubric_a: RubricAnswers; rubric_b: RubricAnswers; version: number;
 }
 export interface LoggedPrediction {
@@ -132,15 +158,45 @@ export interface LoggedPrediction {
 export interface GradeResult { graded: number; failed: number; remaining: number; errors: string[] }
 export interface FitResult { head: Head; metrics: Metrics; gate: Gate }
 
+export interface CatalogExample {
+  slug: string; name: string; when_to_use: string; output_type: OutputType;
+  labels: { id: string; flag: boolean }[]; examples: number; attribution: string | null;
+}
+export interface FoundModel { model_id: string; name: string; output_type: OutputType; when_to_use: string; reason: string }
+export interface CheckResult {
+  model_id: string; name: string; label: string; label_meaning: string; confidence: number;
+  flagged: boolean; why: Driver[]; prediction_id: string | null;
+}
+export interface CheckResponse {
+  passed: boolean;
+  findings: CheckResult[];
+  results: CheckResult[];
+  errors: { model_id: string; error: string }[];
+  /** Models picked from `task` (null when model_ids were given). */
+  routed: FoundModel[] | null;
+}
+export interface BatchRow {
+  label: string; probabilities: Record<string, number>; confidence: number; drivers: Driver[];
+  version: number; score?: number; prediction_id?: string; expected?: string; correct?: boolean;
+}
+export interface BatchSummary {
+  n: number; label_counts: Record<string, number>; mean_confidence: number; flagged: number;
+  labeled?: number; accuracy?: number; log_loss?: number; brier?: number;
+}
+export interface BatchResponse { version: number; summary: BatchSummary; results: BatchRow[] }
+
 const post = <T>(path: string, body?: unknown) =>
   apiFetch<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const imList = () => apiFetch<{ models: ModelSummary[]; judge: JudgeStatus }>(IM);
-export const imCreate = (body: { name: string; output_type: OutputType; description?: string; labels?: OutputLabel[]; rubric?: RubricQuestion[] }) =>
+export const imCreate = (body: { name: string; output_type: OutputType; when_to_use?: string; description?: string; labels?: OutputLabel[]; rubric?: RubricQuestion[] }) =>
   post<ModelDetail>(IM, body);
-export const imLoadExample = () => post<ModelDetail>(`${IM}/examples/support-replies`);
+export const imCatalog = () => apiFetch<{ examples: CatalogExample[] }>(`${IM}/examples`);
+export const imLoadExample = (slug: string) => post<ModelDetail>(`${IM}/examples/${encodeURIComponent(slug)}`);
 export const imGet = (id: string) => apiFetch<ModelDetail>(`${IM}/${id}`);
-export const imRename = (id: string, name: string) => apiFetch<ModelDetail>(`${IM}/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+export const imUpdateModel = (id: string, body: { name?: string; when_to_use?: string }) =>
+  apiFetch<ModelDetail>(`${IM}/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+export const imRename = (id: string, name: string) => imUpdateModel(id, { name });
 export const imDelete = (id: string) => apiFetch<void>(`${IM}/${id}`, { method: "DELETE" });
 
 export const imEditDraft = (id: string, body: { description?: string; labels?: OutputLabel[]; rubric?: RubricQuestion[]; seed_example_ids?: string[] }) =>
@@ -175,3 +231,8 @@ export const imPredictions = (id: string, status: "unreviewed" | "labeled" | "di
   apiFetch<LoggedPrediction[]>(`${IM}/${id}/predictions?status=${status}`);
 export const imReview = (id: string, predictionId: string, body: { label?: string | null; dismiss?: boolean; note?: string }) =>
   post<{ status: string; example: Example | null }>(`${IM}/${id}/predictions/${predictionId}/review`, body);
+
+export const imFind = (task: string, limit = 5) => apiFetch<{ models: FoundModel[] }>(`${IM}/find?${new URLSearchParams({ task, limit: String(limit) })}`);
+export const imCheck = (body: { item: Item; model_ids?: string[]; task?: string; caller?: string }) => post<CheckResponse>(`${IM}/check`, { caller: "playground", ...body });
+export const imBatch = (id: string, body: { items: Item[]; labels?: (string | null)[]; version?: "active" | "draft"; log?: boolean }) =>
+  post<BatchResponse>(`${IM}/${id}/batch`, { caller: "eval", ...body });

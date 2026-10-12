@@ -14,6 +14,7 @@ logged; reviewing one turns it into a 'production' example.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -22,6 +23,7 @@ import re
 from typing import Literal
 from uuid import UUID
 
+import numpy as np
 from pydantic import BaseModel, Field, ValidationError
 
 from ...config import settings
@@ -129,7 +131,7 @@ def _validate(output_type: str, description: str, labels: list, rubric: list) ->
 
 async def list_models(owner_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
-        """SELECT m.id, m.name, m.output_type, m.active_version_id, m.draft_version_id,
+        """SELECT m.id, m.name, m.output_type, m.when_to_use, m.active_version_id, m.draft_version_id,
                   m.created_at, m.updated_at,
                   av.number AS active_number, av.metrics AS active_metrics,
                   av.description AS active_description, dv.description AS draft_description,
@@ -154,15 +156,18 @@ async def create_model(
     description: str,
     labels: list,
     rubric: list,
+    when_to_use: str = "",
 ) -> dict:
     spec = _validate(output_type, description, labels, rubric)
     provider, model_name = "jev", settings.JEV_MODEL
     async with get_pool().acquire() as conn, conn.transaction():
         model_id = await conn.fetchval(
-            "INSERT INTO intuition_models (owner_user_id, name, output_type) VALUES ($1, $2, $3) RETURNING id",
+            """INSERT INTO intuition_models (owner_user_id, name, output_type, when_to_use)
+               VALUES ($1, $2, $3, $4) RETURNING id""",
             owner_id,
             name,
             output_type,
+            when_to_use,
         )
         version_id = await conn.fetchval(
             """INSERT INTO intuition_versions
@@ -181,10 +186,18 @@ async def create_model(
     return await get_detail(owner_id, model_id)
 
 
-async def rename_model(owner_id: UUID, model_id: UUID, name: str) -> dict:
+async def update_model(
+    owner_id: UUID, model_id: UUID, *, name: str | None = None, when_to_use: str | None = None
+) -> dict:
+    """Model-level fields (not versioned): the name and the agent-facing "when to use"."""
     await _model(owner_id, model_id)
     await get_pool().execute(
-        "UPDATE intuition_models SET name = $2, updated_at = now() WHERE id = $1", model_id, name
+        """UPDATE intuition_models
+              SET name = coalesce($2, name), when_to_use = coalesce($3, when_to_use), updated_at = now()
+            WHERE id = $1""",
+        model_id,
+        name,
+        when_to_use,
     )
     return await get_detail(owner_id, model_id)
 
@@ -276,16 +289,25 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     found = await _examples(model_id, seeds)
     if len(found) != len(seeds) or any(e["label"] is None or e["needs_review"] for e in found):
         raise ValueError("Seed examples must be labeled, reviewed examples of this model")
+    # Label descriptions and flags never reach the judge or the head (only label ids
+    # do), so editing just those keeps the fit's metrics and gate.
+    keeps_fit = (
+        spec["description"] == draft["description"]
+        and spec["rubric"] == draft["rubric"]
+        and [str(s) for s in seeds] == [str(s) for s in draft["seed_example_ids"]]
+        and [label["id"] for label in spec["labels"]] == [label["id"] for label in draft["labels"]]
+    )
     await get_pool().execute(
         """UPDATE intuition_versions
               SET description = $2, labels = $3, rubric = $4, seed_example_ids = $5::uuid[],
-                  metrics = NULL, gate = NULL
+                  metrics = CASE WHEN $6 THEN metrics END, gate = CASE WHEN $6 THEN gate END
             WHERE id = $1""",
         draft["id"],
         spec["description"],
         spec["labels"],
         spec["rubric"],
         [UUID(s) for s in seeds],
+        keeps_fit,
     )
     await _touch(model_id)
     return await get_detail(owner_id, model_id)
@@ -614,7 +636,77 @@ def _oof_temperature(output_type, names, cls, train, l2) -> float:
     return round(math.exp(result.x), 4)
 
 
-async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | None) -> dict:
+def _question_columns(rubric: list[dict], names: list[str]) -> dict[str, list[int]]:
+    return {
+        q["id"]: [i for i, n in enumerate(names) if n == q["id"] or n.startswith(q["id"] + "=")]
+        for q in rubric
+    }
+
+
+def _question_diagnostics(
+    output_type: str, draft: dict, pool: list[dict], held: list[dict], l2: float
+):
+    """Per rubric question: how answers differ by label, and what removing it costs.
+
+    Lets someone improve one judgment at a time: a question whose answers don't
+    separate the labels, or whose removal doesn't hurt held-out accuracy, is the
+    one to rewrite or drop.
+    """
+    names, classes = draft["feature_names"], draft["classes"]
+    columns = _question_columns(draft["rubric"], names)
+
+    def view(rows, keep):
+        def cut(f):
+            return None if f is None else [f[i] for i in keep]
+
+        return [{**r, "f": cut(r["f"]), "f_b": cut(r.get("f_b"))} for r in rows]
+
+    def by_label(cols):
+        groups: dict[str, list[list[float]]] = {}
+        for r in pool:
+            if r["kind"] == "pair":
+                win, lose = (r["f"], r["f_b"]) if r["label"] == "a" else (r["f_b"], r["f"])
+                groups.setdefault("preferred", []).append([win[i] for i in cols])
+                groups.setdefault("not preferred", []).append([lose[i] for i in cols])
+            else:
+                groups.setdefault(r["label"], []).append([r["f"][i] for i in cols])
+        return {
+            label: {
+                names[i]: round(float(np.mean([v[j] for v in vals])), 3) for j, i in enumerate(cols)
+            }
+            for label, vals in groups.items()
+        }
+
+    def held_metrics(keep):
+        head = heads.fit(output_type, [names[i] for i in keep], classes, view(pool, keep), l2)
+        m = heads.evaluate(head, output_type, view(held, keep))
+        return m["accuracy"], m["log_loss"]
+
+    enough = len(held) >= heads.MIN_GATE_EXAMPLES
+    base = held_metrics(list(range(len(names)))) if enough else None
+    out = []
+    for q in draft["rubric"]:
+        cols = columns[q["id"]]
+        keep = [i for i in range(len(names)) if i not in cols]
+        ablation = None
+        if enough and keep:
+            acc, ll = held_metrics(keep)
+            ablation = {
+                "accuracy_without": acc,
+                "log_loss_without": ll,
+                "accuracy_drop": round(base[0] - acc, 4),
+                "log_loss_rise": round(ll - base[1], 4),
+            }
+        out.append({"question_id": q["id"], "by_label": by_label(cols), "ablation": ablation})
+    return {
+        "baseline": None if base is None else {"accuracy": base[0], "log_loss": base[1]},
+        "questions": out,
+    }
+
+
+async def _refresh(
+    model: dict, draft: dict, head: dict, fit_options: dict | None, diagnostics: dict | None = None
+) -> dict:
     rows, missing = await _rows(model, draft)
     held = _held_out(rows)
     metrics = {
@@ -624,6 +716,7 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
         "eval": heads.evaluate(head, model["output_type"], held),
         "ungraded_examples": missing,
         "fit_options": fit_options,
+        "questions": diagnostics,
     }
     active = await _load_version(model["active_version_id"])
     incumbent = None
@@ -698,7 +791,8 @@ async def fit(
         "calibrate": calibrate,
         "rows": len(pool),
     }
-    return await _refresh(model, draft, head, options)
+    diagnostics = _question_diagnostics(model["output_type"], draft, pool, _held_out(rows), l2)
+    return await _refresh(model, draft, head, options, diagnostics)
 
 
 async def set_head(
@@ -839,6 +933,7 @@ async def predict(
         output = heads.predict_choice(version["head"], features)
     else:
         output = heads.predict_preference_item(version["head"], features)
+    output["drivers"] = heads.drivers(version["rubric"], output)
     output["rubric"] = await _answers(model_id, version, item)
     output["version"] = version["number"]
     prediction_id = (
@@ -863,6 +958,7 @@ async def compare_items(
     version = await _serving_version(model, which)
     f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
     output = heads.compare(version["head"], f_a, f_b)
+    output["drivers"] = heads.drivers(version["rubric"], output)
     output["rubric_a"] = await _answers(model_id, version, item_a)
     output["rubric_b"] = await _answers(model_id, version, item_b)
     output["version"] = version["number"]
@@ -872,6 +968,216 @@ async def compare_items(
         else None
     )
     return {"prediction_id": prediction_id, **output}
+
+
+# ── Agent use: find, check, batch ────────────────────────────────────────
+
+MAX_BATCH = 200
+MAX_CHECK_MODELS = 8
+
+
+class _Pick(BaseModel):
+    model_id: str
+    reason: str
+
+
+class _Picks(BaseModel):
+    picks: list[_Pick]
+
+
+async def _active_catalog(owner_id: UUID) -> list[dict]:
+    rows = await get_pool().fetch(
+        """SELECT m.id, m.name, m.output_type, m.when_to_use, v.description, v.labels
+             FROM intuition_models m JOIN intuition_versions v ON v.id = m.active_version_id
+            WHERE m.owner_user_id = $1 AND v.head IS NOT NULL
+            ORDER BY m.updated_at DESC""",
+        owner_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def find_models(owner_id: UUID, task: str, limit: int = 5) -> list[dict]:
+    """Which of the owner's intuitions apply to a task, the way an agent picks skills."""
+    catalog = await _active_catalog(owner_id)
+    if not catalog:
+        return []
+    shown = [
+        {
+            "model_id": str(m["id"]),
+            "name": m["name"],
+            "when_to_use": m["when_to_use"],
+            "judges": m["description"][:600],
+            "labels": [label["id"] for label in m["labels"]],
+        }
+        for m in catalog
+    ]
+    result = await llm.complete_structured(
+        system=(
+            "You route an agent's work to the user's saved judgments (intuition models). "
+            "Pick only models whose judgment applies to the task's output; pick none if none apply. "
+            "Most relevant first."
+        ),
+        prompt=f"TASK:\n{task}\n\nMODELS:\n{json.dumps(shown, ensure_ascii=False)}",
+        output_model=_Picks,
+        tier=llm.ModelTier.FAST,
+        max_tokens=1024,
+    )
+    by_id = {str(m["id"]): m for m in catalog}
+    picked, seen = [], set()
+    for p in result.picks:
+        m = by_id.get(p.model_id)
+        if m is None or p.model_id in seen:
+            continue
+        seen.add(p.model_id)
+        picked.append(
+            {
+                "model_id": p.model_id,
+                "name": m["name"],
+                "output_type": m["output_type"],
+                "when_to_use": m["when_to_use"],
+                "reason": p.reason,
+            }
+        )
+    return picked[:limit]
+
+
+def _flagged(version: dict, output: dict) -> bool:
+    if "winner" in output:
+        return False
+    if version["output_type"] == "preference":
+        return output["label"] == "bad"
+    flags = {label["id"] for label in version["labels"] if label.get("flag")}
+    return output["label"] in flags
+
+
+async def check(
+    owner_id: UUID,
+    item,
+    *,
+    model_ids: list[UUID] | None = None,
+    task: str | None = None,
+    caller: str = "agent",
+) -> dict:
+    """Lint an item with several intuitions: each verdict, why, and what it flags."""
+    picked = None
+    if model_ids is None:
+        if not task:
+            raise Conflict("Pass model_ids, or a task description to pick the relevant models")
+        picked = await find_models(owner_id, task, MAX_CHECK_MODELS)
+        model_ids = [UUID(p["model_id"]) for p in picked]
+    model_ids = model_ids[:MAX_CHECK_MODELS]
+
+    async def one(model_id: UUID) -> dict:
+        model = await _model(owner_id, model_id)
+        version = await _serving_version(model, "active")
+        out = await predict(owner_id, model_id, item, caller=caller)
+        flagged = _flagged(version, out)
+        labels = {label["id"]: label["description"] for label in version["labels"]}
+        return {
+            "model_id": str(model_id),
+            "name": model["name"],
+            "label": out["label"],
+            "label_meaning": labels.get(out["label"], ""),
+            "confidence": out["confidence"],
+            "flagged": flagged,
+            "why": out["drivers"][:3],
+            "prediction_id": out["prediction_id"],
+        }
+
+    results = await asyncio.gather(*(one(m) for m in model_ids), return_exceptions=True)
+    ok, errors = [], []
+    for model_id, r in zip(model_ids, results):
+        if isinstance(r, BaseException):
+            if not isinstance(r, NotFound | Conflict | providers.ProviderError):
+                raise r
+            errors.append({"model_id": str(model_id), "error": str(r)})
+        else:
+            ok.append(r)
+    return {
+        "passed": not any(r["flagged"] for r in ok),
+        "findings": [r for r in ok if r["flagged"]],
+        "results": ok,
+        "errors": errors,
+        "routed": picked,
+    }
+
+
+async def batch(
+    owner_id: UUID,
+    model_id: UUID,
+    items: list,
+    *,
+    labels: list[str | None] | None = None,
+    which: str = "active",
+    log: bool = False,
+    caller: str = "batch",
+) -> dict:
+    """Run a model over a dataset, as an eval: per-item outputs plus a summary."""
+    if not items:
+        raise Conflict("No items to run")
+    if len(items) > MAX_BATCH:
+        raise Conflict(f"At most {MAX_BATCH} items per batch")
+    if labels is not None and len(labels) != len(items):
+        raise Conflict("labels must have one entry per item")
+    model = await _model(owner_id, model_id)
+    version = await _serving_version(model, which)
+    if labels is not None:
+        allowed = (
+            set(version["head"]["classes"]) if model["output_type"] == "choice" else {"good", "bad"}
+        )
+        bad = sorted({lab for lab in labels if lab is not None and lab not in allowed})
+        if bad:
+            raise Conflict(f"Unknown labels: {', '.join(bad)}")
+    features = await _features(model_id, version, items, grade_missing=True)
+    results = []
+    for n, (item, f) in enumerate(zip(items, features)):
+        if model["output_type"] == "choice":
+            out = heads.predict_choice(version["head"], f)
+        else:
+            out = heads.predict_preference_item(version["head"], f)
+        out["drivers"] = heads.drivers(version["rubric"], out)[:3]
+        out.pop("contributions")
+        out["rubric"] = await _answers(model_id, version, item)
+        out["version"] = version["number"]
+        if log:
+            out["prediction_id"] = await _log(
+                model_id, version, "predict", {"item": item}, out, caller
+            )
+        if labels is not None and labels[n] is not None:
+            out["expected"] = labels[n]
+            out["correct"] = out["label"] == labels[n]
+        results.append(out)
+    counts: dict[str, int] = {}
+    for r in results:
+        counts[r["label"]] = counts.get(r["label"], 0) + 1
+    summary = {
+        "n": len(results),
+        "label_counts": counts,
+        "mean_confidence": float(np.mean([r["confidence"] for r in results])),
+        "flagged": sum(_flagged(version, r) for r in results),
+    }
+    scored = [r for r in results if "expected" in r]
+    if scored:
+        p_true = [max(r["probabilities"][r["expected"]], 1e-9) for r in scored]
+        summary.update(
+            {
+                "labeled": len(scored),
+                "accuracy": float(np.mean([r["correct"] for r in scored])),
+                "log_loss": float(-np.mean(np.log(p_true))),
+                "brier": float(
+                    np.mean(
+                        [
+                            sum(
+                                (p - (lab == r["expected"])) ** 2
+                                for lab, p in r["probabilities"].items()
+                            )
+                            for r in scored
+                        ]
+                    )
+                ),
+            }
+        )
+    return {"version": version["number"], "summary": summary, "results": results}
 
 
 # ── Collected data: the review inbox ─────────────────────────────────────

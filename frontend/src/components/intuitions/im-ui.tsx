@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Loader2 } from "lucide-react";
+import { Flag, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ export const TABS = [
   { id: "examples", label: "Examples" },
   { id: "rubric", label: "Rubric" },
   { id: "train", label: "Train" },
+  { id: "eval", label: "Eval" },
   { id: "versions", label: "Versions" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
@@ -118,6 +119,16 @@ export function LabelTag({ label, tone = "muted", className }: { label: string; 
         className,
       )}
     >
+      {label}
+    </span>
+  );
+}
+
+/** Marks a label that means "needs fixing" (checks report it as a finding). */
+export function FlagTag({ className, label = "needs fixing" }: { className?: string; label?: string }) {
+  return (
+    <span className={cn("tag inline-flex items-center gap-1 bg-red-500/10 normal-case text-red-600 dark:text-red-400", className)} title="Flagged label: checks report this verdict as a finding">
+      <Flag className="h-2.5 w-2.5" aria-hidden="true" />
       {label}
     </span>
   );

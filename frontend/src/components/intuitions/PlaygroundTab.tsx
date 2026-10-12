@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
 import { imCompare, imPredict, imReview, type Comparison, type Item, type Prediction, type Version } from "@/lib/intuition-api";
-import { detectItemKeys, itemsOf, pct, signed } from "./im-helpers";
-import { Bar, Callout, Panel, Segmented, Spinner, useIntuition } from "./im-ui";
+import { detectItemKeys, isFlagged, itemsOf, pct, signed } from "./im-helpers";
+import { Bar, Callout, FlagTag, Panel, Segmented, Spinner, useIntuition } from "./im-ui";
 import ItemInput, { draftFromItem, draftToItem, emptyDraft, type ItemDraft } from "./ItemInput";
 import { ContributionBars, ProbabilityBars, RubricAnswersView } from "./ProbabilityBars";
 import AgentUsagePanel from "./AgentUsagePanel";
+import DriverBars from "./DriverBars";
 
 type Which = "active" | "draft";
 type Mode = "item" | "pair";
@@ -170,6 +171,7 @@ export default function PlaygroundTab() {
             prediction={prediction}
             labelOrder={outputType === "choice" ? labels.map((l) => l.id) : ["good", "bad"]}
             describe={(l) => labels.find((x) => x.id === l)?.description}
+            flagged={outputType === "choice" ? isFlagged(labels, prediction.label) : prediction.label === "bad"}
             reviewed={reviewed}
             onReview={(label) => review(prediction.prediction_id, label, label)}
           />
@@ -183,12 +185,33 @@ export default function PlaygroundTab() {
       </div>
 
       {(prediction || comparison) && (
+        <Panel
+          title="Why"
+          description={
+            comparison
+              ? `How much each question pushed toward ${comparison.winner.toUpperCase()} winning. Right (green) favors ${comparison.winner.toUpperCase()}, left works against it.`
+              : outputType === "choice"
+                ? `How much each question pushed toward “${prediction!.label}”, with the judge’s answer. Right (green) pushed toward it, left pushed away.`
+                : "How much each question raised (green) or lowered (red) the score, with the judge’s answer."
+          }
+        >
+          <DriverBars
+            drivers={comparison ? comparison.drivers : prediction!.drivers}
+            rubric={rubric}
+            answers={prediction?.rubric ?? comparison!.rubric_a}
+            answersB={comparison?.rubric_b}
+            limit={12}
+          />
+        </Panel>
+      )}
+
+      {(prediction || comparison) && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Panel title="Rubric answers" description={comparison ? "Top bar A, bottom bar B." : "What the judge answered for each question."}>
             <RubricAnswersView rubric={rubric} answers={prediction?.rubric ?? comparison!.rubric_a} compareWith={comparison?.rubric_b} />
           </Panel>
           <Panel
-            title="Why"
+            title="Feature contributions"
             description={
               comparison
                 ? "Feature contributions to score(A) − score(B). Green favors A."
@@ -202,7 +225,7 @@ export default function PlaygroundTab() {
         </div>
       )}
 
-      <AgentUsagePanel modelId={id} outputType={outputType} sample={pool[0]?.item ?? (keys ? Object.fromEntries(keys.map((k) => [k, "…"])) : "…")} />
+      <AgentUsagePanel modelId={id} outputType={outputType} whenToUse={detail.model.when_to_use} sample={pool[0]?.item ?? (keys ? Object.fromEntries(keys.map((k) => [k, "…"])) : "…")} />
     </div>
   );
 }
@@ -244,12 +267,14 @@ function PredictionResult({
   prediction,
   labelOrder,
   describe,
+  flagged,
   reviewed,
   onReview,
 }: {
   prediction: Prediction;
   labelOrder: string[];
   describe: (label: string) => string | undefined;
+  flagged: boolean;
   reviewed: string | null;
   onReview: (label: string) => void | Promise<void>;
 }) {
@@ -258,6 +283,7 @@ function PredictionResult({
     <Panel title="Prediction" actions={<span className="font-mono text-[11.5px] text-muted-foreground">v{prediction.version}</span>}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="font-mono text-[22px] font-semibold text-foreground">{prediction.label}</span>
+        {flagged && <FlagTag className="self-center" />}
         <span className="text-[12.5px] text-muted-foreground">
           <span className="font-mono text-foreground">{pct(prediction.confidence)}</span> confident
         </span>

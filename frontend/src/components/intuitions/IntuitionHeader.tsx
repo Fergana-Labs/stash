@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
-import { imDelete, imRename } from "@/lib/intuition-api";
-import { Callout, ConfirmDialog, inputClass, useIntuition } from "./im-ui";
+import { imDelete, imRename, imUpdateModel, type ModelDetail } from "@/lib/intuition-api";
+import { Callout, ConfirmDialog, inputClass, Spinner, useIntuition } from "./im-ui";
 
 export default function IntuitionHeader() {
   const { id, detail, apply, version, goTo } = useIntuition();
@@ -115,6 +115,7 @@ export default function IntuitionHeader() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <WhenToUse id={id} detail={detail} apply={apply} />
       {!judge.configured && (
         <div className="mt-3">
           <Callout tone="warning">
@@ -141,5 +142,123 @@ export default function IntuitionHeader() {
         }}
       />
     </header>
+  );
+}
+
+const WHEN_MAX = 2000;
+
+/** Model-level "when to use", like a skill description: what agents read to decide whether to consult this model. */
+function WhenToUse({ id, detail, apply }: { id: string; detail: ModelDetail; apply: (detail: ModelDetail) => void }) {
+  const saved = detail.model.when_to_use ?? "";
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(saved);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const next = text.trim();
+    if (next === saved) return setEditing(false);
+    setSaving(true);
+    try {
+      apply(await imUpdateModel(id, { when_to_use: next }));
+      setEditing(false);
+      toast.success("Saved when to use");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const label = <span className="text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">When to use</span>;
+  const hint = "Agents read this to decide when to consult the model, like a skill description. It isn’t versioned and changes take effect immediately.";
+
+  if (editing) {
+    return (
+      <form
+        className="mt-3 max-w-3xl"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <label htmlFor="im-when-to-use">{label}</label>
+        <textarea
+          id="im-when-to-use"
+          autoFocus
+          rows={3}
+          value={text}
+          maxLength={WHEN_MAX}
+          disabled={saving}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void save();
+            }
+            if (e.key === "Escape") {
+              setText(saved);
+              setEditing(false);
+            }
+          }}
+          placeholder="Before sending a drafted customer-support reply: check whether it’s ready to send, needs a light edit, or needs a rewrite."
+          className={cn(inputClass, "mt-1 resize-y leading-relaxed")}
+        />
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className="min-w-0 flex-1 text-[11.5px] leading-snug text-muted-foreground">{hint}</span>
+          <span className="font-mono text-[10.5px] text-muted-foreground tabular-nums">
+            {text.length}/{WHEN_MAX}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={saving}
+            onClick={() => {
+              setText(saved);
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" size="xs" disabled={saving}>
+            {saving && <Spinner className="h-3 w-3" />}
+            Save
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="group mt-3 max-w-3xl">
+      <div className="flex items-center gap-1.5">
+        {label}
+        <button
+          type="button"
+          aria-label="Edit when to use"
+          onClick={() => {
+            setText(saved);
+            setEditing(true);
+          }}
+          className="rounded p-0.5 text-muted-foreground opacity-60 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </div>
+      {saved ? (
+        <p className="m-0 mt-0.5 text-[12.5px] leading-relaxed whitespace-pre-wrap text-dim">{saved}</p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setText("");
+            setEditing(true);
+          }}
+          className="mt-0.5 text-left text-[12.5px] text-muted-foreground underline decoration-dashed decoration-border underline-offset-2 hover:text-foreground"
+        >
+          Describe when an agent should consult this model, so it can find it like a skill.
+        </button>
+      )}
+    </div>
   );
 }

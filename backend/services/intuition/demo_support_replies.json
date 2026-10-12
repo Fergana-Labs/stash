@@ -1,11 +1,12 @@
 {
   "name": "Support reply: ready to send?",
+  "when_to_use": "Before sending a drafted customer-support reply for Fernway: check whether the support lead would send it as is, want a light edit, or want it rewritten.",
   "output_type": "choice",
   "description": "Drafted replies from our customer-support agent at Fernway (an outdoor-gear store), judged the way our support lead reviews them before they go out. The lead sends replies that solve the customer's actual problem, give a concrete next step or timeline, and sound like a calm human. They push back on drafts that grovel or over-apologize, run long, blame the customer, or promise things support cannot guarantee (refunds outside policy, delivery dates, exceptions). Items are {customer, reply}.",
   "labels": [
     {"id": "send", "description": "Good to go as written."},
-    {"id": "edit", "description": "Right substance, but needs a light edit (tone, length, a missing detail) before sending."},
-    {"id": "rewrite", "description": "Wrong or risky: misses the problem, promises what we cannot deliver, or blames the customer. Start over."}
+    {"id": "edit", "description": "Right substance, but needs a light edit (tone, length, a missing detail) before sending.", "flag": true},
+    {"id": "rewrite", "description": "Wrong or risky: misses the problem, promises what we cannot deliver, or blames the customer. Start over.", "flag": true}
   ],
   "rubric_v1": [
     {"id": "answers_question", "type": "noul", "prompt": "Does the reply directly address the customer's actual question or problem?",

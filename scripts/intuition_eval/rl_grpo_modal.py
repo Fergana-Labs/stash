@@ -7,7 +7,7 @@ rank-8 LoRA, seed 11, the same 2,000 GSM8K train prompts and 200 sealed dev prom
 probability of "correct" from one of our judges (exported by export_rl_judges.py),
 computed by calling Jev inside the container.
 
-    modal run scripts/intuition_eval/rl_grpo_modal.py --arm robust [--smoke]
+    modal run scripts/intuition_eval/rl_grpo_modal.py --arm robust [--smoke] [--no-mask]
 
 Outputs /results/intuition-rl/<arm>.json on the rapid-llm-rl-results volume with the
 pressure curve: exact accuracy and every judge's score on dev at each checkpoint, plus
@@ -188,7 +188,7 @@ class JevJudge:
     volumes={"/root/.cache/huggingface": hf_cache, "/results": results},
     secrets=[modal.Secret.from_name("typesafe")],
 )
-def run(arm: str, judges_json: str, smoke: bool = False) -> dict:
+def run(arm: str, judges_json: str, smoke: bool = False, mask_truncated: bool = True) -> dict:
     import os
     import random
     import time
@@ -280,7 +280,9 @@ def run(arm: str, judges_json: str, smoke: bool = False) -> dict:
             point[f"pass_goldfail_{name}"] = float(np.mean(pass_fail)) if pass_fail else None
         return point
 
-    checkpoint_dir = f"/results/intuition-rl-{arm}{'-smoke' if smoke else ''}-checkpoints"
+    # Without masking, a truncated completion keeps its (low) judge reward in the loss.
+    tag = f"{arm}{'' if mask_truncated else '-nomask'}{'-smoke' if smoke else ''}"
+    checkpoint_dir = f"/results/intuition-rl-{tag}-checkpoints"
     trainer = GRPOTrainer(
         model=policy, processing_class=tokenizer, reward_funcs=jev_reward, train_dataset=train_dataset,
         args=GRPOConfig(
@@ -290,7 +292,7 @@ def run(arm: str, judges_json: str, smoke: bool = False) -> dict:
             num_generations=4, generation_batch_size=16, num_iterations=2,
             epsilon=0.2, beta=0.002, loss_type="dapo", scale_rewards="group",
             importance_sampling_level="token", max_completion_length=max_tokens,
-            temperature=0.8, top_p=0.95, mask_truncated_completions=True,
+            temperature=0.8, top_p=0.95, mask_truncated_completions=mask_truncated,
             bf16=True, gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
             logging_steps=20, save_strategy="steps", save_steps=1 if smoke else 40, save_total_limit=20,
             report_to="none", seed=SEED, data_seed=SEED, shuffle_dataset=True,
@@ -330,20 +332,20 @@ def run(arm: str, judges_json: str, smoke: bool = False) -> dict:
                 "mean_tokens": float(np.mean([r["tokens"] for r in chunk])),
             })
     report = {
-        "arm": arm, "smoke": smoke, "protocol": "v26-stress mirror", "seed": SEED, "steps": max_steps,
+        "arm": arm, "mask_truncated": mask_truncated, "smoke": smoke, "protocol": "v26-stress mirror", "seed": SEED, "steps": max_steps,
         "judge_failures": judge.failures, "rollouts_scored": len(rollout_log),
         "curve": [{k: v for k, v in p.items() if k not in ("outcomes", "responses")} for p in curve],
         "final_responses_sample": curve[-1]["responses"][:40], "rollout_windows": rollouts,
         "minutes": (time.time() - started) / 60,
     }
     os.makedirs("/results/intuition-rl", exist_ok=True)
-    with open(f"/results/intuition-rl/{arm}{'-smoke' if smoke else ''}.json", "w") as handle:
+    with open(f"/results/intuition-rl/{tag}.json", "w") as handle:
         json.dump(report, handle, indent=1)
     results.commit()
     return {k: v for k, v in report.items() if k != "final_responses_sample"}
 
 
 @app.local_entrypoint()
-def main(arm: str = "robust", smoke: bool = False):
-    report = run.remote(arm, JUDGES_PATH.read_text(), smoke)
+def main(arm: str = "robust", smoke: bool = False, no_mask: bool = False):
+    report = run.remote(arm, JUDGES_PATH.read_text(), smoke, not no_mask)
     print(json.dumps(report, indent=1)[:6000])

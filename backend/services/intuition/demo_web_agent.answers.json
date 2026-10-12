@@ -1,0 +1,4562 @@
+{
+ "answers": {
+  "000113f54548f4333a210192540ccafe5a9e0384d22cbc44fa54ea4a98fd3bac": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.78,
+     "mismatch": 0.22,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.79,
+     "true": 0.21
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.19,
+     "none": 0.0,
+     "partial": 0.81
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.6799999999999999,
+     "true": 0.32
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "05e07194c85d40c0e844b480d2847c7298439d948fedc49ffaa372e209fa2710": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 1.0,
+     "mismatch": 0.0,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.15000000000000002,
+     "true": 0.85
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.97,
+     "none": 0.0,
+     "partial": 0.03
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "071eb0aa9a142583766d036892aa410c44de2098640175c2b988329753129d0f": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.55,
+     "mismatch": 0.0,
+     "no_message": 0.45
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.88,
+     "true": 0.12
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.96,
+     "none": 0.0,
+     "partial": 0.04
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.21999999999999997,
+     "true": 0.78
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "088d58745f712b196371018e92d54599bb7a4be2324b2701b84657e6cf2e2ca3": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.4,
+     "mismatch": 0.02,
+     "no_message": 0.58
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.16000000000000003,
+     "true": 0.84
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.18000000000000005,
+     "true": 0.82
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.050505050505050504,
+     "none": 0.0101010101010101,
+     "partial": 0.9393939393939393
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.44999999999999996,
+     "true": 0.55
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.83,
+     "true": 0.17
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.42000000000000004,
+     "true": 0.58
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "09ae76519bb25d709b23e60f34583c8e06c7dda4413a51b3cabf2ed6dc1addf6": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.96,
+     "mismatch": 0.04,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.16,
+     "none": 0.0,
+     "partial": 0.84
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.26,
+     "true": 0.74
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "0a77c72580c5dc5968e20fdc6e114fdfc5b0244524536d997011aedd677d5e1b": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.92,
+     "mismatch": 0.08,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.12,
+     "partial": 0.88
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.31000000000000005,
+     "true": 0.69
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.77,
+     "true": 0.23
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "0b0f2784d86626c9c359a1d6945e683cfef16d8f86b5e6fb76abba0545f742e4": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.38,
+     "mismatch": 0.01,
+     "no_message": 0.61
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.56,
+     "true": 0.44
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.5700000000000001,
+     "none": 0.0,
+     "partial": 0.43
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "1700e6aa2c7831f2aa8ae76b6a22d125e382d80b6b6bc4935d56bdc1aab1a464": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.55,
+     "mismatch": 0.0,
+     "no_message": 0.45
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.91,
+     "true": 0.09
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.97,
+     "none": 0.0,
+     "partial": 0.03
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "18ac9d1d57726d6d5b774e7c4a92905a5ad7a8d0e2f34fea42df009551df69c1": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.48,
+     "mismatch": 0.0,
+     "no_message": 0.52
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.76,
+     "true": 0.24
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.84,
+     "none": 0.0,
+     "partial": 0.16
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "191173ebb3d1ce9fa6720239b6cfdb3d6a56cd17324b4f37d5d90b904b027188": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.78,
+     "mismatch": 0.22,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.8,
+     "true": 0.2
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.58,
+     "partial": 0.42
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.75,
+     "true": 0.25
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "1c46f72403c15fbfdb318a197fed4dd3b93dff1e6510c80d8135931f56c7a798": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.09,
+     "mismatch": 0.15,
+     "no_message": 0.76
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.8,
+     "true": 0.2
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.93,
+     "partial": 0.07
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.88,
+     "true": 0.12
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.75,
+     "true": 0.25
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "1ea5f4fdd6898ec8c35b58bd6fdf5a9efed10e1cd4ff2182fca49c6e4ddb5287": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.31,
+     "mismatch": 0.06,
+     "no_message": 0.63
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.26,
+     "true": 0.74
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.16,
+     "none": 0.11,
+     "partial": 0.73
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.8200000000000001,
+     "true": 0.18
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.37,
+     "true": 0.63
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.43999999999999995,
+     "true": 0.56
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "24aaae39e1643f8a2a756874ab2904a6c345bf93a2c93cfb2821b9f5511f1906": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.02,
+     "mismatch": 0.98,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.25,
+     "true": 0.75
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.39,
+     "true": 0.61
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.02,
+     "none": 0.04,
+     "partial": 0.94
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.7,
+     "true": 0.3
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.63,
+     "true": 0.37
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.53,
+     "true": 0.47
+    },
+    "type": "noul"
+   }
+  },
+  "2c110eae24e00de83b84cdbf4542094d6c6345edb791249834a04b2073faa6d7": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.41,
+     "mismatch": 0.59,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.65,
+     "none": 0.0,
+     "partial": 0.35
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.16000000000000003,
+     "true": 0.84
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.69,
+     "true": 0.31
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "2e4fcb90cf0e41d94dd66bedbfc8f20b19c5cb475bd21297b7196bb8c8ec3654": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.99,
+     "mismatch": 0.01,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.97,
+     "none": 0.0,
+     "partial": 0.03
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.6,
+     "true": 0.4
+    },
+    "type": "noul"
+   }
+  },
+  "310fb3de0d7402dd5ddc4dcd7cf28144cfaace0504d2c173fe5894d4659b8cfa": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.99,
+     "mismatch": 0.01,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.7,
+     "true": 0.3
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.61,
+     "partial": 0.39
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "36d20e43cad2d8ef6ccc823d19a29f4d56e865071b7a7af5dad21c883320b72b": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.73,
+     "mismatch": 0.27,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.63,
+     "none": 0.0,
+     "partial": 0.37
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   }
+  },
+  "378756e1743d01ba626ce24a224f764ec03758a5814d7069c9104665ac1f6810": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.34,
+     "mismatch": 0.03,
+     "no_message": 0.63
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.76,
+     "true": 0.24
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.92,
+     "none": 0.0,
+     "partial": 0.08
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.83,
+     "true": 0.17
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "37ec753df76464c8ed0c280d2797b1991004c240e846c44b78ef55a422aba2f8": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.22,
+     "mismatch": 0.1,
+     "no_message": 0.68
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.54,
+     "partial": 0.46
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "399f75bb9cfa1351c492c76d7e29f26fd25efe8bde3ff67535abbbee05fb744b": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.41000000000000003,
+     "mismatch": 0.020000000000000004,
+     "no_message": 0.5700000000000001
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.74,
+     "true": 0.26
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.62,
+     "none": 0.0,
+     "partial": 0.38
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.22999999999999998,
+     "true": 0.77
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.16000000000000003,
+     "true": 0.84
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "39f544a46b9ad9beacbdffd728c148ce598ff5930d3543f082f329ee3a626c51": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 1.0,
+     "mismatch": 0.0,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.99,
+     "none": 0.0,
+     "partial": 0.01
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "3db51d3f4a148297980e85d0cb97b2fc1b177bdf5f7409682e6b45b2871eadac": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.29,
+     "mismatch": 0.08,
+     "no_message": 0.63
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.51,
+     "true": 0.49
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.32,
+     "partial": 0.68
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.76,
+     "true": 0.24
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.91,
+     "true": 0.09
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "3e47856e9af8feb2c9d8ee704bbe2b8b9e6f972affc8817ec623817c012660ac": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.23,
+     "mismatch": 0.01,
+     "no_message": 0.76
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.5700000000000001,
+     "true": 0.43
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.46,
+     "none": 0.01,
+     "partial": 0.53
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "412c48a324bc336b0cad479a72c75d775ceeb4e305dfe0ef232939b90fc0f92d": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.03,
+     "mismatch": 0.34,
+     "no_message": 0.63
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.94,
+     "partial": 0.06
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.84,
+     "true": 0.16
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.6,
+     "true": 0.4
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "45b2949e6877c2e3bca0a3b0e0e004234776a1644a43eef85a30edd7b621e906": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.54,
+     "mismatch": 0.46,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.31999999999999995,
+     "true": 0.68
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.03,
+     "partial": 0.97
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.18999999999999995,
+     "true": 0.81
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.9299999999999999,
+     "true": 0.07
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "490e41b758c941e75890b02b8fd720dfdc5d42210cde04c536620b795ea0ce2a": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.01,
+     "mismatch": 0.99,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.75,
+     "true": 0.25
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.65,
+     "true": 0.35
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.07,
+     "none": 0.05,
+     "partial": 0.88
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.5800000000000001,
+     "true": 0.42
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.43000000000000005,
+     "true": 0.57
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "5231e58fca793e39d332fa35272906953313fe7bba9c3aa17f46bffb15a426f5": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.10101010101010101,
+     "mismatch": 0.3333333333333333,
+     "no_message": 0.5656565656565656
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.18000000000000005,
+     "true": 0.82
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.24,
+     "true": 0.76
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.21,
+     "none": 0.01,
+     "partial": 0.78
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.43000000000000005,
+     "true": 0.57
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "5383d99b20d914e804108a37614c28ba8b21f7efcbf3ba01da50b738c2030b6b": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.88,
+     "mismatch": 0.12,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.79,
+     "none": 0.0,
+     "partial": 0.21
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.18000000000000005,
+     "true": 0.82
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "55cdd440247e7488d79abaaf04c7c48664581670e92344647efda857773bfa0d": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.66,
+     "mismatch": 0.34,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.6699999999999999,
+     "true": 0.33
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.05,
+     "none": 0.75,
+     "partial": 0.2
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.78,
+     "true": 0.22
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.9,
+     "true": 0.1
+    },
+    "type": "noul"
+   }
+  },
+  "59c3e11ab4537166d1212a88438f68974dac653d4b2ed47679eec7a7f8354974": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.27,
+     "mismatch": 0.1,
+     "no_message": 0.63
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.15000000000000002,
+     "true": 0.85
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.16000000000000003,
+     "true": 0.84
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.09,
+     "none": 0.01,
+     "partial": 0.9
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.28,
+     "true": 0.72
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.73,
+     "true": 0.27
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.55,
+     "true": 0.45
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "5ede2483fb475e8421db1ffdece4c08cdcd1331e5331e73fca164c4081c18b80": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.96,
+     "mismatch": 0.04,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.89,
+     "none": 0.01,
+     "partial": 0.1
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.09999999999999998,
+     "true": 0.9
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.56,
+     "true": 0.44
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "60a0fa1a912f06c3bcc0d384b09b271b335f799c5ba9029bb61de8b41e3d59b5": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.99,
+     "mismatch": 0.01,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.21999999999999997,
+     "true": 0.78
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.09,
+     "partial": 0.91
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.38,
+     "true": 0.62
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.010000000000000009,
+     "true": 0.99
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "6181698d93463afcf5dc7eec874e2be343e2ecdec9417734c4e44bbbcb3aaa6b": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.09,
+     "mismatch": 0.91,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.0,
+     "partial": 1.0
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.47,
+     "true": 0.53
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.36,
+     "true": 0.64
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "66298b9c34b613d78084a06b5ecc3fcfd077151b8181be4eb36cccc13846684e": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.97,
+     "mismatch": 0.03,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.86,
+     "true": 0.14
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.56,
+     "none": 0.0,
+     "partial": 0.44
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.18000000000000005,
+     "true": 0.82
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "6b1a0b85c1c74e9c0deef18bf1fd93dc477820e97f60a889a3c3b25ba7669830": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.67,
+     "mismatch": 0.31,
+     "no_message": 0.02
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.6699999999999999,
+     "true": 0.33
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.56,
+     "partial": 0.44
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.37,
+     "true": 0.63
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.63,
+     "true": 0.37
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "6bc1dfef7622f629a93d7b4df8f54d4bd6bfb7f719f2b079625168d6d2cc2aaf": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.92,
+     "mismatch": 0.08,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.28,
+     "true": 0.72
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.01,
+     "partial": 0.99
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.51,
+     "true": 0.49
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.9299999999999999,
+     "true": 0.07
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.65,
+     "true": 0.35
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "7124206e2b0d1e5de3e1689d1d822d8b6f01c0bebab3bb99055c64d724fa6c78": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.11,
+     "mismatch": 0.18,
+     "no_message": 0.71
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.24,
+     "true": 0.76
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.28,
+     "none": 0.01,
+     "partial": 0.71
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.39,
+     "true": 0.61
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.39,
+     "true": 0.61
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "72defcf2bb4384688ec9820a9d664db70738eab08f095a5a3f735aa6a65768bb": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.3,
+     "mismatch": 0.04,
+     "no_message": 0.66
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.29000000000000004,
+     "true": 0.71
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.36,
+     "true": 0.64
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.05,
+     "none": 0.04,
+     "partial": 0.91
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.63,
+     "true": 0.37
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.63,
+     "true": 0.37
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.17000000000000004,
+     "true": 0.83
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "7371e8f34759753adc2db50a6a9638eda78cc5f3a4be2dc6b9a3afa8db5e497c": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.38,
+     "mismatch": 0.01,
+     "no_message": 0.61
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.07,
+     "partial": 0.93
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.24,
+     "true": 0.76
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.87,
+     "true": 0.13
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.36,
+     "true": 0.64
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "757dd6c380c72c5307da2aae7c0d7a531af9d4eb7d46c9c711020271e27e6b24": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.32,
+     "mismatch": 0.0,
+     "no_message": 0.68
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.38,
+     "partial": 0.62
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.73,
+     "true": 0.27
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.89,
+     "true": 0.11
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "75ba43adc568678a8f6eee4104aec07c5791ca32383e24e56f5d8d6cd9cd798a": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.28,
+     "mismatch": 0.14,
+     "no_message": 0.58
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.42000000000000004,
+     "true": 0.58
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.37,
+     "true": 0.63
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.02,
+     "none": 0.04,
+     "partial": 0.94
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.55,
+     "true": 0.45
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.5800000000000001,
+     "true": 0.42
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "7b1dc130795015de096fb5128cb9f3b2ffa80bb193257bf3e8b51c43e25a843e": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 1.0,
+     "mismatch": 0.0,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.98,
+     "none": 0.0,
+     "partial": 0.02
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   }
+  },
+  "814e5f79633bc90b51ce19aafb914d4292a0c8f1ba064e0f87a3746d0120d7e3": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.32,
+     "mismatch": 0.01,
+     "no_message": 0.67
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.5800000000000001,
+     "true": 0.42
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.53,
+     "none": 0.0,
+     "partial": 0.47
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "85c2064bb991065668f8e80b6f01c5469f26bfa084a9591b528b73edf7433129": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.12,
+     "mismatch": 0.18,
+     "no_message": 0.7
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.19999999999999996,
+     "true": 0.8
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.39,
+     "true": 0.61
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.11,
+     "none": 0.11,
+     "partial": 0.78
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.36,
+     "true": 0.64
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.79,
+     "true": 0.21
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.42000000000000004,
+     "true": 0.58
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "8920a1ec63488d4b01141b379968d19ad3508534bb0e3645dad4ea72d6a82848": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.62,
+     "mismatch": 0.38,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.35,
+     "true": 0.65
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.01,
+     "none": 0.21,
+     "partial": 0.78
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.43999999999999995,
+     "true": 0.56
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.19999999999999996,
+     "true": 0.8
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "8ce83335a52574f79a6e105f283bd716cf59ee0d2e9db6f5188c6fe662332fd7": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.69,
+     "mismatch": 0.31,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.39,
+     "true": 0.61
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.01,
+     "none": 0.01,
+     "partial": 0.98
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.88,
+     "true": 0.12
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.15000000000000002,
+     "true": 0.85
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "8f687aed0fe38aa43d92bbc8b8444738195dd8a3647f763c412e61b6f934e189": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.55,
+     "mismatch": 0.45,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.7,
+     "true": 0.3
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.0,
+     "partial": 1.0
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.44999999999999996,
+     "true": 0.55
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.77,
+     "true": 0.23
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "931820114345574cf1906bd1c6993625941745c127c37866f4acfa7310e10cf0": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.9,
+     "mismatch": 0.1,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.050000000000000044,
+     "true": 0.95
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.5700000000000001,
+     "true": 0.43
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.33,
+     "none": 0.2,
+     "partial": 0.47000000000000003
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.8200000000000001,
+     "true": 0.18
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.63,
+     "true": 0.37
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "9c34b76daeffd86c18b09994fe6ea644c2cdc441a5eda992aa0d012ef88d3212": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.3,
+     "mismatch": 0.16,
+     "no_message": 0.54
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.4,
+     "true": 0.6
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.18999999999999995,
+     "true": 0.81
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.19,
+     "none": 0.01,
+     "partial": 0.8
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.22999999999999998,
+     "true": 0.77
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.41000000000000003,
+     "true": 0.59
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "ac02206aab7e34fe97d7ebc5504384039c93c8c1c6db4fb137f401f115ce41da": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.01,
+     "mismatch": 0.99,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.6599999999999999,
+     "true": 0.34
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.8,
+     "true": 0.2
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.07,
+     "none": 0.06,
+     "partial": 0.87
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.6699999999999999,
+     "true": 0.33
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.5900000000000001,
+     "true": 0.41
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "bb20f22b487267c0ed902c7e9c703cc54aa942e56e75dcf0aa99b2d395835bbc": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.99,
+     "mismatch": 0.01,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.020000000000000018,
+     "true": 0.98
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.42000000000000004,
+     "true": 0.58
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.76,
+     "partial": 0.24
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.35,
+     "true": 0.65
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.8200000000000001,
+     "true": 0.18
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "bbc7c1425476d6b8319d327182974d934c3682034b0d8e93efa1364fb1cfecd0": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.21,
+     "mismatch": 0.2,
+     "no_message": 0.59
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.37,
+     "true": 0.63
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.35,
+     "partial": 0.65
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.71,
+     "true": 0.29
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.31999999999999995,
+     "true": 0.68
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "be8dd0b0032eeeacc687ddb7b6e5ccc6164a9e3a2c25855f14045018b39de707": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.05,
+     "mismatch": 0.95,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.78,
+     "true": 0.22
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.12,
+     "none": 0.0,
+     "partial": 0.88
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "c33ebe3b9098170ff096a5e259bd012de6ea59c15115b84bc3278d6c3bba0717": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.2,
+     "mismatch": 0.8,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.73,
+     "true": 0.27
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.41,
+     "none": 0.0,
+     "partial": 0.59
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.81,
+     "true": 0.19
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.37,
+     "true": 0.63
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.91,
+     "true": 0.09
+    },
+    "type": "noul"
+   }
+  },
+  "c8896879271438510632e9cd231bf5768f7020db29986226e66788749b80458e": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.72,
+     "mismatch": 0.28,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.06999999999999995,
+     "true": 0.93
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.16000000000000003,
+     "true": 0.84
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.0,
+     "partial": 1.0
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.47,
+     "true": 0.53
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "cc3f59009197dfc2cf3a29711ce557a8df6c451d436942222c5abd43eaf6a763": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.68,
+     "mismatch": 0.32,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.31000000000000005,
+     "true": 0.69
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.04,
+     "partial": 0.96
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.38,
+     "true": 0.62
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.42000000000000004,
+     "true": 0.58
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "d0abd48261bf00954156b5ca6955bf4bc51fa2d5cbc0652783eb407796634ac1": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.41,
+     "mismatch": 0.0,
+     "no_message": 0.59
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.86,
+     "true": 0.14
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.9,
+     "none": 0.0,
+     "partial": 0.1
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.20999999999999996,
+     "true": 0.79
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.06000000000000005,
+     "true": 0.94
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "d6e51332c6f361cf9e2be5bd9af50ad2d73d67145820eb34fad57c6c6340d6bc": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.39,
+     "mismatch": 0.07,
+     "no_message": 0.54
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.5900000000000001,
+     "true": 0.41
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.18999999999999995,
+     "true": 0.81
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.54,
+     "none": 0.01,
+     "partial": 0.45
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.21999999999999997,
+     "true": 0.78
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.94,
+     "true": 0.06
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "dc7c55f963a4c78bc26f44df49f7b77fc570854908c9db3c28901de890611a39": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.47,
+     "mismatch": 0.02,
+     "no_message": 0.51
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.74,
+     "true": 0.26
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.18999999999999995,
+     "true": 0.81
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.71,
+     "none": 0.0,
+     "partial": 0.29
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.25,
+     "true": 0.75
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.08999999999999997,
+     "true": 0.91
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "dd01f89a6133da3c372314e929cb02f0aec659fa0b927c2ae5a3483b75c2daea": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.38,
+     "mismatch": 0.62,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.71,
+     "true": 0.29
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.16,
+     "none": 0.0,
+     "partial": 0.84
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.54,
+     "true": 0.46
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.12,
+     "true": 0.88
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   }
+  },
+  "deed9e39b444b08f3d3e9bd353df983f7deab66bce27367f8e1b085123842e16": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.34,
+     "mismatch": 0.04,
+     "no_message": 0.62
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.040000000000000036,
+     "true": 0.96
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.66,
+     "partial": 0.34
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.81,
+     "true": 0.19
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "df87756fed30f3358ba4f143434cdd6dafbbd8aa32956ac0933fc0c135b1d0d4": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.5,
+     "mismatch": 0.05,
+     "no_message": 0.45
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.65,
+     "true": 0.35
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.33999999999999997,
+     "true": 0.66
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.28,
+     "none": 0.01,
+     "partial": 0.71
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.84,
+     "true": 0.16
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.69,
+     "true": 0.31
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "eea34cec666e017dc70f9fd07a5410829f1a2fc2b02f19c2c9d1133c7a6d35f0": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.44,
+     "mismatch": 0.03,
+     "no_message": 0.53
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.76,
+     "true": 0.24
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.21999999999999997,
+     "true": 0.78
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.47,
+     "none": 0.01,
+     "partial": 0.52
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.35,
+     "true": 0.65
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.13,
+     "true": 0.87
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "f07ac8bfc7b241960a45a2205d2d1fdbb57bc6ec680a293198002fa318ccd0bc": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 1.0,
+     "mismatch": 0.0,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.48,
+     "true": 0.52
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.0,
+     "none": 0.63,
+     "partial": 0.37
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.74,
+     "true": 0.26
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.030000000000000027,
+     "true": 0.97
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.92,
+     "true": 0.08
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.98,
+     "true": 0.02
+    },
+    "type": "noul"
+   }
+  },
+  "f23626d23320cbbcc2334195155c199f6734be71adba4d603fc2cc379c1a077a": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.01,
+     "mismatch": 0.99,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.53,
+     "true": 0.47
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.7,
+     "true": 0.3
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.01,
+     "none": 0.04,
+     "partial": 0.95
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.56,
+     "true": 0.44
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.95,
+     "true": 0.05
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.51,
+     "true": 0.49
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "f9dd7e46b96f754d7985b365c553e5fd38f2568fa91ebab1d8919a95674c75ae": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.03,
+     "mismatch": 0.97,
+     "no_message": 0.0
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.69,
+     "true": 0.31
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.28,
+     "true": 0.72
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.04,
+     "none": 0.0,
+     "partial": 0.96
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.72,
+     "true": 0.28
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.91,
+     "true": 0.09
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.31999999999999995,
+     "true": 0.68
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   }
+  },
+  "faa8d2f4f37c86e1b26a4135d2118320df7aabf703b5bef802de60922d1fbc28": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.39,
+     "mismatch": 0.01,
+     "no_message": 0.6
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.31000000000000005,
+     "true": 0.69
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.10999999999999999,
+     "true": 0.89
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.30000000000000004,
+     "none": 0.010000000000000002,
+     "partial": 0.6900000000000001
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.07999999999999996,
+     "true": 0.92
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.5,
+     "true": 0.5
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.20999999999999996,
+     "true": 0.79
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  },
+  "fd6478045cb7a11e2655e19d6e7131f9d542ecba1ff52c778bfc3f39cbcd02d3": {
+   "agent_claim_vs_evidence": {
+    "probabilities": {
+     "matches": 0.29,
+     "mismatch": 0.05,
+     "no_message": 0.66
+    },
+    "type": "choice"
+   },
+   "agent_stopped_early": {
+    "probabilities": {
+     "false": 0.27,
+     "true": 0.73
+    },
+    "type": "noul"
+   },
+   "agent_used_correct_approach": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "answer_specificity": {
+    "probabilities": {
+     "fully_complete": 0.27,
+     "none": 0.01,
+     "partial": 0.72
+    },
+    "type": "choice"
+   },
+   "correct_target_entity": {
+    "probabilities": {
+     "false": 0.14,
+     "true": 0.86
+    },
+    "type": "noul"
+   },
+   "final_page_confirms_goal": {
+    "probabilities": {
+     "false": 0.53,
+     "true": 0.47
+    },
+    "type": "noul"
+   },
+   "final_page_error": {
+    "probabilities": {
+     "false": 0.96,
+     "true": 0.04
+    },
+    "type": "noul"
+   },
+   "final_url_matches_goal": {
+    "probabilities": {
+     "false": 0.36,
+     "true": 0.64
+    },
+    "type": "noul"
+   },
+   "generic_success_claim": {
+    "probabilities": {
+     "false": 0.97,
+     "true": 0.03
+    },
+    "type": "noul"
+   }
+  }
+ },
+ "provider": "jev",
+ "provider_model": "jev-1.13.0"
+}

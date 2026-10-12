@@ -1,10 +1,14 @@
-"""Bundled demo: a support-reply reviewer with real, pre-recorded judge answers.
+"""Bundled demos with real, pre-recorded judge answers.
 
-demo_support_replies.json holds the spec and labeled examples (hand-written).
-demo_support_replies.answers.json holds the judge's answers to every rubric
-question for every item, recorded once with
+  support-replies    demo_support_replies.json: a support lead's send/edit/rewrite
+                     call on drafted replies (hand-written examples).
+  web-agent-success  demo_web_agent.json: did a web agent actually finish the task?
+                     (AgentRewardBench trajectories, split by provenance).
 
-    python -m backend.services.intuition.demo record
+Each <name>.json holds the spec and labeled examples; <name>.answers.json holds
+the judge's answers to every rubric question for every item, recorded once with
+
+    python -m backend.services.intuition.demo record <slug>
 
 so loading the demo makes no provider calls. The loader replays the normal
 workflow -- create, label, choose seeds, grade, fit, promote v1, add a rubric
@@ -26,16 +30,40 @@ from ...database import get_pool
 from . import providers, service
 
 HERE = Path(__file__).resolve().parent
-SPEC_PATH = HERE / "demo_support_replies.json"
-ANSWERS_PATH = HERE / "demo_support_replies.answers.json"
+DEMOS = {"support-replies": "demo_support_replies", "web-agent-success": "demo_web_agent"}
 
 
-def _spec() -> dict:
-    return json.loads(SPEC_PATH.read_text())
+def _spec(slug: str) -> dict:
+    return json.loads((HERE / f"{DEMOS[slug]}.json").read_text())
 
 
-def _item(e: dict) -> dict:
-    return {"customer": e["customer"], "reply": e["reply"]}
+def _answers_path(slug: str) -> Path:
+    return HERE / f"{DEMOS[slug]}.answers.json"
+
+
+def catalog() -> list[dict]:
+    out = []
+    for slug in DEMOS:
+        spec = _spec(slug)
+        out.append(
+            {
+                "slug": slug,
+                "name": spec["name"],
+                "when_to_use": spec.get("when_to_use", ""),
+                "output_type": spec["output_type"],
+                "labels": [
+                    {"id": label["id"], "flag": label.get("flag", False)}
+                    for label in spec["labels"]
+                ],
+                "examples": len(spec["examples"]),
+                "attribution": spec.get("attribution"),
+            }
+        )
+    return out
+
+
+def _item(e: dict):
+    return e["item"] if "item" in e else {"customer": e["customer"], "reply": e["reply"]}
 
 
 def _marker(item) -> str:
@@ -46,9 +74,9 @@ def _full_rubric(spec: dict) -> list[dict]:
     return [*spec["rubric_v1"], spec["added_in_v2"]]
 
 
-async def record() -> None:
+async def record(slug: str) -> None:
     """Grade every demo item with the current default judge and save the answers."""
-    spec = _spec()
+    spec = _spec(slug)
     provider, provider_model = "jev", settings.JEV_MODEL
     version = {
         "output_type": spec["output_type"],
@@ -67,11 +95,12 @@ async def record() -> None:
     ]
     items = [_item(e) for e in spec["examples"]] + [_item(e) for e in spec["inbox"]]
     rubric = _full_rubric(spec)
+    answers_path = _answers_path(slug)
     results = await providers.grade_many([(version, rubric, seeds, item) for item in items])
     failures = [r for r in results if isinstance(r, providers.ProviderError)]
     if failures:
         raise SystemExit(f"{len(failures)} items failed to grade: {failures[0]}")
-    ANSWERS_PATH.write_text(
+    answers_path.write_text(
         json.dumps(
             {
                 "provider": provider,
@@ -83,15 +112,15 @@ async def record() -> None:
         )
         + "\n"
     )
-    print(f"Recorded {len(items)} items with {provider}/{provider_model} -> {ANSWERS_PATH.name}")
+    print(f"Recorded {len(items)} items with {provider}/{provider_model} -> {answers_path.name}")
 
 
-async def _insert_grades(model_id: UUID, recorded: dict, items: list) -> None:
+async def _insert_grades(model_id: UUID, spec: dict, recorded: dict, items: list) -> None:
     detail_row = await get_pool().fetchrow(
         "SELECT draft_version_id FROM intuition_models WHERE id = $1", model_id
     )
     version = await service._load_version(detail_row["draft_version_id"])
-    version = {**version, "rubric": _full_rubric(_spec())}
+    version = {**version, "rubric": _full_rubric(spec)}
     seeds = await service._seeds(version)
     for item in items:
         await service._store_answers(
@@ -99,9 +128,9 @@ async def _insert_grades(model_id: UUID, recorded: dict, items: list) -> None:
         )
 
 
-async def load(owner_id: UUID) -> dict:
-    spec = _spec()
-    recorded = json.loads(ANSWERS_PATH.read_text())
+async def load(owner_id: UUID, slug: str = "support-replies") -> dict:
+    spec = _spec(slug)
+    recorded = json.loads(_answers_path(slug).read_text())
     created = await service.create_model(
         owner_id,
         name=spec["name"],
@@ -109,6 +138,7 @@ async def load(owner_id: UUID) -> dict:
         description=spec["description"],
         labels=spec["labels"],
         rubric=spec["rubric_v1"],
+        when_to_use=spec.get("when_to_use", ""),
     )
     model_id = created["model"]["id"]
     await get_pool().execute(
@@ -126,25 +156,28 @@ async def load(owner_id: UUID) -> dict:
         owner_id, model_id, {"seed_example_ids": [examples[i]["id"] for i in spec["seed_indexes"]]}
     )
     items = [_item(e) for e in spec["examples"]] + [_item(e) for e in spec["inbox"]]
-    await _insert_grades(model_id, recorded, items)
+    await _insert_grades(model_id, spec, recorded, items)
 
     # v1: the original rubric.
     await service.fit(owner_id, model_id)
     await service.promote(owner_id, model_id)
-    # v2: the reviewer noticed risky promises slipping through and added a question.
+    # v2: the reviewer noticed a failure mode slipping through and added a question.
     await service.ensure_draft(owner_id, model_id)
     await service.update_draft(owner_id, model_id, {"rubric": _full_rubric(spec)})
     refit = await service.fit(owner_id, model_id)
     if refit["gate"]["passed"]:
         await service.promote(owner_id, model_id)
 
-    # Calls from the support agent waiting in the review inbox.
+    # Calls from the agent waiting in the review inbox.
+    caller = "support-agent" if slug == "support-replies" else "web-agent"
     for e in spec["inbox"]:
-        await service.predict(owner_id, model_id, _item(e), caller="support-agent")
+        await service.predict(owner_id, model_id, _item(e), caller=caller)
     return await service.get_detail(owner_id, model_id)
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] != ["record"]:
-        raise SystemExit("usage: python -m backend.services.intuition.demo record")
-    asyncio.run(record())
+    if len(sys.argv) != 3 or sys.argv[1] != "record" or sys.argv[2] not in DEMOS:
+        raise SystemExit(
+            f"usage: python -m backend.services.intuition.demo record {{{'|'.join(DEMOS)}}}"
+        )
+    asyncio.run(record(sys.argv[2]))

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, RotateCcw, Rocket } from "lucide-react";
+import { ChevronRight, Flag, RotateCcw, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -206,7 +206,12 @@ function VersionRow({ modelId, summary, onRestore }: { modelId: string; summary:
               {full.labels.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {full.labels.map((l) => (
-                    <span key={l.id} className="tag tag-muted normal-case" title={l.description}>
+                    <span
+                      key={l.id}
+                      className={cn("tag inline-flex items-center gap-1 normal-case", l.flag ? "bg-red-500/10 text-red-600 dark:text-red-400" : "tag-muted")}
+                      title={l.flag ? `${l.description} (flagged: needs fixing)` : l.description}
+                    >
+                      {l.flag && <Flag className="h-2.5 w-2.5" aria-hidden="true" />}
                       {l.id}
                     </span>
                   ))}

@@ -92,7 +92,7 @@ function RubricForm() {
       </Panel>
 
       {outputType === "choice" && (
-        <Panel title="Labels" description="The decisions this model outputs. Renaming or removing a label makes the head stale until you refit.">
+        <Panel title="Labels" description="The decisions this model outputs. Flag the ones that mean “needs fixing”: an agent’s check fails when it lands on one. Renaming or removing a label makes the head stale until you refit; flags don’t.">
           <LabelsEditor value={labels} onChange={setLabels} />
           {labelsChanged && <p className="m-0 mt-2 text-[11.5px] text-yellow-700 dark:text-yellow-400">Examples labeled with a removed id keep that label and won’t train until relabeled.</p>}
         </Panel>

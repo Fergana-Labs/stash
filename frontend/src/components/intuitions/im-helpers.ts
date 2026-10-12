@@ -1,11 +1,14 @@
 import type {
+  Driver,
   Example,
+  Head,
   Item,
   Metrics,
   ModelDetail,
   NewExample,
   OutputLabel,
   OutputType,
+  QuestionAblation,
   RubricQuestion,
   Split,
   Version,
@@ -350,4 +353,173 @@ export function weightColor(value: number, maxAbs: number): string {
   if (!Number.isFinite(value) || maxAbs <= 0 || value === 0) return "transparent";
   const alpha = Math.min(1, Math.abs(value) / maxAbs) * 0.28;
   return value > 0 ? `rgba(34,197,94,${alpha.toFixed(3)})` : `rgba(239,68,68,${alpha.toFixed(3)})`;
+}
+
+// ── Flags & provenance ──────────────────────────────────────────────────
+
+/** Whether a label id is marked "needs fixing" in this label set. */
+export function isFlagged(labels: OutputLabel[] | undefined, id: string): boolean {
+  return !!labels?.some((l) => l.id === id && l.flag);
+}
+
+/** Who produced an item field, by naming convention: agent_* (the agent's claims) vs environment_* (recorded). */
+export function fieldProvenance(key: string): "agent" | "environment" | null {
+  if (key.startsWith("agent_")) return "agent";
+  if (key.startsWith("environment_")) return "environment";
+  return null;
+}
+
+// ── Why (drivers) ───────────────────────────────────────────────────────
+
+/** Largest |contribution|, never 0, so bars can be scaled against it. */
+export function driverScale(drivers: Driver[]): number {
+  return Math.max(1e-9, ...drivers.map((d) => (Number.isFinite(d.contribution) ? Math.abs(d.contribution) : 0)));
+}
+
+/** Diverging bar geometry: which side of zero and how far (0–50% of the track). */
+export function driverBar(value: number, scale: number): { side: "pos" | "neg"; width: number } {
+  const v = Number.isFinite(value) ? value : 0;
+  const width = scale > 0 ? Math.min(1, Math.abs(v) / scale) * 50 : 0;
+  return { side: v >= 0 ? "pos" : "neg", width };
+}
+
+/** Compact text for one rubric answer: "yes 72%" for yes/no, the top option otherwise. */
+export function answerSummary(question: RubricQuestion | null | undefined, answer: Record<string, number> | undefined): string | null {
+  if (!answer) return null;
+  if (!question || question.type === "noul") {
+    const p = pYes(answer);
+    if (p != null) return p >= 0.5 ? `yes ${pct(p)}` : `no ${pct(1 - p)}`;
+  }
+  const entries = Object.entries(answer).filter(([, v]) => Number.isFinite(v));
+  if (entries.length === 0) return null;
+  const [key, value] = entries.reduce((best, e) => (e[1] > best[1] ? e : best));
+  if (question?.type === "score" && Array.isArray(question.criteria)) {
+    const text = question.criteria[Number(key)];
+    return `${key}${text ? ` · ${text}` : ""} ${pct(value)}`;
+  }
+  return `${key} ${pct(value)}`;
+}
+
+// ── Per-question diagnostics ────────────────────────────────────────────
+
+/**
+ * How much the head leans on each question: the spread of its weights across classes
+ * (|weight| for a single-score preference head), summed over the question's features.
+ */
+export function questionImportance(head: Head | null | undefined, rubric: RubricQuestion[]): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!head) return out;
+  head.feature_names.forEach((name, f) => {
+    const { questionId } = describeFeature(name, rubric);
+    const column = head.weights.map((row) => row[f] ?? 0);
+    const spread = column.length === 1 ? Math.abs(column[0]) : Math.max(...column) - Math.min(...column);
+    out.set(questionId, (out.get(questionId) ?? 0) + (Number.isFinite(spread) ? spread : 0));
+  });
+  return out;
+}
+
+export type QuestionVerdict = "helps" | "calibration" | "none" | "hurts";
+
+/**
+ * What the held-out ablation says about a question. "helps": removing it costs accuracy;
+ * "calibration": accuracy unchanged but confidences get worse without it; "none": no
+ * held-out benefit; "hurts": the head does better without it.
+ */
+export function questionVerdict(ablation: QuestionAblation | null | undefined): QuestionVerdict | null {
+  if (!ablation || ablation.accuracy_drop == null) return null;
+  const drop = ablation.accuracy_drop;
+  const rise = ablation.log_loss_rise ?? 0;
+  if (drop > 1e-9) return "helps";
+  if (drop < -1e-9) return "hurts";
+  return rise > 1e-3 ? "calibration" : "none";
+}
+
+/** Mean answer per label for one question, as option rows in display order. */
+export function byLabelAnswers(
+  question: RubricQuestion | null,
+  questionId: string,
+  byLabel: Record<string, Record<string, number>>,
+  labelOrder: string[] = [],
+): { label: string; values: { key: string; text: string; value: number }[] }[] {
+  const labels = [...labelOrder.filter((l) => l in byLabel), ...Object.keys(byLabel).filter((l) => !labelOrder.includes(l))];
+  return labels.map((label) => {
+    const means = byLabel[label] ?? {};
+    if (question?.type === "noul" || (!question && questionId in means)) {
+      return { label, values: [{ key: questionId, text: "P(yes)", value: means[questionId] ?? 0 }] };
+    }
+    const options = question ? questionOptions(question) : Object.keys(means).map((f) => ({ key: f.slice(f.indexOf("=") + 1), label: f }));
+    return {
+      label,
+      values: options.map((o) => ({ key: o.key, text: o.key, value: means[`${questionId}=${o.key}`] ?? 0 })),
+    };
+  });
+}
+
+/** The option whose mean answer differs most between labels: the one worth showing per label. */
+export function separatingOption(rows: { values: { key: string; value: number }[] }[]): string | undefined {
+  const keys = rows[0]?.values.map((v) => v.key) ?? [];
+  let best: string | undefined;
+  let bestSpread = -1;
+  for (const key of keys) {
+    const vals = rows.map((r) => r.values.find((v) => v.key === key)?.value ?? 0);
+    const spread = Math.max(...vals) - Math.min(...vals);
+    if (spread > bestSpread) [best, bestSpread] = [key, spread];
+  }
+  return best;
+}
+
+// ── Batch eval input ────────────────────────────────────────────────────
+
+export const MAX_BATCH = 200;
+
+export interface ParsedBatch {
+  items: Item[];
+  /** One entry per item; null where the line had no label. */
+  labels: (string | null)[];
+  errors: string[];
+}
+
+/**
+ * Parse pasted eval data, one item per line: {"item": ..., "label"?: ...}, a JSON string,
+ * a bare JSON object (the item itself), or plain text. `allowed` validates labels.
+ */
+export function parseBatchInput(text: string, allowed: string[] | null, max = MAX_BATCH): ParsedBatch {
+  const items: Item[] = [];
+  const labels: (string | null)[] = [];
+  const errors: string[] = [];
+  text.split("\n").forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) return;
+    const where = `Line ${i + 1}`;
+    let value: unknown = line;
+    if (/^[[{"]/.test(line)) {
+      try {
+        value = JSON.parse(line);
+      } catch {
+        return void errors.push(`${where}: not valid JSON`);
+      }
+    }
+    let item: unknown = value;
+    let label: unknown = null;
+    if (isRecord(value) && "item" in value) {
+      item = value.item;
+      label = value.label ?? null;
+    }
+    if (!(typeof item === "string" || isRecord(item))) return void errors.push(`${where}: item must be text or a JSON object`);
+    if (isEmptyItem(item as Item)) return void errors.push(`${where}: item is empty`);
+    if (label != null && typeof label !== "string") return void errors.push(`${where}: "label" must be a string`);
+    if (typeof label === "string" && allowed && !allowed.includes(label)) return void errors.push(`${where}: label must be one of ${allowed.join(", ")}`);
+    items.push(item as Item);
+    labels.push(typeof label === "string" ? label : null);
+  });
+  if (items.length > max) errors.unshift(`${items.length} items; at most ${max} per run`);
+  return { items, labels, errors };
+}
+
+/** Examples as eval JSONL lines ({"item", "label"}), for prefilling the eval box. */
+export function examplesToJsonl(examples: Example[]): string {
+  return examples
+    .filter((e) => e.item_b == null)
+    .map((e) => JSON.stringify(e.label ? { item: e.item, label: e.label } : { item: e.item }))
+    .join("\n");
 }

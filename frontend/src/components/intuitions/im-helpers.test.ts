@@ -1,13 +1,24 @@
 import { describe, expect, it } from "vitest";
-import type { RubricQuestion } from "@/lib/intuition-api";
+import type { Example, Head, RubricQuestion } from "@/lib/intuition-api";
 import {
+  answerSummary,
+  byLabelAnswers,
   describeFeature,
   detectItemKeys,
+  driverBar,
+  driverScale,
+  examplesToJsonl,
+  fieldProvenance,
   groupFeatures,
   invalidatedQuestions,
+  isFlagged,
   mistakeIds,
+  parseBatchInput,
   parseJsonl,
   pYes,
+  questionImportance,
+  questionVerdict,
+  separatingOption,
   rubricProblem,
   uniqueSlug,
 } from "./im-helpers";
@@ -118,5 +129,140 @@ describe("metrics helpers", () => {
     expect(pYes({ true: 0.8, false: 0.2 })).toBe(0.8);
     expect(pYes({ false: 0.25 })).toBe(0.75);
     expect(pYes(undefined)).toBeNull();
+  });
+});
+
+describe("flags and provenance", () => {
+  it("knows which labels are flagged", () => {
+    const labels = [{ id: "send", description: "" }, { id: "rewrite", description: "", flag: true }];
+    expect(isFlagged(labels, "rewrite")).toBe(true);
+    expect(isFlagged(labels, "send")).toBe(false);
+    expect(isFlagged(undefined, "send")).toBe(false);
+  });
+
+  it("tags agent_* and environment_* fields", () => {
+    expect(fieldProvenance("agent_final_message")).toBe("agent");
+    expect(fieldProvenance("environment_final_page")).toBe("environment");
+    expect(fieldProvenance("user_goal")).toBeNull();
+  });
+});
+
+describe("drivers", () => {
+  const drivers = [
+    { question_id: "a", prompt: "A?", contribution: 0.8 },
+    { question_id: "b", prompt: "B?", contribution: -0.4 },
+    { question_id: "c", prompt: "C?", contribution: 0 },
+  ];
+
+  it("scales bars to the largest contribution, half the track each side", () => {
+    const scale = driverScale(drivers);
+    expect(scale).toBe(0.8);
+    expect(driverBar(0.8, scale)).toEqual({ side: "pos", width: 50 });
+    expect(driverBar(-0.4, scale)).toEqual({ side: "neg", width: 25 });
+    expect(driverBar(Number.NaN, scale)).toEqual({ side: "pos", width: 0 });
+  });
+
+  it("never divides by zero", () => {
+    const scale = driverScale([{ question_id: "z", prompt: "", contribution: 0 }]);
+    expect(scale).toBeGreaterThan(0);
+    expect(driverBar(0, scale).width).toBe(0);
+    expect(driverScale([])).toBeGreaterThan(0);
+  });
+
+  it("summarizes rubric answers compactly", () => {
+    expect(answerSummary(rubric[0], { true: 0.72, false: 0.28 })).toBe("yes 72%");
+    expect(answerSummary(rubric[0], { true: 0.1, false: 0.9 })).toBe("no 90%");
+    expect(answerSummary(rubric[1], { warm: 0.3, cold: 0.7 })).toBe("cold 70%");
+    expect(answerSummary(rubric[2], { "0": 0.1, "1": 0.8, "2": 0.1 })).toBe("1 · Right 80%");
+    expect(answerSummary(rubric[0], undefined)).toBeNull();
+  });
+});
+
+describe("question diagnostics", () => {
+  it("measures importance as the weight spread across classes, per question", () => {
+    const head = {
+      feature_names: ["answers_question", "tone=warm", "tone=cold"],
+      classes: ["send", "edit"],
+      weights: [
+        [1, 0.5, -0.5],
+        [-1, 0, 0],
+      ],
+    } as unknown as Head;
+    const importance = questionImportance(head, rubric);
+    expect(importance.get("answers_question")).toBe(2);
+    expect(importance.get("tone")).toBe(1);
+    const scoreHead = { feature_names: ["answers_question"], classes: ["score"], weights: [[-0.7]] } as unknown as Head;
+    expect(questionImportance(scoreHead, rubric).get("answers_question")).toBeCloseTo(0.7);
+    expect(questionImportance(null, rubric).size).toBe(0);
+  });
+
+  it("reads the ablation", () => {
+    const ab = (accuracy_drop: number | null, log_loss_rise: number | null) => ({ accuracy_without: null, log_loss_without: null, accuracy_drop, log_loss_rise });
+    expect(questionVerdict(ab(0.05, 0.1))).toBe("helps");
+    expect(questionVerdict(ab(0, 0.1))).toBe("calibration");
+    expect(questionVerdict(ab(0, -0.03))).toBe("none");
+    expect(questionVerdict(ab(-0.05, 0.02))).toBe("hurts");
+    expect(questionVerdict(null)).toBeNull();
+    expect(questionVerdict(ab(null, null))).toBeNull();
+  });
+
+  it("picks the option that best separates the labels", () => {
+    const rows = byLabelAnswers(rubric[1], "tone", { send: { "tone=warm": 0.5, "tone=cold": 0.5 }, edit: { "tone=warm": 0.45, "tone=cold": 0.05 } });
+    expect(separatingOption(rows)).toBe("cold");
+    expect(separatingOption([])).toBeUndefined();
+  });
+
+  it("lays out mean answers by label in label order", () => {
+    const yesNo = byLabelAnswers(rubric[0], "answers_question", { edit: { answers_question: 0.3 }, send: { answers_question: 0.9 } }, ["send", "edit"]);
+    expect(yesNo).toEqual([
+      { label: "send", values: [{ key: "answers_question", text: "P(yes)", value: 0.9 }] },
+      { label: "edit", values: [{ key: "answers_question", text: "P(yes)", value: 0.3 }] },
+    ]);
+    const choice = byLabelAnswers(rubric[1], "tone", { send: { "tone=warm": 0.8, "tone=cold": 0.2 } });
+    expect(choice[0].values.map((v) => [v.key, v.value])).toEqual([
+      ["warm", 0.8],
+      ["cold", 0.2],
+    ]);
+  });
+});
+
+describe("parseBatchInput", () => {
+  const allowed = ["send", "edit"];
+
+  it("accepts wrapped items, JSON strings, bare objects and plain text", () => {
+    const text = ['{"item": {"customer": "hi", "reply": "yo"}, "label": "send"}', '"a json string"', '{"customer": "x", "reply": "y"}', "plain text line", ""].join("\n");
+    const { items, labels, errors } = parseBatchInput(text, allowed);
+    expect(errors).toEqual([]);
+    expect(items).toEqual([{ customer: "hi", reply: "yo" }, "a json string", { customer: "x", reply: "y" }, "plain text line"]);
+    expect(labels).toEqual(["send", null, null, null]);
+  });
+
+  it("reports bad JSON, unknown labels, empty items and non-string labels by line", () => {
+    const text = ['{"item": "x", "label": "nope"}', '{"item": "x"', '{"item": ""}', '{"item": "x", "label": 3}', "[1, 2]"].join("\n");
+    expect(parseBatchInput(text, allowed).errors).toEqual([
+      "Line 1: label must be one of send, edit",
+      "Line 2: not valid JSON",
+      "Line 3: item is empty",
+      'Line 4: "label" must be a string',
+      "Line 5: item must be text or a JSON object",
+    ]);
+  });
+
+  it("caps the number of items", () => {
+    const text = Array.from({ length: 4 }, (_, i) => `item ${i}`).join("\n");
+    expect(parseBatchInput(text, null, 3).errors[0]).toBe("4 items; at most 3 per run");
+    expect(parseBatchInput(text, null, 4).errors).toEqual([]);
+  });
+
+  it("round-trips examples exported as eval lines", () => {
+    const examples = [
+      { item: { customer: "a", reply: "b" }, item_b: null, label: "send" },
+      { item: "unlabeled", item_b: null, label: null },
+      { item: "pair a", item_b: "pair b", label: "a" },
+    ] as Example[];
+    const parsed = parseBatchInput(examplesToJsonl(examples), allowed);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.items).toEqual([{ customer: "a", reply: "b" }, "unlabeled"]);
+    expect(parsed.labels).toEqual(["send", null]);
   });
 });

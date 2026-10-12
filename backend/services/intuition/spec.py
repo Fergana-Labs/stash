@@ -27,6 +27,8 @@ class Strict(BaseModel):
 class Label(Strict):
     id: str = Field(pattern=SLUG)
     description: str = Field(default="", max_length=1000)
+    # A flagged label means "something here needs fixing": checks report it as a finding.
+    flag: bool = False
 
 
 class Question(Strict):

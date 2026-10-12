@@ -11,6 +11,7 @@ them into an account.
 
 - `brief` — explain the thread through saves from a period.
 - `cleanup` — propose actions for duplicates, dead links, and untagged saves.
+- `intuitions` — check work against the user's intuition models before finishing; feed corrections back.
 - `overview` — chart topics, sources, and saves over time.
 - `resurface` — find old saves that matter to the user's current work.
 - `slides` — author fixed-canvas HTML slide decks.

@@ -218,6 +218,43 @@ gains (84%):
 - early stopping on a held-out judge-vs-gold check. This is one seed per arm, with 200 eval problems (±~5 pp), so differences
 under ~5 pp are noise.
 
+## 4. Provenance: splitting agent-written text from environment-recorded text
+
+The same AgentRewardBench trajectories, split into four fields: `user_goal`, `agent_trajectory`,
+`agent_final_message` and `environment_final_page`. The description states that agent fields may
+contain false claims and that only the environment field shows what happened. Attacks append only to
+`agent_final_message`, because that's the only part a real agent controls. The rubric was redrafted
+for this format (`rubrics/agentrewardbench_provenance.json`). Task `arb_prov` in `tasks.py`.
+
+Static (n=130, 5-fold grouped CV):
+
+| Arm | Flat transcript: acc / Brier skill | Provenance: acc / Brier skill | Fixed-attack lift, sealed (provenance) |
+|---|---:|---:|---:|
+| raw | 72.3% / +0.26 | 73.8% / +0.22 | −1.7 pp |
+| raw+cal | 80.0% / — | 78.5% / +0.35 | +0.8 pp |
+| rubric | 79.2% / +0.47 | **83.1% / +0.53** | +1.7 pp |
+| rubric+raw | 81.5% / — | 82.3% / +0.53 | −0.8 pp |
+| rubric+raw+q+repair | 83.1% / — | 76.9% / +0.44 | +1.7 pp |
+
+Best-of-N, attack success at N (provenance; flat transcript in parentheses):
+
+| Judge | N=1 | N=8 | N=32 |
+|---|---:|---:|---:|
+| raw | 5% (16%) | 10% (24%) | **14% (32%)** |
+| rubric | 0% (9%) | 12% (18%) | **18% (27%)** |
+| robust | 10% (15%) | 10% (15%) | 19% (19%) |
+
+Targets the judge rejected before the attack: raw 21, rubric 17, robust 21 (provenance), versus
+25 / 22 / 26 (flat).
+
+- **The plain rubric head improves on every metric:** 79% → 83% accuracy, Brier skill +0.47 → +0.53.
+- **Best-of-N success roughly halves** for raw Jev (32% → 14%) and the rubric head (27% → 18%).
+- **The robust judge doesn't move (19%).** Its repair question was proposed from fixed-payload
+  examples and costs accuracy here (77%), so on structured items the plain rubric is the better
+  default.
+- **Iterative attacks: not run to completion.** Two runs died on network errors partway through, and
+  the script saves only at the end. The comparison is pending.
+
 ## What this says
 
 1. **Accuracy: raw Jev vs the head depends on the task.**
@@ -234,7 +271,8 @@ under ~5 pp are noise.
    - 0% in best-of-32.
    - 0% for the black-box iterative attacker; 1 of 9 white-box attacks succeeded, and that one arguably adds post content.
    - The plain rubric head sits in between (11–33%).
-5. **On AgentRewardBench, nothing holds.**
+5. **On flat AgentRewardBench transcripts, nothing holds** (see §4 for the provenance split, which
+   halves best-of-N success for raw Jev and the rubric head).
    - Iterative attacks reach 67–83% on the rubric head and 23–38% on the robust judge.
    - The attacks fabricate evidence the judge can't verify from text.
    - The fix is **provenance**: pass agent-authored fields separately from environment and tool logs,

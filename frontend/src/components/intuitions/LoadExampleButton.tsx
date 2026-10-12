@@ -9,14 +9,26 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import { imLoadExample } from "@/lib/intuition-api";
 import { Spinner } from "./im-ui";
 
-/** Creates the bundled, pre-graded demo model and opens it. */
-export default function LoadExampleButton({ variant = "outline" }: { variant?: "outline" | "default" }) {
+/** Creates a bundled, pre-graded example model and opens it. */
+export default function LoadExampleButton({
+  slug,
+  name,
+  variant = "outline",
+  size = "default",
+  children = "Load example",
+}: {
+  slug: string;
+  name?: string;
+  variant?: "outline" | "default";
+  size?: "default" | "sm";
+  children?: React.ReactNode;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   async function load() {
     setBusy(true);
     try {
-      const detail = await imLoadExample();
+      const detail = await imLoadExample(slug);
       toast.success(`Loaded “${detail.model.name}”`);
       router.push(`/reward-models/intuitions/${detail.model.id}`);
     } catch (e) {
@@ -25,9 +37,9 @@ export default function LoadExampleButton({ variant = "outline" }: { variant?: "
     }
   }
   return (
-    <Button variant={variant} onClick={() => void load()} disabled={busy}>
+    <Button variant={variant} size={size} onClick={() => void load()} disabled={busy} aria-label={name ? `Load example: ${name}` : undefined}>
       {busy ? <Spinner /> : <Sparkles />}
-      Load example
+      {children}
     </Button>
   );
 }

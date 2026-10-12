@@ -977,8 +977,9 @@ def _item(value: str):
 @mcp.tool()
 def stash_intuition_list() -> str:
     """List the user's intuition models: personal judges trained from their labels
-    and comparisons. Use one whenever a decision should follow the user's taste
-    (e.g. "would I send this reply?"); call stash_intuition_predict with its id."""
+    and comparisons. Each has a `when_to_use`, like a skill description: consult a
+    model whenever your work matches it (e.g. "would I send this reply?"), via
+    stash_intuition_check or stash_intuition_predict."""
     with _client() as client:
         return _json(client._get("/api/v1/intuitions"))
 
@@ -1002,6 +1003,41 @@ def stash_intuition_predict(model_id: str, item: str, caller: str = "agent") -> 
     with _client() as client:
         return _json(client._post(f"/api/v1/intuitions/{model_id}/predict",
             json={"item": _item(item), "caller": caller}))
+
+
+@mcp.tool()
+def stash_intuition_find(task: str, limit: int = 5) -> str:
+    """Find which of the user's intuition models apply to the task you're doing,
+    the way you'd pick relevant skills. Returns ids, names, when_to_use and why."""
+    with _client() as client:
+        return _json(client._get("/api/v1/intuitions/find", task=task, limit=limit))
+
+
+@mcp.tool()
+def stash_intuition_check(item: str, model_ids: list[str] | None = None, task: str = "",
+        caller: str = "agent") -> str:
+    """Lint your output with the user's judgments before you finish. Pass the
+    model_ids to run, or a `task` description to route to the relevant models.
+    Returns passed=false plus `findings` when any model lands on a label the user
+    flagged (e.g. "rewrite", "failure"); each result says why (the rubric answers
+    that drove it). Fix the findings, or tell the user why you didn't."""
+    body = {"item": _item(item), "caller": caller}
+    if model_ids:
+        body["model_ids"] = model_ids
+    else:
+        body["task"] = task
+    with _client() as client:
+        return _json(client._post("/api/v1/intuitions/check", json=body))
+
+
+@mcp.tool()
+def stash_intuition_batch(model_id: str, items: list, labels: list | None = None) -> str:
+    """Run an intuition model over up to 200 items, as an eval. Items are text or
+    objects; with `labels` (one per item, null to skip) you also get accuracy,
+    log loss and Brier. Not logged to the review inbox."""
+    with _client() as client:
+        return _json(client._post(f"/api/v1/intuitions/{model_id}/batch",
+            json={"items": [_item(i) if isinstance(i, str) else i for i in items], "labels": labels}))
 
 
 @mcp.tool()
@@ -1035,15 +1071,25 @@ def stash_intuition_add_examples(model_id: str, examples: list[dict]) -> str:
 
 @mcp.tool()
 def stash_intuition_create(name: str, output_type: str, description: str,
-        labels: list[dict] | None = None, rubric: list[dict] | None = None) -> str:
+        labels: list[dict] | None = None, rubric: list[dict] | None = None,
+        when_to_use: str = "") -> str:
     """Create an intuition model. output_type 'choice' needs labels
-    [{"id": "send", "description": ...}, ...]; 'preference' learns a score from
-    comparisons. Rubric questions (optional now; see stash_intuition_get for the
-    shape) are typed: noul (yes/no), choice, or score."""
+    [{"id": "send", "description": ..., "flag": false}, ...]; set "flag": true on
+    labels that mean "needs fixing" so stash_intuition_check reports them.
+    'preference' learns a score from comparisons. Rubric questions (optional now;
+    see stash_intuition_get for the shape) are typed: noul (yes/no), choice, or
+    score. `when_to_use` tells agents when to consult it."""
     with _client() as client:
         return _json(client._post("/api/v1/intuitions", json={"name": name,
             "output_type": output_type, "description": description,
-            "labels": labels or [], "rubric": rubric or []}))
+            "labels": labels or [], "rubric": rubric or [], "when_to_use": when_to_use}))
+
+
+@mcp.tool()
+def stash_intuition_set_when_to_use(model_id: str, when_to_use: str) -> str:
+    """Change when agents should consult this model (not versioned; applies now)."""
+    with _client() as client:
+        return _json(client._patch(f"/api/v1/intuitions/{model_id}", json={"when_to_use": when_to_use}))
 
 
 @mcp.tool()

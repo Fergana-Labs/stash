@@ -11,6 +11,7 @@ import { DEFAULT_L2, pct } from "./im-helpers";
 import { Bar, Callout, inputClass, Spinner, useIntuition } from "./im-ui";
 import MetricsPanel from "./MetricsPanel";
 import WeightsGrid, { type HeadEdit } from "./WeightsGrid";
+import QuestionDiagnostics from "./QuestionDiagnostics";
 
 const SOURCES: ExampleSource[] = ["human", "agent", "generated", "production"];
 const BATCH = 12;
@@ -260,7 +261,34 @@ export default function TrainTab() {
           )}
         </Step>
 
-        <Step n={4} title="Weights" state={head && !stale ? "done" : "blocked"} summary={head?.edited ? <span className="tag tag-warning">hand-edited</span> : head?.fit ? `${head.fit.converged ? "converged" : "did not converge"} in ${head.fit.iterations} iterations` : undefined}>
+        <Step
+          n={4}
+          title="Questions"
+          state={metrics?.questions && !stale ? "done" : "blocked"}
+          summary={metrics?.questions ? "Which judgments earn their place, one question at a time." : metrics ? "Refit to compute per-question diagnostics." : "Fit to see per-question diagnostics."}
+        >
+          {stale && metrics?.questions ? (
+            <p className="m-0 text-[12px] text-muted-foreground">Rubric or labels changed since these were computed — fit the draft to see diagnostics for the current questions.</p>
+          ) : (
+            <QuestionDiagnostics
+              diagnostics={metrics?.questions}
+              rubric={version?.rubric ?? []}
+              head={head && !stale ? head : null}
+              labelOrder={detail.model.output_type === "choice" ? (version?.classes ?? []) : ["good", "bad", "preferred", "not preferred"]}
+            />
+          )}
+          {metrics?.questions && !stale && (
+            <p className="m-0 mt-2 text-[11.5px] text-muted-foreground">
+              Rewrite a weak question on the{" "}
+              <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => goTo("rubric")}>
+                Rubric
+              </button>{" "}
+              tab; only that question is re-graded.
+            </p>
+          )}
+        </Step>
+
+        <Step n={5} title="Weights" state={head && !stale ? "done" : "blocked"} summary={head?.edited ? <span className="tag tag-warning">hand-edited</span> : head?.fit ? `${head.fit.converged ? "converged" : "did not converge"} in ${head.fit.iterations} iterations` : undefined}>
           {head && !stale && version ? (
             <WeightsGrid
               key={JSON.stringify([head.weights, head.bias, head.temperature])}

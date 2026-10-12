@@ -15,6 +15,7 @@ import InboxTab from "./InboxTab";
 import ExamplesTab from "./ExamplesTab";
 import RubricTab from "./RubricTab";
 import TrainTab from "./TrainTab";
+import EvalTab from "./EvalTab";
 import VersionsTab from "./VersionsTab";
 
 export default function IntuitionDetail({ id }: { id: string }) {
@@ -104,6 +105,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
             {tab === "examples" && <ExamplesTab />}
             {tab === "rubric" && <RubricTab />}
             {tab === "train" && <TrainTab />}
+            {tab === "eval" && <EvalTab />}
             {tab === "versions" && <VersionsTab />}
           </div>
         </div>

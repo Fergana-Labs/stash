@@ -1,0 +1,80 @@
+{
+ "rationale": "The examples show several recurring patterns that distinguish success from failure: (1) whether the final page shows the goal was actually completed (e.g., directions shown, post published, forum created, item found) vs. the agent stopping short or landing on an error page; (2) whether the agent sent a substantive answer vs. stopped mid-task or reported infeasibility; (3) whether the final page URL/title matches the task domain and goal; (4) whether the environment_final_page confirms the action (e.g., directions panel with distance, post visible on forum page, forum page with correct metadata); (5) whether the agent navigated to the correct target entity (right location, right item, right forum); (6) whether the agent's answer contains specific verifiable data vs. vague/incorrect claims; (7) how many steps the agent took and whether it recovered from errors; (8) whether the agent reported the task as infeasible correctly or incorrectly.",
+ "rubric": [
+  {
+   "id": "final_page_confirms_goal",
+   "type": "noul",
+   "prompt": "Does the environment_final_page (the browser-recorded page, not the agent's claims) contain clear evidence that the goal was accomplished \u2014 such as a confirmation page, the requested content displayed, a completed form result, or the target item/location shown?",
+   "criteria": {
+    "true": "The final recorded page contains observable evidence directly confirming task completion (e.g., directions route displayed with distance, post visible in the correct forum, forum page with correct name/description, item detail page at correct price, data answer visible in page content).",
+    "false": "The final recorded page does not confirm task completion \u2014 it shows an error, a search result list without the goal achieved, a form still open, no results found, or content unrelated to the goal."
+   }
+  },
+  {
+   "id": "agent_stopped_early",
+   "type": "noul",
+   "prompt": "Did the agent stop before fully completing the task \u2014 for example by sending a message saying it could not complete the task, navigating away from the relevant site, reporting infeasibility, or ending on a non-goal page without a final answer?",
+   "criteria": {
+    "true": "The agent halted early: it sent a message indicating inability to complete the task, reported it infeasible, navigated to an irrelevant domain, or its last action was not the final step needed to accomplish the goal.",
+    "false": "The agent carried the task through to a natural conclusion, with its last action being the final step required (e.g., clicking submit, clicking Go on directions, opening the correct item page)."
+   }
+  },
+  {
+   "id": "correct_target_entity",
+   "type": "noul",
+   "prompt": "Did the agent act on the correct target entity required by the goal \u2014 for example, the correct location, the correct item, the correct forum, the correct repository \u2014 rather than a wrong or approximate substitute?",
+   "criteria": {
+    "true": "The agent's actions and the final page both show the correct specific entity (correct venue, correct item at correct price, correct forum, correct repository, correct destination).",
+    "false": "The agent acted on a wrong or approximate entity (wrong location, wrong price, wrong forum, wrong repository), or the final page does not match the required target."
+   }
+  },
+  {
+   "id": "final_page_error",
+   "type": "noul",
+   "prompt": "Does the environment_final_page show a page-level error or failure state \u2014 such as a 'Not Found' page, a network error message, 'No results found', a rate-limit error, or the agent being redirected to an irrelevant site?",
+   "criteria": {
+    "true": "The final page explicitly shows an error, not-found notice, network failure, zero-results message, or other failure state that indicates the browser could not serve the goal content.",
+    "false": "The final page does not show any error state; it is a normal content page (even if incomplete)."
+   }
+  },
+  {
+   "id": "answer_specificity",
+   "type": "choice",
+   "prompt": "How specific and complete is the information the agent provided or the state the agent left the browser in, relative to what the goal required?",
+   "criteria": {
+    "fully_complete": "The agent fully satisfied the goal: all required information is present and correct, or all required browser actions are completed and confirmed on the final page.",
+    "partial": "The agent partially satisfied the goal: some required information or actions are present but key parts are missing, incorrect, or unverifiable.",
+    "none": "The agent provided no useful information toward the goal, or left the browser in a state entirely unrelated to completing the goal."
+   }
+  },
+  {
+   "id": "agent_used_correct_approach",
+   "type": "noul",
+   "prompt": "Did the agent use a reasonable and direct approach for the task type \u2014 for example, using the directions feature for routing tasks, using search to find a specific item, using the correct form fields to create content \u2014 rather than repeatedly failing with the same ineffective strategy?",
+   "criteria": {
+    "true": "The agent took a direct, appropriate approach (e.g., used the directions panel for routing, searched by the right terms, filled the correct form fields) and did not get stuck in repetitive failed loops.",
+    "false": "The agent used an ineffective or incorrect approach, repeatedly tried the same failing strategy, navigated to an irrelevant site, or never reached the relevant interface for the task."
+   }
+  },
+  {
+   "id": "final_url_matches_goal",
+   "type": "noul",
+   "prompt": "Does the URL of the environment_final_page indicate the agent reached the correct destination for the task \u2014 for example, a directions URL with the right route parameters, a forum post URL, an item detail page URL, a search results page on the correct site?",
+   "criteria": {
+    "true": "The final URL clearly matches what is expected for a completed task: it contains task-relevant parameters or path segments (e.g., route coordinates, post ID in the correct forum, item ID, correct query).",
+    "false": "The final URL does not match the expected task destination \u2014 it is a generic page, an error page, an irrelevant external site, or a search page with no results."
+   }
+  },
+  {
+   "id": "agent_claim_vs_evidence",
+   "type": "choice",
+   "prompt": "How well does the agent's final message or last action align with what the environment_final_page actually shows?",
+   "criteria": {
+    "matches": "The agent's final message or last action is consistent with and supported by the environment_final_page \u2014 claims match what is visible on the page.",
+    "mismatch": "The agent's final message claims success or provides an answer that is contradicted by or unsupported by the environment_final_page (e.g., claims a bar was found but page shows 'Not Found', claims no results but page shows results).",
+    "no_message": "The agent sent no final message; evaluation must rely entirely on the final page state."
+   }
+  }
+ ],
+ "examples_considered": 35
+}

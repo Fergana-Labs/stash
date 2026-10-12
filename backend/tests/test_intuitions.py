@@ -264,3 +264,76 @@ def test_head_fit_recovers_signal():
     head = heads.fit("choice", ["x"], ["a", "b"], rows, 0.005)
     assert heads.evaluate(head, "choice", rows)["accuracy"] == 1.0
     assert head["weights"][0][0] > head["weights"][1][0]
+
+
+async def test_web_agent_demo_check_batch_and_diagnostics(client: AsyncClient, monkeypatch):
+    """Second demo, then the agent-facing surface on recorded items (no judge calls)."""
+    async def no_calls(*args, **kwargs):
+        raise AssertionError("recorded items must not call the judge")
+
+    monkeypatch.setattr(providers, "_grade_jev", no_calls)
+    auth = await _register(client)
+    catalog = (await client.get("/api/v1/intuitions/examples", headers=auth)).json()["examples"]
+    assert {e["slug"] for e in catalog} == {"support-replies", "web-agent-success"}
+    resp = await client.post("/api/v1/intuitions/examples/web-agent-success", headers=auth)
+    assert resp.status_code == 201, resp.text
+    detail = resp.json()
+    model_id = detail["model"]["id"]
+    assert detail["model"]["when_to_use"].startswith("After a browser")
+    assert detail["counts"]["inbox"] == 4
+
+    # Every logged decision explains itself, per question.
+    inbox = (await client.get(f"/api/v1/intuitions/{model_id}/predictions", headers=auth)).json()
+    drivers = inbox[0]["output"]["drivers"]
+    assert len(drivers) == len(detail["active"]["rubric"])
+    assert abs(drivers[0]["contribution"]) >= abs(drivers[-1]["contribution"])
+
+    # Per-question diagnostics from the fit.
+    diag = detail["active"]["metrics"]["questions"]
+    assert diag["baseline"]["accuracy"] is not None
+    q = diag["questions"][0]
+    assert set(q["by_label"]) == {"success", "failure"} and q["ablation"] is not None
+
+    # Batch over labeled examples is an eval.
+    examples = (await client.get(f"/api/v1/intuitions/{model_id}/examples", headers=auth)).json()
+    batch = (await client.post(f"/api/v1/intuitions/{model_id}/batch", headers=auth, json={
+        "items": [e["item"] for e in examples[:10]], "labels": [e["label"] for e in examples[:10]],
+    })).json()
+    assert batch["summary"]["n"] == 10 and 0 <= batch["summary"]["accuracy"] <= 1
+    assert sum(batch["summary"]["label_counts"].values()) == 10
+
+    # Check flags items whose verdict is a flagged label ("failure").
+    failure = next(e for e in examples if e["label"] == "failure")
+    checked = (await client.post("/api/v1/intuitions/check", headers=auth, json={
+        "item": failure["item"], "model_ids": [model_id],
+    })).json()
+    (result,) = checked["results"]
+    assert result["flagged"] == (result["label"] == "failure")
+    assert checked["passed"] == (not result["flagged"])
+    assert len(result["why"]) == 3
+
+    # when_to_use is editable like a skill description.
+    resp = await client.patch(f"/api/v1/intuitions/{model_id}", headers=auth,
+                              json={"when_to_use": "Use after any browser task."})
+    assert resp.json()["model"]["when_to_use"] == "Use after any browser task."
+    listed = (await client.get("/api/v1/intuitions", headers=auth)).json()["models"]
+    assert listed[0]["when_to_use"] == "Use after any browser task."
+
+
+async def test_label_only_edits_keep_the_fit(client: AsyncClient, monkeypatch):
+    """Flags and label descriptions never reach the judge or head, so they keep metrics."""
+    async def no_calls(*args, **kwargs):
+        raise AssertionError("recorded items must not call the judge")
+
+    monkeypatch.setattr(providers, "_grade_jev", no_calls)
+    auth = await _register(client)
+    detail = (await client.post("/api/v1/intuitions/examples/web-agent-success", headers=auth)).json()
+    model_id = detail["model"]["id"]
+    base = f"/api/v1/intuitions/{model_id}/draft"
+    labels = [{**label, "flag": False} for label in detail["active"]["labels"]]
+    await client.patch(base, headers=auth, json={"labels": labels})
+    assert (await client.post(f"{base}/fit", headers=auth, json={})).status_code == 200
+    resp = await client.patch(base, headers=auth, json={"labels": [{**labels[0], "description": "Done."}, labels[1]]})
+    assert resp.json()["draft"]["metrics"] is not None
+    resp = await client.patch(base, headers=auth, json={"description": "Changed."})
+    assert resp.json()["draft"]["metrics"] is None

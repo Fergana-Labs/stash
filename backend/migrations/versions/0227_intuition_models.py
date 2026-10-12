@@ -23,6 +23,8 @@ def upgrade() -> None:
         owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name text NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
         output_type text NOT NULL CHECK (output_type IN ('choice', 'preference')),
+        -- Like a skill description: tells agents when this judgment applies.
+        when_to_use text NOT NULL DEFAULT '' CHECK (length(when_to_use) <= 2000),
         active_version_id uuid,
         draft_version_id uuid,
         created_at timestamptz NOT NULL DEFAULT now(),

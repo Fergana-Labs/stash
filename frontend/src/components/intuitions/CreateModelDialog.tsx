@@ -22,6 +22,7 @@ export default function CreateModelDialog({ open, onOpenChange }: { open: boolea
   const [name, setName] = useState("");
   const [outputType, setOutputType] = useState<OutputType>("choice");
   const [description, setDescription] = useState("");
+  const [whenToUse, setWhenToUse] = useState("");
   const [labels, setLabels] = useState<OutputLabel[]>(STARTER_LABELS);
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +36,7 @@ export default function CreateModelDialog({ open, onOpenChange }: { open: boolea
       const detail = await imCreate({
         name: name.trim(),
         output_type: outputType,
+        when_to_use: whenToUse.trim(),
         description: description.trim(),
         labels: outputType === "choice" ? labels : [],
       });
@@ -82,6 +84,16 @@ export default function CreateModelDialog({ open, onOpenChange }: { open: boolea
               placeholder="Drafted replies from our support agent, judged the way our support lead reviews them…"
               className={inputClass}
               maxLength={6000}
+            />
+          </Field>
+          <Field label="When to use" hint="Agents read this to decide when to consult the model, like a skill description. Optional; editable later.">
+            <textarea
+              rows={2}
+              value={whenToUse}
+              onChange={(e) => setWhenToUse(e.target.value)}
+              placeholder="Before sending a drafted support reply: check whether it’s ready to send."
+              className={inputClass}
+              maxLength={2000}
             />
           </Field>
           {outputType === "choice" && (

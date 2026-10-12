@@ -113,6 +113,33 @@ def compare(head: dict, features_a: list[float], features_b: list[float]) -> dic
     }
 
 
+def drivers(rubric: list[dict], output: dict, target: str | None = None) -> list[dict]:
+    """Per-question contribution to a decision, largest first.
+
+    choice: logit contribution toward `target` (default: the predicted label) minus the
+    average over labels, so it reads as "how much this answer pushed toward target".
+    preference: contribution to the item score, or to score_a - score_b for a comparison.
+    """
+    contributions = output["contributions"]
+    if "score" in contributions:
+        per_feature = contributions["score"]
+    elif all(isinstance(v, dict) for v in contributions.values()):
+        target = target or output["label"]
+        n = len(contributions)
+        per_feature = {
+            f: v - sum(contributions[c][f] for c in contributions) / n
+            for f, v in contributions[target].items()
+        }
+    else:
+        per_feature = contributions
+    out = []
+    for q in rubric:
+        prefix = q["id"]
+        total = sum(v for f, v in per_feature.items() if f == prefix or f.startswith(prefix + "="))
+        out.append({"question_id": q["id"], "prompt": q["prompt"], "contribution": round(total, 4)})
+    return sorted(out, key=lambda d: -abs(d["contribution"]))
+
+
 def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str]:
     """Probability assigned to the row's true label, and the predicted label."""
     if output_type == "choice":
