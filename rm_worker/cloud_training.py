@@ -5,6 +5,7 @@ private inputs and writes results directly, so Render restarts cannot cancel
 it or lose the completed checkpoint. No ML package is imported by the caller.
 """
 
+import asyncio
 import os
 import sys
 import tempfile
@@ -54,12 +55,12 @@ async def train(model_id: str) -> None:
             os.environ["RM_TRAINING_ON_CLOUD_GPU"] = "1"
             try:
                 await jobs.run_training(UUID(model_id))
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
                 await database.get_pool().execute(
                     """UPDATE rm_reward_models SET status='failed', error=$2, finished_at=now()
                     WHERE id=$1 AND status='running'""",
                     UUID(model_id),
-                    str(exc)[-2000:],
+                    str(exc)[-2000:] or "Cloud training was cancelled or timed out",
                 )
                 raise
             finally:

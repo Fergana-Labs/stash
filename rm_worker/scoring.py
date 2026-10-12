@@ -1,11 +1,24 @@
 """Load a trained reward model and score texts with it."""
 
+from contextlib import nullcontext
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from rm_worker.context import encode_action_input
+
+
+def precision_context(device: torch.device, model):
+    # Keep checkpoint weights and Adam state in fp32. Ampere GPUs support
+    # bf16 matmuls with fp32 accumulation; CPU/MPS keep their existing path.
+    if (
+        device.type == "cuda"
+        and torch.cuda.is_bf16_supported()
+        and getattr(model.config, "stash_training_precision", "float32") == "bf16"
+    ):
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def pick_device() -> torch.device:
@@ -65,7 +78,8 @@ def score_texts(
     scores: list[float] = []
     for start in range(0, len(texts), batch_size):
         batch = tokenize(tokenizer, texts[start : start + batch_size], device)
-        rewards = model(**batch).logits.squeeze(-1)
+        with precision_context(device, model):
+            rewards = model(**batch).logits.squeeze(-1)
         scores.extend(rewards.float().cpu().tolist())
     return scores
 

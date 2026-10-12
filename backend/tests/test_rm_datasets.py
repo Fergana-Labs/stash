@@ -261,10 +261,13 @@ async def test_training_ingests_metrics_and_scores(client, monkeypatch, artifact
     assert latest[good] == {"reward_model_id": model_id, "reward_model_name": "rm", "score": 2.0}
 
 
-async def test_modal_compute_dispatches_preparation_and_training_to_cloud(client, monkeypatch, artifact_dir):
+async def test_modal_compute_dispatches_preparation_and_training_to_cloud(
+    client, monkeypatch, artifact_dir
+):
     from unittest.mock import Mock
 
     from rm_worker import cloud_training
+
     auth = await _register(client)
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch, compute="modal")

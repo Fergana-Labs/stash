@@ -1,8 +1,12 @@
 """Real DB state transitions, with cloud work stubbed (no local inference)."""
 
+import asyncio
+import json
+import os
+import sys
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -119,3 +123,51 @@ async def test_cloud_preparation_failure_is_persisted_without_render_worker(
         await cloud_training.train(str(mid))
     row = await pool.fetchrow("SELECT status,error FROM rm_reward_models WHERE id=$1", mid)
     assert row["status"] == "failed" and row["error"] == "Invalid comparison"
+
+
+async def test_cloud_cancellation_is_a_visible_failure(client, pool, monkeypatch):
+    _, mid = await model(client, pool, "running")
+    monkeypatch.setattr(database, "init_pool", AsyncMock())
+    monkeypatch.setattr(database, "close_db", AsyncMock())
+    monkeypatch.setattr(jobs, "run_training", AsyncMock(side_effect=asyncio.CancelledError()))
+    with pytest.raises(asyncio.CancelledError):
+        await cloud_training.train(str(mid))
+    row = await pool.fetchrow(
+        "SELECT status,error,finished_at FROM rm_reward_models WHERE id=$1", mid
+    )
+    assert row["status"] == "failed" and row["finished_at"]
+    assert row["error"] == "Cloud training was cancelled or timed out"
+
+
+@pytest.mark.parametrize("ignore_termination", [False, True])
+async def test_cancelling_worker_reaps_its_real_subprocess(
+    tmp_path, monkeypatch, ignore_termination
+):
+    # A tiny sleeping Python child, never a training or inference process.
+    directory = tmp_path / str(uuid4())
+    directory.mkdir()
+    (directory / "job.json").write_text(json.dumps({"kind": "train"}))
+    (tmp_path / "tiny_worker.py").write_text(
+        "import os, pathlib, signal, sys, time\n"
+        + ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if ignore_termination else "")
+        + "pathlib.Path(sys.argv[-1], 'pid').write_text(str(os.getpid()))\n"
+        + "time.sleep(60)\n"
+    )
+    monkeypatch.setattr(jobs, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "WORKER_STOP_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setenv("RM_WORKER_PYTHON", sys.executable)
+    task = asyncio.create_task(jobs.run_worker("tiny_worker", directory))
+    try:
+        async with asyncio.timeout(3):
+            while not (directory / "pid").exists():
+                await asyncio.sleep(0.01)
+        pid = int((directory / "pid").read_text())
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

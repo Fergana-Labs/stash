@@ -18,10 +18,16 @@ import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification
 
 from rm_worker.artifacts import upload_model
-from rm_worker.evaluation import action_score_rows, reward_stats, split_pairs
+from rm_worker.evaluation import (
+    action_reference_rewards,
+    action_score_rows,
+    preference_accuracies,
+    reward_stats,
+    split_pairs,
+)
 from rm_worker.progress import Reporter
 from rm_worker.release_gate import check_partition
-from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
+from rm_worker.scoring import load_tokenizer, pick_device, precision_context, score_texts, tokenize
 
 MAX_LENGTH = 1024
 ACTION_MAX_LENGTH = 4096
@@ -51,7 +57,9 @@ def write_reward_stats(model_dir: Path, scores: list[float]) -> None:
 def pair_rewards(model, tokenizer, batch: list[dict], device) -> tuple[torch.Tensor, torch.Tensor]:
     # Chosen and rejected go through one forward pass; the first half of the rewards is chosen.
     texts = [pair["chosen"] for pair in batch] + [pair["rejected"] for pair in batch]
-    rewards = model(**tokenize(tokenizer, texts, device)).logits.squeeze(-1)
+    with precision_context(device, model):
+        rewards = model(**tokenize(tokenizer, texts, device)).logits.squeeze(-1)
+    rewards = rewards.float()
     return rewards[: len(batch)], rewards[len(batch) :]
 
 
@@ -98,6 +106,9 @@ def train(job_dir: Path) -> dict:
     )
     model.config.pad_token_id = tokenizer.pad_token_id
     model.config.use_cache = False
+    model.config.stash_training_precision = (
+        "bf16" if device.type == "cuda" and torch.cuda.is_bf16_supported() else "float32"
+    )
     # Long trace pairs otherwise retain every layer's activations for both responses.
     model.gradient_checkpointing_enable()
     model.to(device)
@@ -130,7 +141,18 @@ def train(job_dir: Path) -> dict:
         log(f"epoch {epoch}/{epochs} mean loss {final_loss:.4f}")
 
     progress.update("evaluating")
-    eval_accuracy = pairwise_accuracy(model, tokenizer, eval_pairs, device)
+    eval_rewards = score_texts(
+        model,
+        tokenizer,
+        [p[key] for p in eval_pairs for key in ("chosen", "rejected")],
+        device,
+        2,
+    )
+
+    accuracies = preference_accuracies(eval_pairs, eval_rewards)
+    eval_accuracy = accuracies["eval_accuracy"]
+    action_accuracy = accuracies["action_eval_accuracy"]
+    tool_accuracy = accuracies["tool_eval_accuracy"]
     log(f"eval accuracy {eval_accuracy} on {len(eval_pairs)} trace-disjoint held-out pairs")
 
     model.save_pretrained(job_dir / "model")
@@ -156,13 +178,7 @@ def train(job_dir: Path) -> dict:
     tool_eval = [p for p in action_eval if p.get("action_type") == "tool_call"]
     action_scores = []
     if action_train:
-        reference = score_texts(
-            model,
-            tokenizer,
-            [p[key] for p in action_train for key in ("chosen", "rejected")],
-            device,
-            BATCH_SIZE,
-        )
+        reference = action_reference_rewards(train_pairs, calibration_scores)
         stats = reward_stats(reference)
         (job_dir / "model" / "action_reward_stats.json").write_text(json.dumps(stats))
         action_items = read_jsonl(job_dir / "action_score_items.jsonl")
@@ -176,8 +192,6 @@ def train(job_dir: Path) -> dict:
     write_jsonl(job_dir / "action_scores.jsonl", action_scores)
     # These evaluations used to run after upload; complete them before reporting
     # the final upload stage so progress follows the work actually being done.
-    action_accuracy = pairwise_accuracy(model, tokenizer, action_eval, device)
-    tool_accuracy = pairwise_accuracy(model, tokenizer, tool_eval, device)
     progress.update("uploading")
     upload_model(job_dir / "model", job["artifact_key"])
 
