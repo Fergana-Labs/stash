@@ -5,19 +5,30 @@ import { MoreHorizontal, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { rmGetTrace, rmListTraces } from "@/lib/api";
-import type { RmTraceSummary } from "@/lib/types";
+import type { RmTraceDetail, RmTraceSummary } from "@/lib/types";
 import { traceSourceName } from "./trace-sources";
 import { errorMessage } from "./rm-text";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 type TraceItem = string | Record<string, unknown>;
 
-export default function TraceSandboxInput({ disabled, label = "Trace", onChange }: {
+function traceItem(detail: RmTraceDetail): TraceItem {
+  const steps = detail.steps.map(({ id, index, role, content, tool_name, tool_input, tool_call_id }) => ({ id, index, role, content, tool_name, tool_input, tool_call_id }));
+  return { title: detail.title, steps };
+}
+
+export default function TraceSandboxInput({ disabled, label = "Trace", onChange, onTraceChange, importTrace, maxBytes = MAX_BYTES, scoreableOnly = false }: {
   disabled?: boolean; label?: string; onChange: (trace: TraceItem) => void;
+  onTraceChange?: (trace: RmTraceDetail | null, uploaded?: boolean) => void;
+  importTrace?: (file: File) => Promise<RmTraceDetail>;
+  maxBytes?: number;
+  scoreableOnly?: boolean;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const change = useRef(onChange);
   change.current = onChange;
+  const traceChange = useRef(onTraceChange);
+  traceChange.current = onTraceChange;
   const selection = useRef(0);
   const [name, setName] = useState("");
   const [item, setItem] = useState<TraceItem | null>(null);
@@ -39,8 +50,8 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
       const detail = await rmGetTrace(trace.id);
       if (selection.current !== request) return;
       // Previously assigned rewards and annotations are not model input.
-      const steps = detail.steps.map(({ id, index, role, content, tool_name, tool_input, tool_call_id }) => ({ id, index, role, content, tool_name, tool_input, tool_call_id }));
-      accept({ title: detail.title, steps }, trace.title);
+      accept(traceItem(detail), trace.title);
+      traceChange.current?.(detail);
     } catch (e) { if (selection.current === request) setError(errorMessage(e)); }
     finally { if (selection.current === request) setBusy(false); }
   }
@@ -50,19 +61,26 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
       setLoading(true);
       void rmListTraces(25, offset, query).then((result) => {
         if (cancelled) return;
-        setTraces(result.traces);
+        setTraces(scoreableOnly ? result.traces.filter((trace) => trace.can_score !== false) : result.traces);
         setTotal(result.total);
       }).catch((e) => { if (!cancelled) setError(errorMessage(e)); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [query, offset]);
+  }, [query, offset, scoreableOnly]);
 
   async function upload(file: File) {
     const request = ++selection.current;
     setBusy(true); setError(null);
     try {
-      if (file.size > MAX_BYTES) throw new Error("Choose a trace under 2 MB.");
+      if (file.size > maxBytes) throw new Error(`Choose a trace under ${maxBytes / (1024 * 1024)} MB.`);
+      if (importTrace) {
+        const detail = await importTrace(file);
+        if (selection.current !== request) return;
+        accept(traceItem(detail), detail.title);
+        traceChange.current?.(detail, true);
+        return;
+      }
       const text = await file.text();
       if (selection.current !== request) return;
       if (!text.trim()) throw new Error("This trace is empty.");
@@ -81,9 +99,9 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
   const steps = typeof item === "object" && item !== null && Array.isArray(item.steps) ? item.steps as Record<string, unknown>[] : null;
   return <section className="space-y-3" aria-label={label}>
     <div className="flex items-center gap-2">
-      {item ? <><span className="min-w-0 flex-1 truncate text-xs font-medium" title={name}>{name}</span><Button type="button" variant="ghost" size="sm" disabled={disabled || busy} onClick={() => { ++selection.current; setItem(null); setName(""); change.current(""); }}>Change trace</Button></> : <input aria-label="Search existing traces" placeholder="Search traces…" value={query} disabled={disabled || busy} onChange={(e) => { setQuery(e.target.value); setOffset(0); setLoading(true); }} className="h-7 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-xs outline-none" />}
+      {item ? <><span className="min-w-0 flex-1 truncate text-xs font-medium" title={name}>{name}</span><Button type="button" variant="ghost" size="sm" disabled={disabled || busy} onClick={() => { ++selection.current; setItem(null); setName(""); change.current(""); traceChange.current?.(null); }}>Change trace</Button></> : <input aria-label="Search existing traces" placeholder="Search traces…" value={query} disabled={disabled || busy} onChange={(e) => { setQuery(e.target.value); setOffset(0); setLoading(true); }} className="h-7 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-xs outline-none" />}
       <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="Trace options" disabled={disabled || busy}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload />Upload your own trace</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-      <input ref={fileInput} type="file" aria-label={`Upload ${label.toLowerCase()}`} accept=".json,.jsonl,.txt,.md" className="sr-only" disabled={disabled || busy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} />
+      <input ref={fileInput} type="file" aria-label={`Upload ${label.toLowerCase()}`} accept=".json,.jsonl,.ndjson,.txt,.md" className="sr-only" disabled={disabled || busy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} />
     </div>
     {!item && <div className="overflow-auto border-y border-border">
       <table aria-label="Choose a trace" className="w-full table-fixed border-collapse text-left text-xs">
