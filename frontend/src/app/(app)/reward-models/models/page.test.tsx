@@ -9,7 +9,7 @@ import RewardModelsPage from "./page";
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
-vi.mock("@/components/reward-models/TrainSheet", () => ({ default: () => null }));
+vi.mock("@/components/reward-models/TrainSheet", () => ({ default: ({ open, onTrained }: { open: boolean; onTrained: (model: { id: string }) => void }) => open ? <button onClick={() => onTrained({ id: "new-custom" })}>Queue test model</button> : null }));
 vi.mock("@/components/reward-models/FeedbackDialog", () => ({ default: () => null }));
 vi.mock("@/components/reward-models/ViewSkillButton", () => ({ default: () => null }));
 vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn() }));
@@ -135,6 +135,7 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(await screen.findByRole("link", { name: "Support reply" })).toHaveAttribute("href", "/reward-models/models/sandbox/support");
   expect(screen.getByRole("link", { name: ready.name })).toBeVisible();
   expect(screen.getByText("2 models")).toBeVisible();
+  await userEvent.setup().click(screen.getByText("More options"));
   expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
   const toggle = screen.getByRole("button", { name: "Support reply details" });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -145,7 +146,16 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(within(details).getByRole("link", { name: "3 predictions to review" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=inbox");
   await userEvent.setup().click(toggle);
   expect(screen.queryByRole("region", { name: "Support reply details" })).not.toBeInTheDocument();
-  await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Jev");
+  await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Rubric-based");
   expect(screen.getByRole("link", { name: "Support reply" })).toBeVisible();
   expect(screen.queryByRole("link", { name: ready.name })).not.toBeInTheDocument();
+});
+
+it("creates a trace-trained custom model from New model and opens that model", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([]);
+  render(<RewardModelsPage />);
+  await screen.findByText("No reward models yet");
+  await userEvent.setup().click(screen.getByRole("button", { name: "New model" }));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Queue test model" }));
+  expect(push).toHaveBeenCalledWith("/reward-models/models/new-custom");
 });

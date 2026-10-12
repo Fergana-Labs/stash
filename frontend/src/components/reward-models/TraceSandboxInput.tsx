@@ -65,14 +65,14 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
     finally { setBusy(false); }
   }
   return <section className="space-y-3" aria-label={label}>
-    <div className="rounded-lg border border-dashed border-border p-5">
-      <p className="mb-3 text-sm font-medium">{label}</p>
+    <div className="py-2">
+      {label !== "Trace" && <p className="mb-2 text-xs font-medium">{label}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={disabled || busy} onClick={() => fileInput.current?.click()}><Upload />Upload a trace</Button>
-        <Button type="button" variant="outline" disabled={disabled || busy} onClick={() => setChoosing(!choosing)}>Use an existing trace</Button>
+        <Button size="sm" variant="outline" type="button" disabled={disabled || busy} onClick={() => fileInput.current?.click()}><Upload />Upload a trace</Button>
+        <Button size="sm" type="button" variant="outline" disabled={disabled || busy} onClick={() => setChoosing(!choosing)}>Use an existing trace</Button>
       </div>
       <input ref={fileInput} type="file" aria-label={`Upload ${label.toLowerCase()}`} accept=".json,.jsonl,.txt,.md" className="sr-only" disabled={disabled || busy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} />
-      <p className="mt-3 text-xs text-muted-foreground">JSON, JSONL, or a text transcript. Select a trace, inspect it, then run this model.</p>
+      <p className="mt-3 text-xs text-muted-foreground">JSON, JSONL, or text transcript.</p>
     </div>
     {choosing && <div className="space-y-2 rounded-md border border-border p-3">
       <input aria-label="Search existing traces" placeholder="Search traces…" value={query} disabled={disabled || busy} onChange={(e) => setQuery(e.target.value)} className="w-full rounded border border-border p-2 text-sm" />
@@ -80,6 +80,6 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
     </div>}
     {busy && <p role="status" className="text-xs">Reading trace…</p>}
     {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
-    {name && <details open className="rounded-md border border-border p-3"><summary className="cursor-pointer text-xs font-medium">{name}</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">{preview}</pre></details>}
+    {name && <details open className="border-y border-border py-3"><summary className="cursor-pointer text-xs font-medium">{name}</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">{preview}</pre></details>}
   </section>;
 }

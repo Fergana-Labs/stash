@@ -88,7 +88,7 @@ export function stepReward(step: RmStep): StepReward | null {
     grade: g && gradeValue !== null
       ? {
           rubric: str(g.rubric),
-          grader: str(g.grader) || "the grader",
+          grader: "the evaluator",
           question: str(g.question),
           short: str(g.short),
           text: str(g.text),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Check, Play, Shuffle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
 import { imCompare, imPredict, imReview, type Comparison, type Item, type Prediction, type Version } from "@/lib/intuition-api";
 import { detectItemKeys, itemsOf, pct, signed } from "./im-helpers";
-import { Bar, Callout, Panel, Segmented, Spinner, useIntuition } from "./im-ui";
+import { Bar, Callout, Segmented, Spinner, useIntuition } from "./im-ui";
 import ItemInput, { draftFromItem, draftToItem, emptyDraft, type ItemDraft } from "./ItemInput";
 import { ContributionBars, ProbabilityBars, RubricAnswersView } from "./ProbabilityBars";
 import TraceSandboxInput from "@/components/reward-models/TraceSandboxInput";
@@ -113,9 +113,9 @@ export default function PlaygroundTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      <div className="grid border-y border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
         <Panel
-          title="Test this model"
+          title="Input"
           actions={
             <>
               {outputType === "preference" && (
@@ -159,13 +159,13 @@ export default function PlaygroundTab() {
             {inputMode === "trace" ? <>
               <TraceSandboxInput disabled={running} label={mode === "pair" ? "Trace A" : "Trace"} onChange={(item) => { setA(draftFromItem(item, null)); clearResult(); }} />
               {mode === "pair" && <TraceSandboxInput disabled={running} label="Trace B" onChange={(item) => { setB(draftFromItem(item, null)); clearResult(); }} />}
-              <p className="text-xs text-muted-foreground">The selected model judges the full trace using its rubric. A model trained on another input format may need trace examples and a matching rubric.</p>
+              <p className="text-[11px] text-muted-foreground">Evaluated against this model’s rubric.</p>
             </> : <>
             <ItemInput keys={keys} value={a} onChange={(value) => { setA(value); clearResult(); }} label={mode === "pair" ? "Item A" : undefined} disabled={running} onSubmit={() => void run()} />
             {mode === "pair" && <ItemInput keys={keys} value={b} onChange={(value) => { setB(value); clearResult(); }} label="Item B" disabled={running} onSubmit={() => void run()} />}
             </>}
             <div className="flex items-center gap-2">
-              <Button type="submit" disabled={running}>
+              <Button size="sm" type="submit" disabled={running || "error" in draftToItem(a, inputMode === "trace" ? null : keys) || (mode === "pair" && "error" in draftToItem(b, inputMode === "trace" ? null : keys))}>
                 {running ? <Spinner /> : <Play />}
                 {mode === "pair" ? "Compare" : "Run"}
               </Button>
@@ -173,7 +173,7 @@ export default function PlaygroundTab() {
               <span className="flex-1" />
               {pool.length > 0 && (
                 <Button type="button" variant="ghost" size="sm" onClick={fillRandom} disabled={running}>
-                  <Shuffle /> Fill from an example
+                  <Shuffle /> Load example
                 </Button>
               )}
             </div>
@@ -192,9 +192,10 @@ export default function PlaygroundTab() {
         ) : comparison ? (
           <ComparisonResult comparison={comparison} reviewed={reviewed} onReview={(label) => review(comparison.prediction_id, label, label === "a" ? "A is better" : "B is better")} />
         ) : (
-          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-border bg-surface/40 px-6 text-center text-[12.5px] text-muted-foreground">
-            {running ? <Spinner className="h-4 w-4" /> : "Upload or select a trace, then run it to see the prediction, the judge’s answers to each question, and why the head decided."}
-          </div>
+          <section className="border-t border-border p-5 lg:border-t-0" aria-label="Model output">
+            <h2 className="m-0 text-[13px] font-semibold">Output</h2>
+            <div className="mt-5 text-[12px] text-muted-foreground">{running ? <span role="status" className="flex items-center gap-2"><Spinner />Evaluating…</span> : "Run an input to see the model’s prediction."}</div>
+          </section>
         )}
       </div>
 
@@ -204,13 +205,13 @@ export default function PlaygroundTab() {
             <RubricAnswersView rubric={rubric} answers={prediction?.rubric ?? comparison!.rubric_a} compareWith={comparison?.rubric_b} />
           </Panel>
           <Panel
-            title="Why"
+            title="Decision details"
             description={
               comparison
-                ? "Feature contributions to score(A) − score(B). Green favors A."
+                ? "How the rubric answers affect the comparison."
                 : outputType === "choice"
-                  ? `Feature contributions to the “${prediction!.label}” logit. Green pushes toward it.`
-                  : "Feature contributions to the score. Green raises it."
+                  ? `How the rubric answers affect “${prediction!.label}”.`
+                  : "How the rubric answers affect the score."
             }
           >
             <ContributionBars rubric={rubric} contributions={comparison ? comparison.contributions : prediction!.contributions[outputType === "choice" ? prediction!.label : "score"]} />
@@ -271,7 +272,7 @@ function PredictionResult({
 }) {
   const description = describe(prediction.label);
   return (
-    <Panel title="Prediction" actions={<span className="font-mono text-[11.5px] text-muted-foreground">v{prediction.version}</span>}>
+    <Panel title="Output" actions={<span className="font-mono text-[11.5px] text-muted-foreground">v{prediction.version}</span>}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="font-mono text-[22px] font-semibold text-foreground">{prediction.label}</span>
         <span className="text-[12.5px] text-muted-foreground">
@@ -337,4 +338,16 @@ function ComparisonResult({ comparison, reviewed, onReview }: { comparison: Comp
       <p className="m-0 mt-2 text-[11.5px] text-muted-foreground">Scores are on a logit scale; only the difference between them matters.</p>
     </Panel>
   );
+}
+
+
+/** Flat workspace sections keep the input, result, and diagnostics on one canvas. */
+function Panel({ title, description, actions, children }: { title?: string; description?: string; actions?: ReactNode; children?: ReactNode }) {
+  return <section className="min-w-0 p-5">
+    <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div><h2 className="m-0 text-[13px] font-semibold">{title}</h2>{description && <p className="mb-0 mt-1 text-[12px] text-muted-foreground">{description}</p>}</div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </header>
+    {children}
+  </section>;
 }

@@ -35,6 +35,7 @@ export interface StepAnnotations {
   flashing: (step: RmStep) => boolean;
   onViewComments?: (step: RmStep) => void;
   onComment: (step: RmStep) => void;
+  contextHref?: (step: RmStep) => string;
   onSelectAnnotation: (ids: string[]) => void;
 }
 
@@ -63,6 +64,7 @@ function RowHeader({ step, ann, children, className }: { step: RmStep; ann: Step
     <div className={cn("relative -ml-8 flex items-center gap-3 pl-8", className)}>
       <span aria-label={`Step ${number}`} className="absolute inset-y-0 left-0 flex w-6 items-center justify-end font-mono text-[10px] tabular-nums text-muted-foreground">{number}</span>
       {children}
+      {ann.contextHref && <a href={ann.contextHref(step)} className="ml-auto shrink-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline" aria-label={`View context before step ${number}`}>Context</a>}
     </div>
   );
 }

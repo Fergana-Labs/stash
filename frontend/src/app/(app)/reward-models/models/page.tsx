@@ -28,6 +28,7 @@ const POLL_MS = 3000;
 
 export default function RewardModelsPage() {
   useBreadcrumbs([{ label: "Reward models" }], "rm-models");
+  const router = useRouter();
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rubricModels, setRubricModels] = useState<ModelSummary[]>([]);
@@ -63,9 +64,8 @@ export default function RewardModelsPage() {
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="m-0 font-display text-[18px] font-semibold tracking-tight text-foreground">Reward models</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <LoadExampleButton />
-          <Button size="sm" onClick={() => setCreatingRubric(true)}><Plus />New model</Button>
-          <Button size="sm" variant="outline" onClick={() => setSheetOpen(true)}>Train from traces</Button>
+          <details className="relative text-xs text-muted-foreground"><summary className="cursor-pointer">More options</summary><div className="absolute right-0 z-10 mt-2 flex min-w-48 flex-col gap-2 rounded-md border border-border bg-background p-3 shadow-lg"><LoadExampleButton /><Button size="sm" variant="outline" onClick={() => setCreatingRubric(true)}>Create rubric judge</Button></div></details>
+          <Button size="sm" onClick={() => setSheetOpen(true)}><Plus />New model</Button>
         </div>
       </div>
       <CreateModelDialog open={creatingRubric} onOpenChange={setCreatingRubric} />
@@ -73,9 +73,9 @@ export default function RewardModelsPage() {
       <TrainSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onTrained={() => {
+        onTrained={(model) => {
           setSheetOpen(false);
-          void load();
+          router.push(`/reward-models/models/${model.id}`);
         }}
       />
       {loadError !== null ? (
@@ -102,7 +102,7 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
   const models = [
     ...trainedModels.map((model) => ({ ...model, kind: "trained" as const, rubric: null })),
     ...rubricModels.map((model) => ({
-      id: model.id, name: model.name, base_model: "Rubric-based · Jev",
+      id: model.id, name: model.name, base_model: "Rubric-based",
       status: model.active_number === null ? "draft" as const : "succeeded" as const,
       created_at: model.created_at, kind: "rubric" as const, rubric: model,
     })),
@@ -132,13 +132,13 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
     </div>
     <div className="overflow-x-auto border-y border-border">
       <table aria-label="Reward models" className="w-full min-w-[1080px] table-fixed border-collapse text-left text-[12.5px] text-foreground">
-        <colgroup><col /><col className="w-32" /><col className="w-36" /><col className="w-44" /><col className="w-16" /><col className="w-28" /><col className="w-48" /></colgroup>
+        <colgroup><col /><col className="w-32" /><col className="w-36" /><col className="w-44" /><col className="w-32" /><col className="w-28" /><col className="w-48" /></colgroup>
         <thead className="border-b border-border bg-surface/60 text-[11.5px] text-muted-foreground">
           <tr className="h-7 [&>th]:px-3 [&>th]:py-0 [&>th]:font-medium">
             <th scope="col" aria-sort={sort.key === "name" ? sort.ascending ? "ascending" : "descending" : "none"}>
               <button type="button" onClick={() => sortBy("name")} className="flex cursor-pointer items-center gap-1 hover:text-foreground">Model{sort.key === "name" && <SortIcon className="size-3" />}</button>
             </th>
-            <th scope="col">Status</th><th scope="col">Est. remaining</th><th scope="col">Model type / base</th><th scope="col" className="text-right">Examples / traces</th><th scope="col" className="text-right">Eval accuracy</th>
+            <th scope="col">Status</th><th scope="col">Est. remaining</th><th scope="col">Model type / base</th><th scope="col" className="whitespace-nowrap text-right">Examples / traces</th><th scope="col" className="text-right">Eval accuracy</th>
             <th scope="col" aria-sort={sort.key === "created" ? sort.ascending ? "ascending" : "descending" : "none"}>
               <button type="button" onClick={() => sortBy("created")} className="ml-auto flex cursor-pointer items-center gap-1 hover:text-foreground">Created{sort.key === "created" && <SortIcon className="size-3" />}</button>
             </th>
@@ -172,7 +172,7 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
     </div></td>
     <td>{model.active_number === null ? "Draft" : `Ready · v${model.active_number}`}</td>
     <td className="text-muted-foreground">—</td>
-    <td className="text-muted-foreground">Rubric-based · Jev</td>
+    <td className="text-muted-foreground">Rubric-based</td>
     <td className="text-right tabular-nums"><span title={`${model.inbox} predictions to review`}>{model.examples}</span></td>
     <td className="text-right tabular-nums">{accuracy == null ? "—" : `${(accuracy * 100).toFixed(1)}%`}</td>
     <td className="text-right text-[11.5px] text-muted-foreground"><time dateTime={model.created_at}>{new Date(model.created_at).toLocaleString()}</time></td>

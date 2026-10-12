@@ -348,3 +348,99 @@ async def test_reviewer_suggestions_match_names_only_within_shared_workspaces(cl
         params={"q": "sam"},
     )
     assert denied.status_code == 404
+
+
+async def test_human_rating_replaces_automatic_credit_in_custom_training(client, pool, labeler):
+    user, ids, config = await annotated_traces(client, labeler)
+    tid = ids[0]
+    step_id = await pool.fetchval("SELECT id FROM rm_trace_steps WHERE trace_id=$1 AND idx=2", tid)
+    await client.post(
+        f"/api/v1/rm/traces/{tid}/annotations",
+        headers=user["headers"],
+        json={"step_id": str(step_id), "rating": -1},
+    )
+    pairs = await automatic_dataset.build_pairs(user["uuid"], ids, config, 100)
+    corrected = [p for p in pairs if p["trace_id"] == str(tid) and p["granularity"] == "action"]
+    assert corrected
+    assert any(p["source"] == "human_annotation" and p["rejected_credit"] == -1 for p in corrected)
+    assert all(p["chosen_credit"] != 1 and p["rejected_credit"] != 1 for p in corrected)
+
+
+async def test_human_only_traces_can_supply_training_pairs(client, pool):
+    user = await account(client)
+    tid = await upload(client, user, messages=session("custom"))
+    steps = await pool.fetch(
+        "SELECT id FROM rm_trace_steps WHERE trace_id=$1 AND role='assistant' ORDER BY idx", tid
+    )
+    for step, rating in zip(steps[:2], (1, -1), strict=True):
+        await client.post(
+            f"/api/v1/rm/traces/{tid}/annotations",
+            headers=user["headers"],
+            json={"step_id": str(step["id"]), "rating": rating},
+        )
+    pairs = await automatic_dataset.build_pairs(
+        user["uuid"],
+        [tid],
+        {
+            "rubric": ["Complete the task"],
+            "task_groups": {str(tid): "task"},
+            "evaluation_groups": [],
+        },
+        100,
+    )
+    assert len(pairs) == 1
+    assert pairs[0]["source"] == "human_annotation"
+    assert (pairs[0]["chosen_credit"], pairs[0]["rejected_credit"]) == (1, -1)
+
+
+async def test_comment_corrections_replace_conflicting_automatic_pairs(
+    client, pool, monkeypatch, labeler, tmp_path
+):
+    user, ids, config = await annotated_traces(client, labeler)
+    await pool.execute(
+        "INSERT INTO rm_annotations(owner_user_id,trace_id,comment) VALUES($1,$2,'The last response is incorrect')",
+        user["uuid"],
+        ids[0],
+    )
+    human_pair = {
+        "chosen": "reviewed correction",
+        "rejected": "original response",
+        "trace_id": str(ids[0]),
+        "granularity": "action",
+        "action_type": "response",
+        "source": "feedback_revision",
+        "evidence": {"source": "user_feedback", "evidence_id": "comment:review", "step_index": 2},
+    }
+
+    async def feedback_pairs(*args, **kwargs):
+        return [human_pair], []
+
+    monkeypatch.setattr(feedback, "build_feedback_pairs", feedback_pairs)
+    monkeypatch.setattr(tasks.train_reward_model, "delay", lambda *args: None)
+    monkeypatch.setenv("RM_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setenv("RM_COMPUTE", "modal")
+    created = await client.post(
+        "/api/v1/rm/reward-models",
+        headers=user["headers"],
+        json={
+            "name": "corrected",
+            "trace_ids": [str(tid) for tid in ids],
+            "training_config": config,
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    async def worker(module, directory):
+        pairs = jobs._read_jsonl(directory / "pairs.jsonl")
+        assert pairs[0]["source"] == "feedback_revision"
+        assert not any(
+            p["source"] == "automatic_annotation"
+            and p["trace_id"] == str(ids[0])
+            and 2 in (p.get("chosen_step_index"), p.get("rejected_step_index"))
+            for p in pairs
+        )
+        raise RuntimeError("Stop before GPU training")
+
+    monkeypatch.setattr(jobs, "run_worker", worker)
+    with pytest.raises(RuntimeError, match="Stop before GPU training"):
+        await jobs.run_training(UUID(created.json()["id"]))

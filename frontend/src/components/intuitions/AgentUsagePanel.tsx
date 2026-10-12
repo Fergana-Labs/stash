@@ -52,13 +52,13 @@ export default function AgentUsagePanel({ modelId, outputType, sample }: { model
   const mcp = JSON.stringify({ tool: "stash_intuition_predict", arguments: { model_id: modelId, item: typeof sample === "string" ? sample : JSON.stringify(sample) } }, null, 2);
 
   return (
-    <details className="group rounded-lg border border-border bg-background">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
+    <details className="group border-t border-border">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 py-3 text-[13px] font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-        Use from an agent
-        <span className="ml-2 text-[12px] font-normal text-muted-foreground">Calls are served by the active version and land in the Inbox.</span>
+        API access
+        <span className="ml-2 text-[12px] font-normal text-muted-foreground"></span>
       </summary>
-      <div className="space-y-3 border-t border-border-subtle px-4 py-3">
+      <div className="space-y-3 border-t border-border-subtle py-3">
         <div>
           <p className="m-0 mb-1.5 text-[12px] text-dim">REST · predict</p>
           <CopyBlock label="predict curl" text={predict} />

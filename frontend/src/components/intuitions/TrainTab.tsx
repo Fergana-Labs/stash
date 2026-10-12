@@ -145,7 +145,7 @@ export default function TrainTab() {
           summary={hasRubric ? (toGrade === 0 ? "Every example has judge answers for the current rubric." : `${toGrade} item${toGrade === 1 ? "" : "s"} need judge answers${toGrade > ungraded ? " (including answers under the active version, for the promotion comparison)" : ""}.`) : undefined}
         >
           <p className="m-0 mb-2 max-w-2xl text-[12px] leading-relaxed text-muted-foreground">
-            Asks Jev each rubric question about each example. Answers are cached per question, so only new or changed questions cost a call.
+            Asks the evaluator each rubric question about each example. Answers are cached per question, so only new or changed questions cost a call.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             {grading ? (
