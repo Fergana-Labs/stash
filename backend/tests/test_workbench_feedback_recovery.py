@@ -67,8 +67,30 @@ async def change(pool, fixture, fid, *, status="draft"):
     )
 
 
+async def finish_legacy_repair(pool, fixture, original):
+    """An older worker consumed the repair and completed with legacy context."""
+    await pool.execute(
+        """UPDATE rm_wb_feedback SET status='completed',interpretation=$2,
+        change_kind='agent_error',proposed_verdict='violates',updated_at=now() WHERE id=$1""",
+        original["id"],
+        original["interpretation"],
+    )
+    return await change(pool, fixture, original["id"])
+
+
+async def expire_repair_cooldown(pool, fid):
+    # Feedback markers determine retry cooldown; change-archive timestamps must
+    # remain paired with the automatic rejection's updated_at for provenance.
+    await pool.execute(
+        """UPDATE rm_wb_history SET created_at=now()-interval '61 seconds'
+        WHERE record_type='feedback' AND record_id=$1 AND action=$2 AND actor_user_id IS NULL""",
+        fid,
+        recovery.REPAIR_ACTION,
+    )
+
+
 @pytest.mark.parametrize("status", ["completed", "failed"])
-async def test_repair_queues_once_and_preserves_feedback_and_superseded_drafts(
+async def test_repair_preserves_feedback_and_drafts_without_retrying_failed_replacements(
     client,
     pool,
     model_and_queue_boundaries,  # noqa: F811 — imported pytest fixture
@@ -118,10 +140,140 @@ async def test_repair_queues_once_and_preserves_feedback_and_superseded_drafts(
     await pool.execute(
         "UPDATE rm_wb_feedback SET status='failed',error='New failure' WHERE id=$1", original["id"]
     )
+    await expire_repair_cooldown(pool, original["id"])
     assert await recovery.recover() == 0
     assert (
         await pool.fetchval("SELECT count(*) FROM rm_wb_history WHERE record_type='feedback'") == 1
     )
+
+
+async def test_rolling_deployment_legacy_completion_retries_then_v2_stops(client, pool):
+    fixture = await setup(client, pool)
+    original = await feedback(pool, fixture)
+    old_draft = await change(pool, fixture, original["id"])
+    assert await recovery.recover() == 1
+    first_archive = await pool.fetchrow(
+        "SELECT * FROM rm_wb_history WHERE record_type='change' AND record_id=$1", old_draft["id"]
+    )
+    first_rejection = await pool.fetchrow(
+        "SELECT * FROM rm_wb_changes WHERE id=$1", old_draft["id"]
+    )
+
+    recreated = await finish_legacy_repair(pool, fixture, original)
+    assert await recovery.recover() == 0  # An overlapping old worker cannot burn the retry cap.
+    await expire_repair_cooldown(pool, original["id"])
+    assert sum(await asyncio.gather(recovery.recover(), recovery.recover())) == 1
+    assert (
+        await pool.fetchrow("SELECT * FROM rm_wb_changes WHERE id=$1", old_draft["id"])
+        == first_rejection
+    )
+    assert (
+        await pool.fetchrow(
+            "SELECT * FROM rm_wb_history WHERE record_type='change' AND record_id=$1",
+            old_draft["id"],
+        )
+        == first_archive
+    )
+    assert (
+        await pool.fetchval("SELECT status FROM rm_wb_changes WHERE id=$1", recreated["id"])
+        == "rejected"
+    )
+    assert await pool.fetchval(
+        "SELECT snapshot FROM rm_wb_history WHERE record_type='change' AND record_id=$1",
+        recreated["id"],
+    ) == service.serial(recreated)
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM rm_wb_history WHERE record_type='feedback' AND record_id=$1",
+            original["id"],
+        )
+        == 2
+    )
+
+    await pool.execute(
+        "UPDATE rm_wb_feedback SET status='completed',interpretation=$2 WHERE id=$1",
+        original["id"],
+        {"draft_context_version": 2, "explanation": "Corrected with source context"},
+    )
+    current = await change(pool, fixture, original["id"])
+    await expire_repair_cooldown(pool, original["id"])
+    assert await recovery.recover() == 0
+    assert (
+        await pool.fetchval("SELECT status FROM rm_wb_changes WHERE id=$1", current["id"])
+        == "draft"
+    )
+
+
+async def test_legacy_worker_retries_stop_at_three_repairs(client, pool):
+    fixture = await setup(client, pool)
+    original = await feedback(pool, fixture)
+    await change(pool, fixture, original["id"])
+    for _ in range(recovery.MAX_REPAIR_ATTEMPTS):
+        assert await recovery.recover() == 1
+        latest = await finish_legacy_repair(pool, fixture, original)
+        await expire_repair_cooldown(pool, original["id"])
+    assert recovery.MAX_REPAIR_ATTEMPTS == 3
+    assert await recovery.recover() == 0
+    assert (
+        await pool.fetchval("SELECT status FROM rm_wb_changes WHERE id=$1", latest["id"]) == "draft"
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM rm_wb_history WHERE record_type='feedback' AND record_id=$1",
+            original["id"],
+        )
+        == 3
+    )
+
+
+@pytest.mark.parametrize("status", ["running", "completed", "failed"])
+async def test_v2_attempt_is_never_repaired_after_rolling_deployment(client, pool, status):
+    fixture = await setup(client, pool)
+    original = await feedback(pool, fixture)
+    assert await recovery.recover() == 1
+    await expire_repair_cooldown(pool, original["id"])
+    await pool.execute(
+        "UPDATE rm_wb_feedback SET status=$2,interpretation=$3 WHERE id=$1",
+        original["id"],
+        status,
+        {"draft_context_version": 2, "drafting_input": {"saved": True}},
+    )
+    before = await pool.fetchrow("SELECT * FROM rm_wb_feedback WHERE id=$1", original["id"])
+    assert await recovery.recover() == 0
+    assert await pool.fetchrow("SELECT * FROM rm_wb_feedback WHERE id=$1", original["id"]) == before
+
+
+@pytest.mark.parametrize("human_action", ["reject_archived", "reject_new", "edit_new", "review"])
+async def test_human_intervention_after_automatic_repair_blocks_rollout_retry(
+    client, pool, human_action
+):
+    fixture = await setup(client, pool)
+    user = fixture[0]
+    original = await feedback(pool, fixture)
+    old_draft = await change(pool, fixture, original["id"])
+    assert await recovery.recover() == 1
+    recreated = await finish_legacy_repair(pool, fixture, original)
+    await expire_repair_cooldown(pool, original["id"])
+    if human_action == "reject_archived":
+        await service.reject_change(user["uuid"], old_draft["id"])
+    elif human_action == "reject_new":
+        await service.reject_change(user["uuid"], recreated["id"])
+    elif human_action == "edit_new":
+        await service.edit_change(
+            user["uuid"], recreated["id"], {"content": {"text": "Human revision"}}
+        )
+    else:
+        await service.review_feedback(user["uuid"], original["id"], "accept")
+    before_feedback = await pool.fetchrow(
+        "SELECT * FROM rm_wb_feedback WHERE id=$1", original["id"]
+    )
+    before_changes = await pool.fetch("SELECT * FROM rm_wb_changes ORDER BY id")
+    assert await recovery.recover() == 0
+    assert (
+        await pool.fetchrow("SELECT * FROM rm_wb_feedback WHERE id=$1", original["id"])
+        == before_feedback
+    )
+    assert await pool.fetch("SELECT * FROM rm_wb_changes ORDER BY id") == before_changes
 
 
 @pytest.mark.parametrize(
