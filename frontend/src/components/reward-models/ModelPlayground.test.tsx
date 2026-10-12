@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { rmGetRewardModel, rmListTraces } from "@/lib/api";
 import type { RmRewardModelDetail } from "@/lib/types";
 import ModelPlayground from "./ModelPlayground";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
 vi.mock("@/lib/api", () => ({ rmGetRewardModel: vi.fn(), rmListTraces: vi.fn() }));
@@ -38,4 +39,12 @@ it("keeps the trace selector available while training is incomplete", async () =
   expect(await screen.findByText("Training hasn’t finished yet.")).toBeVisible();
   expect(screen.getByRole("table", { name: "Choose a trace" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+});
+
+it("embeds the playground without a page header or changing the list breadcrumbs", async () => {
+  render(<ModelPlayground modelId="model" embedded />);
+  expect(await screen.findByRole("heading", { name: "Input" })).toBeVisible();
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Reward models" })).not.toBeInTheDocument();
+  expect(useBreadcrumbs).not.toHaveBeenCalled();
 });
