@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronRight, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, type SelectOption } from "@/components/ui/select";
 import SyntaxCode from "./SyntaxCode";
 
-export default function TraceModelConnect({ modelId, traceId }: { modelId: string; traceId?: string }) {
+export default function TraceModelConnect({ modelId, traceId, models }: { modelId: string; traceId?: string; models?: SelectOption[] }) {
+  const [selectedModelId, setSelectedModelId] = useState(modelId);
+  const currentModelId = models?.some((model) => model.value === selectedModelId) ? selectedModelId : modelId;
   const [origin, setOrigin] = useState("https://api.joinstash.ai");
   const [copiedText, setCopiedText] = useState("");
   const [error, setError] = useState(false);
@@ -16,7 +19,7 @@ export default function TraceModelConnect({ modelId, traceId }: { modelId: strin
     return () => clearTimeout(timeout);
   }, [copiedText]);
   const endpoint = "/api/v1/rm/traces/" + encodeURIComponent(traceId ?? "TRACE_ID") + "/score";
-  const body = JSON.stringify({ reward_model_id: modelId }, null, 2).replace(/'/g, "'\\''");
+  const body = JSON.stringify({ reward_model_id: currentModelId }, null, 2).replace(/'/g, "'\\''");
   const text = [
     'curl -X POST "' + origin + endpoint + '" \\',
     '  -H "Authorization: Bearer $STASH_API_KEY" \\',
@@ -28,6 +31,7 @@ export default function TraceModelConnect({ modelId, traceId }: { modelId: strin
       <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />Connect
     </summary>
     <div className="pb-5">
+      {models && <div className="mb-3 flex items-center gap-2 text-xs"><span>Model</span><Select aria-label="Connect model" value={currentModelId} onChange={setSelectedModelId} options={models} className="h-7 min-w-48 px-2 text-xs" /></div>}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex min-w-0 items-center gap-2"><span className="font-medium text-success">POST</span><code className="break-all font-mono">{endpoint}</code></div>
         <a href="https://joinstash.ai/docs/api" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">API reference<ExternalLink className="h-3 w-3" /></a>

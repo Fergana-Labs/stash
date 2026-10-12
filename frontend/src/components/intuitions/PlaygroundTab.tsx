@@ -23,7 +23,7 @@ function hasTrace(item: Item | null): item is Item {
   return item !== null && (typeof item !== "string" || item.trim().length > 0);
 }
 
-export default function PlaygroundTab() {
+export default function PlaygroundTab({ embedded = false }: { embedded?: boolean }) {
   const { id, detail } = useIntuition();
   const outputType = detail.model.output_type;
   const canActive = servable(detail.active);
@@ -156,7 +156,7 @@ export default function PlaygroundTab() {
         </div>
       )}
 
-      <AgentUsagePanel modelId={id} outputType={outputType} sample={hasTrace(a) ? a : "…"} />
+      {!embedded && <AgentUsagePanel modelId={id} outputType={outputType} sample={hasTrace(a) ? a : "…"} />}
     </div>
   );
 }
