@@ -17,7 +17,7 @@ from uuid import UUID
 from rm_worker.release_gate import check_partition
 
 from ...database import get_pool
-from . import automatic_dataset, datasets, feedback, training_progress
+from . import automatic_dataset, datasets, feedback, scoring_progress, training_progress
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
@@ -65,6 +65,10 @@ async def run_worker(module: str, directory: Path) -> None:
         try:
             if job["kind"] == "train":
                 returncode = await training_progress.watch(process, log_path, UUID(directory.name))
+            elif job["kind"] == "score":
+                returncode = await training_progress.watch(
+                    process, log_path, UUID(directory.name), save_progress=scoring_progress.save
+                )
             else:
                 returncode = await process.wait()
         finally:
@@ -351,6 +355,7 @@ async def store_action_scores(
 
 async def run_scoring(run_id: UUID) -> None:
     pool = get_pool()
+    await scoring_progress.stage(run_id, "preparing")
     run = await pool.fetchrow(
         """
         SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config FROM rm_scoring_runs r
@@ -387,7 +392,9 @@ async def run_scoring(run_id: UUID) -> None:
         raise ValueError("Trace has no supported actions or outcome to score")
     _write_jsonl(directory / "score_items.jsonl", trace_items)
     module = "rm_worker.modal_runner" if run["compute"] == "modal" else "rm_worker.score_run"
+    await scoring_progress.stage(run_id, "starting")
     await run_worker(module, directory)
+    await scoring_progress.stage(run_id, "saving")
     scores = _read_jsonl(directory / "action_scores.jsonl")
     validate_action_scores(items, scores)
     trace_scores = _read_jsonl(directory / "scores.jsonl") if trace_items else []

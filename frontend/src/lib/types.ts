@@ -522,6 +522,16 @@ export interface RmScoringRun {
   reward_model_id: string;
   status: RmJobStatus;
   error: string | null;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  progress?: {
+    stage: "preparing" | "starting" | "downloading" | "loading" | "scoring" | "saving";
+    completed: number;
+    total: number;
+    elapsed_seconds: number;
+    updated_at: string;
+  } | null;
 }
 
 export interface RmTrainMetrics {

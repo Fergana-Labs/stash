@@ -1,5 +1,6 @@
 """Load a trained reward model and score texts with it."""
 
+from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -70,7 +71,12 @@ def tokenize(tokenizer, texts: list[str], device: torch.device) -> dict[str, tor
 
 @torch.no_grad()
 def score_texts(
-    model, tokenizer, texts: list[str], device: torch.device, batch_size: int
+    model,
+    tokenizer,
+    texts: list[str],
+    device: torch.device,
+    batch_size: int,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[float]:
     model.eval()
     if tokenizer.init_kwargs.get("stash_input_version") == 3:
@@ -81,6 +87,8 @@ def score_texts(
         with precision_context(device, model):
             rewards = model(**batch).logits.squeeze(-1)
         scores.extend(rewards.float().cpu().tolist())
+        if on_progress:
+            on_progress(len(scores))
     return scores
 
 
@@ -95,5 +103,9 @@ class RewardModel:
         self.rubric = self.tokenizer.init_kwargs.get("stash_rubric", [])
         self.model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(self.device)
 
-    def score(self, texts: list[str]) -> list[float]:
-        return score_texts(self.model, self.tokenizer, texts, self.device, self.batch_size)
+    def score(
+        self, texts: list[str], *, on_progress: Callable[[int], None] | None = None
+    ) -> list[float]:
+        return score_texts(
+            self.model, self.tokenizer, texts, self.device, self.batch_size, on_progress
+        )

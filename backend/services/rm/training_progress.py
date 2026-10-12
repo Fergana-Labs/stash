@@ -35,7 +35,8 @@ async def stage(model_id, name):
     )
 
 
-async def watch(process, log_path, model_id):
+async def watch(process, log_path, model_id, *, save_progress=None):
+    persist = save_progress or save
     waiter = asyncio.create_task(process.wait())
     try:
         with log_path.open(errors="replace") as stream:
@@ -51,7 +52,7 @@ async def watch(process, log_path, model_id):
                 if waiter.done():
                     latest = parse_event(pending) or latest
                 if latest:
-                    await save(model_id, latest)
+                    await persist(model_id, latest)
                 if waiter.done():
                     return waiter.result()
     finally:
