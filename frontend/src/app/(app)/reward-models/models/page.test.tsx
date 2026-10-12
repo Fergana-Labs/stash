@@ -148,7 +148,7 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(screen.getByRole("button", { name: ready.name })).toBeVisible();
   expect(screen.getByText("2 models")).toBeVisible();
   await userEvent.setup().click(screen.getByText("More options"));
-  expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: "Load example" })).toBeVisible();
   const toggle = screen.getByRole("button", { name: "Support reply details" });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   await userEvent.setup().click(toggle);
@@ -193,4 +193,18 @@ it("keeps one Connect section below the model table and copies the chosen model"
   expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"reward_model_id": "queued"'));
   await user.click(screen.getByRole("button", { name: ready.name }));
   expect(screen.getByText("Connect")).toBeVisible();
+});
+
+it("dismisses More options with Escape and an outside click", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([]);
+  const user = userEvent.setup();
+  render(<RewardModelsPage />);
+  await user.click(screen.getByRole("button", { name: "More options" }));
+  expect(await screen.findByRole("menuitem", { name: "Load example" })).toBeVisible();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menuitem", { name: "Load example" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "More options" }));
+  await screen.findByRole("menuitem", { name: "Load example" });
+  await user.click(screen.getByRole("heading", { name: "Reward models" }));
+  expect(screen.queryByRole("menuitem", { name: "Load example" })).not.toBeInTheDocument();
 });

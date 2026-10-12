@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/reward-models/rm-ui";
-import TrainSheet from "@/components/reward-models/TrainSheet";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { rmListRewardModels } from "@/lib/api";
 import { createOptimization, type BusinessMetric } from "@/lib/optimization-api";
@@ -16,7 +15,6 @@ export default function CreateOptimization({ initialModelId = "" }: { initialMod
   const router = useRouter();
   const [models, setModels] = useState<RmRewardModel[]>([]);
   const [modelId, setModelId] = useState(initialModelId);
-  const [training, setTraining] = useState(false);
   const [name, setName] = useState("");
   const [agent, setAgent] = useState("codex");
   const [scope, setScope] = useState("");
@@ -38,7 +36,7 @@ export default function CreateOptimization({ initialModelId = "" }: { initialMod
     <div><h2 className="m-0 text-lg font-medium">Begin prompt optimization</h2><p className="mb-0 mt-1 text-sm text-muted-foreground">Teach Stash what good work looks like, then improve instructions using future agent runs.</p></div>
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="Name"><input required maxLength={160} className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Support agent improvement" /></Field>
-      <Field label="Reward model" hint="Your feedback defines the reward. Training can finish in the background."><select required className={fieldClass} value={modelId} onChange={(e) => setModelId(e.target.value)}><option value="">Choose a reward model</option>{models.filter((m) => m.status !== "failed").map((m) => <option key={m.id} value={m.id}>{m.name}{m.status !== "succeeded" ? ` · ${m.status}` : ""}</option>)}</select><Button type="button" variant="link" className="px-0" onClick={() => setTraining(true)}>Train from my traces and annotations</Button></Field>
+      <Field label="Reward model"><select required className={fieldClass} value={modelId} onChange={(e) => setModelId(e.target.value)}><option value="">Choose a reward model</option>{models.filter((m) => m.status === "succeeded").map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>
       <Field label="Agent" hint="Use the same agent identifier in your MCP calls."><input required maxLength={160} className={fieldClass} value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="codex or support-agent" /></Field>
       <Field label="Scope" hint="The exact project directory or workload identifier this applies to."><input required maxLength={2000} className={fieldClass} value={scope} onChange={(e) => setScope(e.target.value)} placeholder="/projects/my-app or support/refunds" /></Field>
     </div>
@@ -62,6 +60,5 @@ export default function CreateOptimization({ initialModelId = "" }: { initialMod
     <p className="text-xs leading-relaxed text-muted-foreground">Starting enables candidate generation, remote reward scoring, and prompt experiments on connected future tasks. Each round compares {runs} current-prompt runs with {runs} candidate runs. A candidate becomes current only when reward improves and the business guardrail passes. Pause or roll back at any time.</p>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     <Button type="submit" disabled={busy || !modelId}>{busy ? "Starting…" : "Begin prompt optimization"}</Button>
-    <TrainSheet open={training} onOpenChange={setTraining} onTrained={(model) => { setTraining(false); setModels((all) => [model, ...all]); setModelId(model.id); }} />
   </form>;
 }

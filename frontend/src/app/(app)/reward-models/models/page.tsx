@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Loader2, Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import TrainSheet from "@/components/reward-models/TrainSheet";
@@ -59,7 +60,7 @@ export default function RewardModelsPage() {
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="m-0 font-display text-[18px] font-semibold tracking-tight text-foreground">Reward models</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <details className="relative text-xs text-muted-foreground"><summary className="cursor-pointer">More options</summary><div className="absolute right-0 z-10 mt-2 flex min-w-48 flex-col gap-2 rounded-md border border-border bg-background p-3 shadow-lg"><LoadExampleButton /></div></details>
+          <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" className="text-muted-foreground">More options</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><LoadExampleButton asMenuItem /></DropdownMenuContent></DropdownMenu>
           <Button size="sm" onClick={() => setSheetOpen(true)}><Plus />New model</Button>
         </div>
       </div>

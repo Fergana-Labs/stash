@@ -43,7 +43,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
   }, [trace, active, run]);
 
   function select(detail: RmTraceDetail | null, uploaded?: boolean) {
-    setTrace(detail); setOutputTrace(null); setRun(null); setError(null);
+    setTrace(detail); setOutputTrace(detail); setRun(null); setError(null);
     if (!uploaded) setNotice(null);
   }
   async function upload(file: File): Promise<RmTraceDetail> {
@@ -86,19 +86,21 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
   return <div className={embedded ? undefined : "mt-4 border-t border-border"}>
     <div className="grid border-b border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
       <section className="min-w-0 space-y-3 px-5 py-3" aria-label="Model input">
-        <h2 className="m-0 text-[13px] font-semibold">Input</h2>
-        <TraceSandboxInput disabled={disabled} scoreableOnly selectionOnly maxBytes={10 * 1024 * 1024} onChange={() => setError(null)} onTraceChange={select} onLoadingChange={setSelecting} importTrace={upload} />
-        <div className="flex items-center justify-between gap-2">
-          <Button size="sm" disabled={disabled || selecting || !ready || !supported || !trace} onClick={() => void score()} title={!ready ? "Training has not finished" : !supported ? "This checkpoint does not support trace scoring" : selecting ? "Loading the selected trace" : !trace ? "Choose a trace" : undefined}>
+        <div className="flex h-8 items-center justify-between gap-2">
+          <h2 className="m-0 text-[13px] font-semibold">Input</h2>
+          <Button size="sm" className="min-w-20" disabled={disabled || selecting || !ready || !supported || !trace} onClick={() => void score()} title={!ready ? "Training has not finished" : !supported ? "This checkpoint does not support trace scoring" : selecting ? "Loading the selected trace" : !trace ? "Choose a trace" : undefined}>
             {active || busy ? <Loader2 className="animate-spin" /> : <Play />}{active || busy ? "Running…" : "Run"}
           </Button>
         </div>
+        <TraceSandboxInput disabled={disabled} scoreableOnly selectionOnly maxBytes={10 * 1024 * 1024} onChange={() => setError(null)} onSelectionChange={() => { setTrace(null); setOutputTrace(null); setRun(null); setError(null); setNotice(null); }} onTraceChange={select} onLoadingChange={setSelecting} importTrace={upload} />
         {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
       </section>
       <section className="min-w-0 border-t border-border px-5 py-3 lg:border-t-0" aria-label="Model output">
-        <h2 className="m-0 mb-4 text-[13px] font-semibold">Output</h2>
+        <h2 className="m-0 mb-4 flex h-8 items-center text-[13px] font-semibold">Output</h2>
+        {selecting && <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading trace…</p>}
+        {!selecting && !supported && ready && <p className="mb-3 text-xs text-muted-foreground">This checkpoint does not support trace scoring.</p>}
         {error && <p role="alert" className="mb-3 text-xs text-destructive">{error}</p>}
-        {outputTrace ? <div className="space-y-3">
+        {!selecting && (outputTrace ? <div className="space-y-3">
             <div className="flex items-center justify-between gap-2"><h3 className="min-w-0 truncate text-xs font-medium">{outputTrace.title}</h3><Link href={"/reward-models/traces/" + outputTrace.id} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">Open trace</Link></div>
             {active && <p role="status" className="flex items-center gap-2 text-xs"><Loader2 className="h-3.5 w-3.5 animate-spin" />{run.status === "queued" ? "Queued for scoring" : "Scoring"} with {model.name}…</p>}
             {run?.status === "failed" && <p role="alert" className="text-xs text-destructive">{run.error ?? "Scoring failed. Try again."}</p>}
@@ -106,7 +108,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
               <p className="text-xs">Overall reward: <span className="font-mono text-lg font-semibold">{overall.score.toFixed(3)}</span></p>
               <Rating label="Overall trace" disabled={saving !== null || selecting} value={outputTrace.annotations.filter((a) => a.step_id === null && !a.label_error && a.rating !== null).at(-1)?.rating} onRate={(rating) => void rate(null, rating)} />
             </div>}
-            <div className="max-h-[540px] divide-y divide-border overflow-auto border-y border-border" aria-label="Graded conversation">
+            <div className="max-h-[min(52vh,420px)] divide-y divide-border overflow-auto border-y border-border" aria-label={showGrades ? "Graded conversation" : "Trace conversation"}>
               {outputTrace.steps.map((step) => {
                 const score = showGrades ? actionScores.find((item) => item.step_id === step.id) : undefined;
                 const annotation = outputTrace.annotations.filter((a) => a.step_id === step.id && !a.label_error && a.rating !== null).at(-1);
@@ -118,7 +120,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
                 </article>;
               })}
             </div>
-          </div> : <p className="text-xs text-muted-foreground">{!ready ? (isActiveJob(model.status) ? "Training hasn’t finished yet." : model.error ?? "Training did not finish.") : !supported ? "This checkpoint does not support trace scoring." : "Choose a trace and run this model to see its scores."}</p>}
+          </div> : <p className="text-xs text-muted-foreground">{!ready ? (isActiveJob(model.status) ? "Training hasn’t finished yet." : model.error ?? "Training did not finish.") : !supported ? "Choose a trace to inspect it." : "Choose a trace to preview it. Run to see this model’s scores."}</p>)}
       </section>
     </div>
     {!embedded && <TraceModelConnect modelId={model.id} traceId={trace?.id} />}

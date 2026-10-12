@@ -2,9 +2,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { expect, it, vi } from "vitest";
 import MonitoringPage from "./page";
 
-const api = vi.hoisted(() => ({ models: vi.fn(), traces: vi.fn(), score: vi.fn() }));
+const api = vi.hoisted(() => ({ models: vi.fn(), traces: vi.fn(), score: vi.fn(), optimizations: vi.fn(async () => []) }));
 vi.mock("@/lib/api", () => ({ rmListRewardModels: api.models, rmListAllTraces: api.traces, rmScoreTrace: api.score }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/reward-models/monitoring" }));
+vi.mock("@/lib/optimization-api", () => ({ listOptimizations: api.optimizations }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/reward-models/monitoring" }));
 
 it("loads the selected model's scores and never substitutes automatic annotations", async () => {
   api.models.mockResolvedValue(["one", "two"].map((id) => ({ id, name: `Model ${id}`, status: "succeeded", metrics: { trace_scoring_version: 1 } })));
@@ -30,4 +31,15 @@ it("monitors action-only models using that model's saved action credit", async (
   expect(screen.getByRole("columnheader", { name: "Action credit" })).toBeVisible();
   expect(screen.getByRole("cell", { name: "-0.30" })).toBeVisible();
   expect(screen.queryByText("0.87")).not.toBeInTheDocument();
+});
+
+it("shows live prompt experiments for the selected model rather than training jobs", async () => {
+  api.models.mockResolvedValue([{ id: "one", name: "Reward model", status: "succeeded", metrics: { trace_scoring_version: 1 } }]);
+  api.traces.mockResolvedValue([]);
+  api.optimizations.mockResolvedValue([{ id: "experiment", name: "Support prompt", reward_model_id: "one", agent: "support", status: "running", run_count: 12 }, { id: "other", name: "Unrelated experiment", reward_model_id: "two", agent: "support", status: "running", run_count: 5 }] as never);
+  render(<MonitoringPage />);
+  expect(await screen.findByRole("link", { name: "Support prompt" })).toHaveAttribute("href", "/reward-models/optimization/experiment");
+  expect(screen.queryByRole("link", { name: "Unrelated experiment" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Prompt optimization" })).toHaveAttribute("href", "/reward-models/monitoring#prompt-optimization");
+  expect(screen.queryByText("Preparing data")).not.toBeInTheDocument();
 });
