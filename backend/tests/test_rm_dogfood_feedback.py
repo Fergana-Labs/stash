@@ -413,7 +413,7 @@ async def test_comment_corrections_replace_conflicting_automatic_pairs(
     }
 
     async def feedback_pairs(*args, **kwargs):
-        return [human_pair], []
+        return [human_pair], [{"trace_id": str(ids[0]), "step_index": 2}]
 
     monkeypatch.setattr(feedback, "build_feedback_pairs", feedback_pairs)
     monkeypatch.setattr(tasks.train_reward_model, "delay", lambda *args: None)

@@ -21,7 +21,15 @@ from .test_rm_api import (
     _trainable_labels,
 )
 
-pytestmark = pytest.mark.usefixtures("rm_title_generator")
+pytestmark = pytest.mark.usefixtures("rm_title_generator", "no_feedback_dispatch")
+
+
+@pytest.fixture
+def no_feedback_dispatch(monkeypatch):
+    """These tests exercise datasets, not the optional comment-processing queue."""
+    from backend.tasks.workbench import prepare_feedback
+
+    monkeypatch.setattr(prepare_feedback, "delay", lambda *args: None)
 
 
 @pytest.fixture(autouse=True)
@@ -253,7 +261,10 @@ async def test_training_ingests_metrics_and_scores(client, monkeypatch, artifact
     assert latest[good] == {"reward_model_id": model_id, "reward_model_name": "rm", "score": 2.0}
 
 
-async def test_modal_compute_runs_the_modal_module(client, monkeypatch, artifact_dir):
+async def test_modal_compute_dispatches_preparation_and_training_to_cloud(client, monkeypatch, artifact_dir):
+    from unittest.mock import Mock
+
+    from rm_worker import cloud_training
     auth = await _register(client)
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch, compute="modal")
@@ -263,8 +274,11 @@ async def test_modal_compute_runs_the_modal_module(client, monkeypatch, artifact
         (directory / "scores.jsonl").write_text("")
 
     calls = _fake_worker(monkeypatch, write_outputs)
+    dispatch = Mock(return_value="fc-test")
+    monkeypatch.setattr(cloud_training, "dispatch", dispatch)
     await rm_tasks.train_reward_model_async(model_id)
-    assert calls == ["rm_worker.modal_runner"]
+    dispatch.assert_called_once_with(str(model_id))
+    assert calls == []
 
 
 async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(

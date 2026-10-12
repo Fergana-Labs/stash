@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
@@ -36,7 +37,41 @@ async def _run_tracked(table: str, job_id: UUID, run: Callable[[UUID], Awaitable
 
 
 async def train_reward_model_async(model_id: UUID) -> None:
-    await _run_tracked("rm_reward_models", model_id, jobs.run_training)
+    pool = get_pool()
+    # An old broker delivery must not restart a completed/failed model or
+    # submit the same active job again after a worker redeploy.
+    model = await pool.fetchrow(
+        """UPDATE rm_reward_models SET status='running', started_at=now(), error=NULL,
+        finished_at=NULL, progress=NULL WHERE id=$1 AND status='queued' AND scope='personal'
+        RETURNING compute""",
+        model_id,
+    )
+    if model is None:
+        return
+    if model["compute"] != "modal":
+        await _run_tracked("rm_reward_models", model_id, jobs.run_training)
+        return
+    from rm_worker import cloud_training
+
+    try:
+        await jobs.training_progress.stage(model_id, "starting")
+        call_id = await asyncio.to_thread(cloud_training.dispatch, str(model_id))
+    except Exception as exc:
+        await pool.execute(
+            """UPDATE rm_reward_models SET status='failed', error=$2, finished_at=now()
+            WHERE id=$1 AND status='running'""",
+            model_id,
+            str(exc)[-ERROR_CHARS:],
+        )
+        raise
+    # Keep this separate from dispatch errors: once submitted, the cloud job
+    # owns completion. A failed metadata write must not mark its run failed.
+    await pool.execute(
+        """UPDATE rm_reward_models SET progress=coalesce(progress, '{}'::jsonb) || $2::jsonb
+        WHERE id=$1 AND status='running'""",
+        model_id,
+        {"remote_call_id": call_id},
+    )
 
 
 async def run_gepa_async(run_id: UUID) -> None:

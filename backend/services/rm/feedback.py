@@ -276,6 +276,7 @@ async def extract_preferences(
     input_version: int = 1,
     rubric: tuple[str, ...] | None = None,
     max_actions: int | None = None,
+    comments_only: bool = False,
 ) -> Extraction:
     if not 0 <= rubric_dropout < 1:
         raise ValueError("Rubric dropout must be between 0 (inclusive) and 1 (exclusive)")
@@ -285,6 +286,10 @@ async def extract_preferences(
         if not is_assistant_action(step):
             return None
         eligible = eligible_evidence(step, evidence)
+        if comments_only:
+            eligible = {key: value for key, value in eligible.items() if key.startswith("comment:")}
+            if not eligible:
+                return None
         if input_version == 3:
             eligible = {
                 key: {**value, "text": clip(value["text"], 3000)} for key, value in eligible.items()
@@ -315,6 +320,8 @@ async def extract_preferences(
             )
         finding = result.feedback
         if finding is None:
+            return None
+        if comments_only and finding.source != "user_feedback":
             return None
         if finding.source == "ai_judgment":
             evidence_id = response_id
@@ -368,7 +375,14 @@ async def extract_preferences(
         # Unparseable judgments abstain; never turn them into preference labels.
         return None
 
-    targets = sample_actions(steps, max_actions) if max_actions is not None else steps
+    targets = steps
+    if comments_only:
+        targets = [
+            step
+            for step in targets
+            if any(key.startswith("comment:") for key in eligible_evidence(step, evidence))
+        ]
+    targets = sample_actions(targets, max_actions) if max_actions is not None else targets
     findings = await asyncio.gather(*(classify_checked(step) for step in targets))
     return Extraction(feedback=[finding for finding in findings if finding is not None])
 
@@ -565,7 +579,7 @@ async def build_feedback_pairs(
                 if c["trace_id"] == trace_id and c["comment"] is not None
             }
         )
-        if shared or v3:
+        if shared or (v3 and training_config.get("annotation_source") != "automatic"):
             # A step rating supplies a human judgment, but still needs a grounded,
             # independently reviewed alternative before becoming a preference pair.
             evidence.update(
@@ -595,6 +609,7 @@ async def build_feedback_pairs(
                 max_actions=min(
                     training_config["max_actions_per_trace"], max_pairs // len(trace_ids)
                 ),
+                comments_only=training_config.get("annotation_source") == "automatic",
             )
         elif shared:
             from .datasets import render_action_context

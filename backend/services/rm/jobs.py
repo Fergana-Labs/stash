@@ -84,7 +84,7 @@ async def run_training(model_id: UUID) -> None:
         findings = []
         commented = await pool.fetch(
             """SELECT DISTINCT trace_id FROM rm_annotations WHERE owner_user_id=$1
-            AND trace_id=ANY($2::uuid[]) AND comment IS NOT NULL AND NOT label_error""",
+            AND trace_id=ANY($2::uuid[]) AND btrim(comment)<>'' AND NOT label_error""",
             owner_user_id,
             model["trace_ids"],
         )
@@ -147,7 +147,8 @@ async def run_training(model_id: UUID) -> None:
         ) in included and len(pairs) >= datasets.MIN_PAIRS
         if config:
             finding["included_in_evaluation"] = any(
-                p["partition"] == "eval"
+                p.get("source") == "feedback_revision"
+                and p["partition"] == "eval"
                 and p["trace_id"] == finding["trace_id"]
                 and p["evidence"]["step_index"] == finding["step_index"]
                 for p in pairs
@@ -204,7 +205,11 @@ async def run_training(model_id: UUID) -> None:
     )
     _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
-    module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
+    module = (
+        "rm_worker.modal_runner"
+        if model["compute"] == "modal" and os.environ.get("RM_TRAINING_ON_CLOUD_GPU") != "1"
+        else "rm_worker.train"
+    )
     await training_progress.stage(model_id, "starting")
     await run_worker(module, directory)
 
