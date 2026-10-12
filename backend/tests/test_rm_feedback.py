@@ -796,11 +796,17 @@ async def test_automatic_comment_corrections_only_grade_the_commented_action(mon
 
     async def complete(**kwargs):
         calls.append(json.loads(kwargs["prompt"])["target_response"]["idx"])
-        return kwargs["output_model"].model_validate({"reason": "No grounded alternative", "feedback": None})
+        return kwargs["output_model"].model_validate(
+            {"reason": "No grounded alternative", "feedback": None}
+        )
 
     monkeypatch.setattr(feedback.llm, "complete_structured", complete)
     result = await feedback.extract_preferences(
-        steps, sources, input_version=3, comments_only=True, max_actions=1,
+        steps,
+        sources,
+        input_version=3,
+        comments_only=True,
+        max_actions=1,
     )
     assert result.feedback == []
     assert calls == [1]

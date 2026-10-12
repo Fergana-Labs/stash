@@ -147,7 +147,7 @@ jobs:
       - name: Merge current main
         run: |
           git fetch origin main
-          git merge --no-commit --no-ff FETCH_HEAD || {
+          git -c user.name='Stash CI' -c user.email='ci@joinstash.ai' merge --no-commit --no-ff FETCH_HEAD || {
             echo "::error::This branch conflicts with main; rebase onto main."
             exit 1
           }
