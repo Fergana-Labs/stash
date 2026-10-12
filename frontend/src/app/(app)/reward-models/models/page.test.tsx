@@ -15,7 +15,6 @@ vi.mock("@/components/reward-models/ViewSkillButton", () => ({ default: () => nu
 vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn() }));
 
 vi.mock("@/lib/intuition-api", () => ({ imList: vi.fn(), imLoadExample: vi.fn() }));
-vi.mock("@/components/intuitions/CreateModelDialog", () => ({ default: () => null }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -55,6 +54,7 @@ it("keeps the table headers visible in the empty state", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([]);
   render(<RewardModelsPage />);
   await screen.findByText("No reward models yet");
+  expect(screen.queryByRole("button", { name: "Create rubric judge" })).not.toBeInTheDocument();
   expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Est. remaining", "Model type / base", "Examples / traces", "Eval accuracy", "Created"]);
   expect(screen.getByRole("button", { name: "New model" })).toBeVisible();
 });
@@ -142,8 +142,9 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   await userEvent.setup().click(toggle);
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   const details = screen.getByRole("region", { name: "Support reply details" });
-  expect(within(details).getByRole("link", { name: "Open playground" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=playground");
-  expect(within(details).getByRole("link", { name: "3 predictions to review" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=inbox");
+  expect(within(details).getByRole("link", { name: "Open playground" })).toHaveAttribute("href", "/reward-models/models/sandbox/support");
+  expect(within(details).queryByRole("link", { name: /predictions to review/ })).not.toBeInTheDocument();
+  expect(within(details).queryByRole("link", { name: /labeled examples/ })).not.toBeInTheDocument();
   await userEvent.setup().click(toggle);
   expect(screen.queryByRole("region", { name: "Support reply details" })).not.toBeInTheDocument();
   await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Rubric-based");

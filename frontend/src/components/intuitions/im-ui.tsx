@@ -1,29 +1,15 @@
 "use client";
 
-import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { Example, ExampleSource, ModelDetail, Version } from "@/lib/intuition-api";
+import type { ExampleSource, ModelDetail, Version } from "@/lib/intuition-api";
 
 export { inputClass } from "@/components/workbench/workbench-ui";
 
-export const TABS = [
-  { id: "playground", label: "Playground" },
-  { id: "inbox", label: "Inbox" },
-  { id: "examples", label: "Examples" },
-  { id: "rubric", label: "Rubric" },
-  { id: "train", label: "Train" },
-  { id: "versions", label: "Versions" },
-] as const;
-export type TabId = (typeof TABS)[number]["id"];
-
-export function isTabId(value: string | null): value is TabId {
-  return TABS.some((t) => t.id === value);
-}
-
-/** Everything the detail tabs share: the model, its examples, and navigation. */
+/** Shared model state for the playground and header. */
 export interface IntuitionCtx {
   id: string;
   detail: ModelDetail;
@@ -31,11 +17,6 @@ export interface IntuitionCtx {
   version: Version | null;
   apply: (detail: ModelDetail) => void;
   reload: () => Promise<void>;
-  examples: Example[] | null;
-  examplesError: string | null;
-  setExamples: Dispatch<SetStateAction<Example[] | null>>;
-  reloadExamples: () => Promise<void>;
-  goTo: (tab: TabId, params?: Record<string, string>) => void;
 }
 
 const Ctx = createContext<IntuitionCtx | null>(null);

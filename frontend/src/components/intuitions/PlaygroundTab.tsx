@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check, Play } from "lucide-react";
-import { toast } from "sonner";
+import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
-import { imCompare, imPredict, imReview, type Comparison, type Item, type Prediction, type Version } from "@/lib/intuition-api";
+import { imCompare, imPredict, type Comparison, type Item, type Prediction, type Version } from "@/lib/intuition-api";
 import { pct, signed } from "./im-helpers";
 import { Bar, Callout, Segmented, Spinner, useIntuition } from "./im-ui";
 import { ContributionBars, ProbabilityBars, RubricAnswersView } from "./ProbabilityBars";
@@ -25,7 +24,7 @@ function hasTrace(item: Item | null): item is Item {
 }
 
 export default function PlaygroundTab() {
-  const { id, detail, examples, goTo, reload, reloadExamples } = useIntuition();
+  const { id, detail } = useIntuition();
   const outputType = detail.model.output_type;
   const canActive = servable(detail.active);
   const canDraft = servable(detail.draft);
@@ -37,21 +36,18 @@ export default function PlaygroundTab() {
   const [error, setError] = useState<string | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [comparison, setComparison] = useState<Comparison | null>(null);
-  const [reviewed, setReviewed] = useState<string | null>(null);
   const version = which === "draft" ? detail.draft : detail.active;
   const rubric = version?.rubric ?? [];
   const labels = version?.labels ?? [];
 
   function clearResult() {
-    setPrediction(null); setComparison(null); setReviewed(null); setError(null);
+    setPrediction(null); setComparison(null); setError(null);
   }
 
-  const pool = examples?.filter((e) => e.item_b == null) ?? [];
   async function run() {
     if (running || !servable(version) || !hasTrace(a) || (mode === "pair" && !hasTrace(b))) return;
     setRunning(true);
     setError(null);
-    setReviewed(null);
     try {
       if (mode === "pair" && hasTrace(b)) {
         setComparison(await imCompare(id, a, b, which));
@@ -64,19 +60,6 @@ export default function PlaygroundTab() {
       setError(errorMessage(e));
     } finally {
       setRunning(false);
-    }
-  }
-
-  async function review(predictionId: string | null, label: string, shown: string) {
-    if (!predictionId) return;
-    try {
-      await imReview(id, predictionId, { label });
-      setReviewed(label);
-      toast.success(`Saved as an example labeled “${shown}”`, { action: { label: "View", onClick: () => goTo("examples", { source: "production" }) } });
-      void reload();
-      void reloadExamples();
-    } catch (e) {
-      toast.error(errorMessage(e));
     }
   }
 
@@ -142,11 +125,9 @@ export default function PlaygroundTab() {
             prediction={prediction}
             labelOrder={outputType === "choice" ? labels.map((l) => l.id) : ["good", "bad"]}
             describe={(l) => labels.find((x) => x.id === l)?.description}
-            reviewed={reviewed}
-            onReview={(label) => review(prediction.prediction_id, label, label)}
           />
         ) : comparison ? (
-          <ComparisonResult comparison={comparison} reviewed={reviewed} onReview={(label) => review(comparison.prediction_id, label, label === "a" ? "A is better" : "B is better")} />
+          <ComparisonResult comparison={comparison} />
         ) : (
           <section className="border-t border-border px-5 py-3 lg:border-t-0" aria-label="Model output">
             <h2 className="m-0 text-[13px] font-semibold">Output</h2>
@@ -175,40 +156,7 @@ export default function PlaygroundTab() {
         </div>
       )}
 
-      <AgentUsagePanel modelId={id} outputType={outputType} sample={hasTrace(a) ? a : pool[0]?.item ?? "…"} />
-    </div>
-  );
-}
-
-function ReviewButtons({ options, predicted, reviewed, onReview }: { options: { value: string; label: string }[]; predicted: string; reviewed: string | null; onReview: (value: string) => void | Promise<void> }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  if (reviewed) {
-    const shown = options.find((o) => o.value === reviewed)?.label ?? reviewed;
-    return (
-      <p className="m-0 inline-flex items-center gap-1.5 text-[12.5px] text-emerald-700 dark:text-emerald-400">
-        <Check className="h-3.5 w-3.5" /> Saved as an example: {shown}
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[12px] text-dim">Is this right?</span>
-      {options.map((o) => (
-        <Button
-          key={o.value}
-          size="xs"
-          variant={o.value === predicted ? "secondary" : "outline"}
-          disabled={busy !== null}
-          onClick={async () => {
-            setBusy(o.value);
-            await onReview(o.value);
-            setBusy(null);
-          }}
-        >
-          {busy === o.value ? <Spinner className="h-3 w-3" /> : o.value === predicted ? <Check /> : null}
-          {o.label}
-        </Button>
-      ))}
+      <AgentUsagePanel modelId={id} outputType={outputType} sample={hasTrace(a) ? a : "…"} />
     </div>
   );
 }
@@ -217,14 +165,10 @@ function PredictionResult({
   prediction,
   labelOrder,
   describe,
-  reviewed,
-  onReview,
 }: {
   prediction: Prediction;
   labelOrder: string[];
   describe: (label: string) => string | undefined;
-  reviewed: string | null;
-  onReview: (label: string) => void | Promise<void>;
 }) {
   const description = describe(prediction.label);
   return (
@@ -240,18 +184,11 @@ function PredictionResult({
       <div className="mt-3">
         <ProbabilityBars probabilities={prediction.probabilities} order={labelOrder.filter((l) => l in prediction.probabilities)} highlight={prediction.label} describe={describe} />
       </div>
-      <div className="mt-4 border-t border-border-subtle pt-3">
-        {prediction.prediction_id ? (
-          <ReviewButtons options={labelOrder.map((l) => ({ value: l, label: l }))} predicted={prediction.label} reviewed={reviewed} onReview={onReview} />
-        ) : (
-          <p className="m-0 text-[12px] text-muted-foreground">This prediction wasn’t logged, so it can’t be saved as an example.</p>
-        )}
-      </div>
     </Panel>
   );
 }
 
-function ComparisonResult({ comparison, reviewed, onReview }: { comparison: Comparison; reviewed: string | null; onReview: (label: string) => void | Promise<void> }) {
+function ComparisonResult({ comparison }: { comparison: Comparison }) {
   const winner = comparison.winner === "a" ? "A" : "B";
   return (
     <Panel title="Comparison" actions={<span className="font-mono text-[11.5px] text-muted-foreground">v{comparison.version}</span>}>
@@ -275,21 +212,6 @@ function ComparisonResult({ comparison, reviewed, onReview }: { comparison: Comp
             </div>
           ))}
         </div>
-      </div>
-      <div className="mt-4 border-t border-border-subtle pt-3">
-        {comparison.prediction_id ? (
-          <ReviewButtons
-            options={[
-              { value: "a", label: "A is better" },
-              { value: "b", label: "B is better" },
-            ]}
-            predicted={comparison.winner}
-            reviewed={reviewed}
-            onReview={onReview}
-          />
-        ) : (
-          <p className="m-0 text-[12px] text-muted-foreground">This comparison wasn’t logged.</p>
-        )}
       </div>
       <p className="m-0 mt-2 text-[11.5px] text-muted-foreground">Scores are on a logit scale; only the difference between them matters.</p>
     </Panel>
