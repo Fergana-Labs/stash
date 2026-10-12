@@ -191,8 +191,8 @@ export default function AgentTracesAreTheNewOilPage() {
               <strong>There is a huge volume of data.</strong> Agents can produce tokens much
               faster than humans can, and ingesting all of those tokens with yet another LLM is
               prohibitively expensive, usually representing a meaningful fraction of the cost it
-              took to produce those tokens in the first place. Classification-focused models like
-              Jev may change the equation here, however.
+              took to produce those tokens in the first place. Classification-focused models
+              may change the equation here, however.
             </li>
             <li>
               <strong>The feedback is messy.</strong> Success and failure may be hard to determine

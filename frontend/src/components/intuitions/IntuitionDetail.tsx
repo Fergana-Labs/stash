@@ -95,7 +95,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
   return (
     <IntuitionProvider value={ctx}>
       <div className="scroll-thin h-full overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-10 pt-6 pb-16">
+        <div className="mx-auto max-w-6xl px-6 pt-5 pb-12">
           <IntuitionHeader />
           <TabBar tab={tab} detail={ctx.detail} examples={examples} onSelect={(t) => goTo(t)} />
           <div role="tabpanel" id={`im-panel-${tab}`} aria-labelledby={`im-tab-${tab}`} className="pt-5">

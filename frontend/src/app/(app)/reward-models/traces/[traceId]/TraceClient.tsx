@@ -4,6 +4,8 @@ import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEscapeBack } from "@/hooks/useEscapeBack";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -53,6 +55,7 @@ function highlightClass(a: RmAnnotation, active: boolean): string {
 }
 
 function LatestTraceClient({ traceId }: { traceId: string }) {
+  const router = useRouter();
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
@@ -62,6 +65,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [focusedSection, setFocusedSection] = useState<{ firstStepId: string; lastStepId: string } | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
+  useEscapeBack(() => {
+    if (composer) setComposer(null);
+    else if (commentsOpen) setCommentsOpen(false);
+    else router.push("/reward-models");
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);

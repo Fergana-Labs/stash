@@ -13,7 +13,7 @@ import { imDelete, imRename } from "@/lib/intuition-api";
 import { Callout, ConfirmDialog, inputClass, useIntuition } from "./im-ui";
 
 export default function IntuitionHeader() {
-  const { id, detail, apply, version, goTo } = useIntuition();
+  const { id, detail, apply, goTo } = useIntuition();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(detail.model.name);
@@ -65,7 +65,7 @@ export default function IntuitionHeader() {
               className={cn(inputClass, "font-display text-[20px] font-semibold tracking-tight")}
             />
           ) : (
-            <h1 className="group m-0 flex min-w-0 items-center gap-2 font-display text-[22px] font-semibold tracking-tight text-foreground">
+            <h1 className="group m-0 flex min-w-0 items-center gap-2 font-display text-[18px] font-semibold tracking-tight text-foreground">
               <span className="truncate">{detail.model.name}</span>
               <button
                 type="button"
@@ -81,8 +81,8 @@ export default function IntuitionHeader() {
             </h1>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-            <span className="tag tag-muted">{detail.model.output_type}</span>
-            {active ? <span className="tag tag-success">Active v{active.number}</span> : <span className="tag tag-muted">No active version</span>}
+            <span>{detail.model.output_type === "choice" ? "Classifier" : "Preference model"}</span>
+            {active ? <span className="text-emerald-700 dark:text-emerald-400">Active v{active.number}</span> : <span>No active version</span>}
             {draft && (
               <button type="button" onClick={() => goTo("versions")} className="tag tag-warning hover:opacity-80" title="Edits land on the draft until you promote it">
                 Draft v{draft.number} · unpromoted changes
@@ -90,7 +90,7 @@ export default function IntuitionHeader() {
             )}
             <span className="inline-flex items-center gap-1.5 font-mono text-[11.5px]" title={judge.configured ? "Judge configured" : "Judge not configured"}>
               <span className={cn("h-1.5 w-1.5 rounded-full", judge.configured ? "bg-emerald-500" : "bg-red-500")} />
-              {judge.provider} · {version?.provider_model ?? judge.model}
+              {judge.configured ? "Evaluator connected" : "Evaluator unavailable"}
             </span>
           </div>
         </div>
@@ -118,7 +118,7 @@ export default function IntuitionHeader() {
       {!judge.configured && (
         <div className="mt-3">
           <Callout tone="warning">
-            Jev is not configured: set <code className="font-mono">TYPESAFE_API_KEY</code>. Cached answers still work; grading new items and changed questions will fail.
+            The evaluator is not connected. Saved answers are available; grading new items is unavailable.
           </Callout>
         </div>
       )}

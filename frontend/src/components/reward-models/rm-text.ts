@@ -1,3 +1,4 @@
+import { workbenchError } from "@/components/workbench/workbench-display";
 import type { RmAnnotation, RmQuote, RmStep } from "@/lib/types";
 
 // How much surrounding text a quote carries on each side. The prefix and suffix
@@ -147,8 +148,7 @@ export function relativeTime(iso: string): string {
 }
 
 export function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return String(e);
+  return workbenchError(e instanceof Error ? e.message : String(e));
 }
 
 /** The line that says what went wrong: the last non-empty line of a worker log tail. */
