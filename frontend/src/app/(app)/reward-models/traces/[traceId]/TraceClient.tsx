@@ -253,6 +253,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   const ann: StepAnnotations = {
+    contextHref: (step) => `/reward-models/traces/${traceId}/context?step=${encodeURIComponent(step.id)}`,
     stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
     actionScore: (step) => actionScores.get(step.id),
@@ -313,6 +314,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               >
                 Comments{ordered.length > 0 && ` (${ordered.length})`}
               </button>
+              <Link href={`/reward-models/traces/${traceId}/context`} className="text-xs text-muted-foreground hover:underline">Context viewer</Link>
               <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
             </div>
           </header>
