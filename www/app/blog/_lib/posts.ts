@@ -3,7 +3,7 @@
 
 export type Author = {
   name: string;
-  url: string;
+  url?: string;
   sameAs: string[];
 };
 
@@ -18,6 +18,14 @@ export const AUTHORS: Record<string, Author> = {
     url: "https://henrydowling.com",
     sameAs: ["https://x.com/henrytdowling", "https://henrydowling.com"],
   },
+  "Coleman DuPlessie": {
+    name: "Coleman DuPlessie",
+    sameAs: [],
+  },
+  "Priyadarshan Narayanasamy": {
+    name: "Priyadarshan Narayanasamy",
+    sameAs: [],
+  },
 };
 
 export type Post = {
@@ -25,6 +33,7 @@ export type Post = {
   headline: string;
   description: string;
   author: Author;
+  coauthors?: Author[];
   // ISO 8601. Month precision where that is all the byline claims — schema.org
   // accepts it, and inventing a day would be a fact we do not have.
   datePublished: string;
@@ -32,6 +41,16 @@ export type Post = {
 };
 
 export const POSTS: Record<string, Post> = {
+  "state-of-the-art-beam-10m": {
+    slug: "state-of-the-art-beam-10m",
+    headline: "Stash: State of the Art on the BEAM 10M Benchmark",
+    description:
+      "Stash sets state of the art on BEAM at every scale, by +4.6 points at 10M tokens, where the grep baseline collapses. What curation costs, why cost per question grows far slower than the corpus, and why that beats putting everything in context.",
+    author: AUTHORS["Coleman DuPlessie"],
+    coauthors: [AUTHORS["Priyadarshan Narayanasamy"]],
+    datePublished: "2026-10-12",
+    byline: "October 2026",
+  },
   "agent-traces-are-the-new-oil": {
     slug: "agent-traces-are-the-new-oil",
     headline: "Agent traces are the new oil",
@@ -118,12 +137,12 @@ export function blogPostingJsonLd(post: Post) {
     description: post.description,
     datePublished: post.datePublished,
     mainEntityOfPage: `${SITE}/blog/${post.slug}`,
-    author: {
+    author: [post.author, ...(post.coauthors ?? [])].map((a) => ({
       "@type": "Person",
-      name: post.author.name,
-      url: post.author.url,
-      sameAs: post.author.sameAs,
-    },
+      name: a.name,
+      url: a.url,
+      sameAs: a.sameAs,
+    })),
     publisher: {
       "@type": "Organization",
       name: "Stash",
