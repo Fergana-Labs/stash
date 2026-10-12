@@ -10,11 +10,15 @@ import MonitoringNav from "@/components/reward-models/MonitoringNav";
 import { ErrorNotice, useWorkbenchLoad } from "@/components/workbench/workbench-ui";
 import { rmListAllTraces, rmListRewardModels, rmScoreTrace } from "@/lib/api";
 import type { RmTraceSummary } from "@/lib/types";
+import CreateOptimization from "@/components/optimization/CreateOptimization";
+import { listOptimizations } from "@/lib/optimization-api";
 import { relativeTime } from "@/components/reward-models/rm-text";
 
 export default function MonitoringPage() {
   useBreadcrumbs([{ label: "Monitoring" }], "rm-monitoring");
   const { data: models, error: modelsError, reload: reloadModels } = useWorkbenchLoad(rmListRewardModels);
+  const { data: optimizations, error: optimizationError, reload: reloadOptimizations } = useWorkbenchLoad(listOptimizations, 10000);
+  const [creating, setCreating] = useState(false);
   const [selectedModel, setSelectedModel] = useState("");
   const [agent, setAgent] = useState("all");
   const [scoring, setScoring] = useState(false);
@@ -40,6 +44,7 @@ export default function MonitoringPage() {
   const supportsScoring = metrics?.trace_scoring_version === 1 || actionCredit;
   const scoreOf = (trace: RmTraceSummary) => actionCredit ? trace.action_credit?.mean ?? null : trace.latest_score?.score ?? null;
   const agents = [...new Set(traces.map((trace) => trace.agent || trace.source_format))].sort();
+  const experiments = optimizations?.filter((item) => item.reward_model_id === modelId && (agent === "all" || item.agent === agent));
   const visible = traces.filter((trace) => agent === "all" || (trace.agent || trace.source_format) === agent);
   const scored = visible.filter((trace) => scoreOf(trace) !== null);
   const values = scored.map((trace) => scoreOf(trace)!);
@@ -49,7 +54,7 @@ export default function MonitoringPage() {
   const firstTime = chronological.length ? new Date(chronological[0].created_at).getTime() : 0;
   const lastTime = chronological.length ? new Date(chronological.at(-1)!.created_at).getTime() : 0;
   const x = (time: string) => 10 + (new Date(time).getTime() - firstTime) / (lastTime - firstTime || 1) * 580;
-  return <RmPage title="Monitoring">
+  return <RmPage title="Monitoring" description="Track agent performance on real runs and improve its instructions with prompt experiments.">
     <MonitoringNav />
     <ErrorNotice error={modelsError ?? error} onRetry={() => { void reloadModels(); void reload(); }} />
     {models && !available.length ? <p className="text-sm text-muted-foreground">Create a <Link className="underline" href="/reward-models/models">reward model</Link> from annotated traces to monitor your agent’s scores.</p> : <>
@@ -59,6 +64,12 @@ export default function MonitoringPage() {
       <div className="mb-6 grid grid-cols-3 gap-4">{[["Scored runs", `${scored.length} / ${visible.length}`], [actionCredit ? "Average action credit" : "Average score", average?.toFixed(2) ?? "—"], [actionCredit ? "Lowest action credit" : "Lowest score", values.length ? low.toFixed(2) : "—"]].map(([label, value]) => <div key={label} className="rounded-lg border border-border p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 font-mono text-2xl tabular-nums">{value}</div></div>)}</div>
       {chronological.length > 1 && <figure className="mb-6 rounded-lg border border-border p-4"><figcaption className="mb-2 text-sm">{actionCredit ? "Action credit over time" : "Score over time"}</figcaption><svg viewBox="0 0 600 130" preserveAspectRatio="none" className="h-40 w-full" role="img" aria-label="Reward model scores ordered by recorded time"><polyline fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" className="text-brand-500" points={chronological.map((trace) => `${x(trace.created_at)},${110 - (scoreOf(trace)! - low) / (high - low || 1) * 90}`).join(" ")} />{chronological.map((trace) => <circle key={trace.id} cx={x(trace.created_at)} cy={110 - (scoreOf(trace)! - low) / (high - low || 1) * 90} r="3" fill="currentColor"><title>{trace.title}: {scoreOf(trace)!.toFixed(2)}</title></circle>)}</svg><div className="flex justify-between text-xs text-muted-foreground"><span>{new Date(chronological[0].created_at).toLocaleDateString()}</span><span>{new Date(chronological.at(-1)!.created_at).toLocaleDateString()}</span></div></figure>}
       {loading || data?.modelId !== modelId ? <p>Loading scores…</p> : !scored.length ? <p className="text-sm text-muted-foreground">No runs have a saved score from this model yet.</p> : <table className="w-full text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="py-2">Trace</th><th>Agent</th><th>Recorded</th><th className="text-right">{actionCredit ? "Action credit" : "Score"}</th></tr></thead><tbody>{scored.map((trace) => <tr key={trace.id} className="border-b border-border-subtle"><td className="py-3"><Link className="hover:underline" href={`/reward-models/traces/${trace.id}`}>{trace.title}</Link></td><td>{trace.agent || trace.source_format}</td><td>{relativeTime(trace.created_at)}</td><td className="text-right font-mono tabular-nums">{scoreOf(trace)!.toFixed(2)}</td></tr>)}</tbody></table>}
+      <section id="prompt-optimization" className="mt-8 scroll-mt-4 border-t border-border pt-4" aria-label="Prompt optimization">
+        <div className="mb-3 flex items-center justify-between gap-3"><h2 className="m-0 text-sm font-semibold">Prompt optimization</h2><Button size="sm" variant="outline" disabled={!modelId} onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "New experiment"}</Button></div>
+        <ErrorNotice error={optimizationError} onRetry={() => void reloadOptimizations()} />
+        {creating && <div className="mb-4"><CreateOptimization key={modelId} initialModelId={modelId} /></div>}
+        {experiments && (experiments.length ? <table className="w-full text-left text-xs"><thead><tr className="border-b border-border text-muted-foreground"><th className="py-2">Experiment</th><th>Agent</th><th>Status</th><th className="text-right">Runs</th></tr></thead><tbody>{experiments.map((item) => <tr key={item.id} className="border-b border-border-subtle"><td className="py-3"><Link className="hover:underline" href={`/reward-models/optimization/${item.id}`}>{item.name}</Link></td><td>{item.agent}</td><td>{item.status.replaceAll("_", " ")}</td><td className="text-right tabular-nums">{item.run_count ?? "—"}</td></tr>)}</tbody></table> : <p className="text-xs text-muted-foreground">No prompt experiments for this selection yet. Compare new instructions against the current prompt using future agent runs.</p>)}
+      </section>
     </>}
   </RmPage>;
 }

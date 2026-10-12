@@ -20,7 +20,7 @@ function durationRange(lower: number, upper: number) {
   return low === high ? `≈${high}m` : `≈${low}–${high}m`;
 }
 
-export default function ModelTiming({ model }: { model: RmRewardModel }) {
+function TimingText({ model }: { model: RmRewardModel }) {
   if (model.status !== "queued" && model.status !== "running") return <span>—</span>;
   const timing = model.estimated_timing;
   const since = new Date(model.started_at ?? model.created_at).toLocaleTimeString();
@@ -40,4 +40,17 @@ export default function ModelTiming({ model }: { model: RmRewardModel }) {
     {durationRange(timing.lower_seconds, timing.upper_seconds)}
     {timing.excludes_queue ? " + queue" : timing.scope === "training" ? " training" : ""}
   </span>;
+}
+
+export default function ModelTiming({ model }: { model: RmRewardModel }) {
+  if (model.status !== "queued" && model.status !== "running") return <span>—</span>;
+  const progress = model.progress;
+  const measured = model.status === "running" && progress?.stage === "training" && progress.total > 0;
+  const percentage = measured ? Math.min(100, Math.max(0, progress.completed / progress.total * 100)) : undefined;
+  return <div className="flex min-w-24 flex-col gap-1.5">
+    <TimingText model={model} />
+    <div role="progressbar" aria-label="Training progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage} aria-valuetext={measured ? `${progress.completed} of ${progress.total} training batches` : trainingStage(model)} className="h-1 w-24 overflow-hidden rounded-full bg-border">
+      <div className={percentage === undefined ? "h-full w-1/3 animate-pulse rounded-full bg-brand-500 motion-reduce:animate-none" : "h-full rounded-full bg-brand-500 transition-[width] motion-reduce:transition-none"} style={percentage === undefined ? undefined : { width: `${percentage}%` }} />
+    </div>
+  </div>;
 }

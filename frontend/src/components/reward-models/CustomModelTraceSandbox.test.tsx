@@ -12,8 +12,8 @@ beforeEach(() => {
   vi.mocked(api.rmGetTrace).mockResolvedValue(trace);
   vi.mocked(api.rmScoreTrace).mockResolvedValue({ id: "run", trace_id: "t1", reward_model_id: "custom", status: "queued", error: null });
 });
-it("selects a row first and shows the full graded conversation only after Run", async () => {
-  const other = { ...trace, id: "t2", title: "Another trace" };
+it("selects a row first and previews the conversation on the right and adds grades after Run", async () => {
+  const other = { ...trace, id: "t2", title: "Another trace", steps: [] };
   vi.mocked(api.rmListTraces).mockResolvedValue({ traces: [{ ...trace, can_score: true }, { ...other, can_score: true }, { ...trace, id: "shared", title: "Shared trace", can_score: false }], total: 3 });
   vi.mocked(api.rmGetTrace).mockImplementation(async (id) => id === "t2" ? other : trace);
   vi.mocked(api.rmScoreTrace).mockResolvedValue({ id: "run", trace_id: "t1", reward_model_id: "custom", status: "succeeded", error: null });
@@ -26,7 +26,8 @@ it("selects a row first and shows the full graded conversation only after Run", 
   const output = screen.getByRole("region", { name: "Model output" });
   expect(within(input).getByRole("table", { name: "Choose a trace" })).toBeVisible();
   expect(within(input).queryByText("Here is the part")).not.toBeInTheDocument();
-  expect(within(output).queryByText("Here is the part")).not.toBeInTheDocument();
+  expect(within(output).getByText("Here is the part")).toBeVisible();
+  expect(within(output).queryByText("Reward 0.500 · credit 0.200")).not.toBeInTheDocument();
   expect(api.rmScoreTrace).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Choose Shared trace" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Run" }));
@@ -100,6 +101,8 @@ it("disables Run while another row loads so the previous trace cannot be submitt
   fireEvent.click(screen.getByRole("button", { name: "Choose Another trace" }));
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
   expect(api.rmScoreTrace).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Choose Another trace" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByText("Here is the part")).not.toBeInTheDocument();
   await act(async () => { resolve(second); });
   await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
   expect(screen.getByRole("button", { name: "Choose Another trace" })).toHaveAttribute("aria-pressed", "true");

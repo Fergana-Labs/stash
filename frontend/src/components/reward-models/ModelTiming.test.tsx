@@ -30,3 +30,14 @@ it("uses actual stages and does not let stale progress override failure", () => 
   expect(trainingStage(loading)).toBe("Loading model");
   expect(trainingStage({ ...loading, status: "failed" })).toBe("Failed");
 });
+
+it("uses actual batch completion and leaves other stages indeterminate", () => {
+  const progress = { stage: "training" as const, completed: 5, total: 20, elapsed_seconds: 30, updated_at: new Date().toISOString() };
+  const running = { ...model, status: "running" as const, progress };
+  const { rerender } = render(<ModelTiming model={running} />);
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "5 of 20 training batches");
+  rerender(<ModelTiming model={{ ...running, progress: { ...progress, stage: "evaluating" } }} />);
+  expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "Evaluating");
+});
