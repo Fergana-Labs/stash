@@ -21,6 +21,7 @@ from . import automatic_dataset, datasets, feedback, training_progress
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
+WORKER_STOP_TIMEOUT_SECONDS = 10
 
 
 class WorkerFailed(RuntimeError):
@@ -61,10 +62,27 @@ async def run_worker(module: str, directory: Path) -> None:
             stdout=log,
             stderr=asyncio.subprocess.STDOUT,
         )
-        if job["kind"] == "train":
-            returncode = await training_progress.watch(process, log_path, UUID(directory.name))
-        else:
-            returncode = await process.wait()
+        try:
+            if job["kind"] == "train":
+                returncode = await training_progress.watch(process, log_path, UUID(directory.name))
+            else:
+                returncode = await process.wait()
+        finally:
+            # Cancelling the parent coroutine does not stop its GPU subprocess.
+            # Reap it before allowing a timeout or retry to leave this job.
+            if process.returncode is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=WORKER_STOP_TIMEOUT_SECONDS)
+                except TimeoutError:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                    await process.wait()
     if returncode != 0:
         raise WorkerFailed(log_path.read_text()[-LOG_TAIL_CHARS:])
 
