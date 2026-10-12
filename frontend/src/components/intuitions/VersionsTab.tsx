@@ -16,7 +16,7 @@ import { HeadTable } from "./WeightsGrid";
 const STATUS_TAG: Record<Version["status"], string> = { active: "tag-success", draft: "tag-warning", retired: "tag-muted" };
 
 export default function VersionsTab() {
-  const { id, detail, apply, goTo } = useIntuition();
+  const { id, detail, apply } = useIntuition();
   const { draft, active } = detail;
   const [confirm, setConfirm] = useState<null | "force" | "discard" | { restore: VersionSummary }>(null);
   const [promoting, setPromoting] = useState(false);
@@ -68,20 +68,20 @@ export default function VersionsTab() {
           }
         >
           {draftBlocked === "stale" ? (
-            <Callout tone="info" action={<Button size="sm" variant="outline" onClick={() => goTo("train")}>Go to Train</Button>}>
-              Rubric or labels changed — grade and fit the draft before it can be promoted.
+            <Callout tone="info">
+              This draft’s fitted weights are out of date. It cannot be promoted.
             </Callout>
           ) : draftBlocked === "unevaluated" ? (
-            <Callout tone="info" action={<Button size="sm" variant="outline" onClick={() => goTo("train")}>Go to Train</Button>}>
-              Evaluate the draft (fit or save weights) to see whether it beats the active version.
+            <Callout tone="info">
+              This draft has no evaluation results. It cannot be promoted.
             </Callout>
           ) : gate ? (
             <GatePanel gate={gate} metrics={draft.metrics} />
           ) : null}
         </Panel>
       ) : (
-        <Callout tone="info" action={<Button size="sm" variant="outline" onClick={() => goTo("rubric")}>Edit rubric</Button>}>
-          No draft. Editing the rubric, seeds or weights starts draft v{Math.max(0, ...detail.versions.map((v) => v.number)) + 1} from the active version.
+        <Callout tone="info">
+          No draft version.
         </Callout>
       )}
 

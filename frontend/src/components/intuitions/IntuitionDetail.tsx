@@ -13,8 +13,6 @@ import IntuitionHeader from "./IntuitionHeader";
 import PlaygroundTab from "./PlaygroundTab";
 import InboxTab from "./InboxTab";
 import ExamplesTab from "./ExamplesTab";
-import RubricTab from "./RubricTab";
-import TrainTab from "./TrainTab";
 import VersionsTab from "./VersionsTab";
 
 export default function IntuitionDetail({ id }: { id: string }) {
@@ -101,8 +99,6 @@ export default function IntuitionDetail({ id }: { id: string }) {
             {tab === "playground" && <PlaygroundTab />}
             {tab === "inbox" && <InboxTab />}
             {tab === "examples" && <ExamplesTab />}
-            {tab === "rubric" && <RubricTab />}
-            {tab === "train" && <TrainTab />}
             {tab === "versions" && <VersionsTab />}
           </div>
         </div>
@@ -117,7 +113,6 @@ function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: Model
   const counts: Partial<Record<TabId, { n: number; strong?: boolean; title: string }>> = {
     inbox: detail.counts.inbox ? { n: detail.counts.inbox, strong: true, title: "Unreviewed predictions" } : undefined,
     examples: { n: examples?.length ?? detail.counts.total, strong: needsReview > 0, title: needsReview ? `${needsReview} need review` : "Examples" },
-    train: detail.counts.ungraded_total ? { n: detail.counts.ungraded_total, title: "Ungraded items" } : undefined,
   };
 
   function onKeyDown(e: KeyboardEvent) {

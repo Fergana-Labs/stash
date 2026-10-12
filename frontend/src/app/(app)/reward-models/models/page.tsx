@@ -20,7 +20,6 @@ import { rmDownloadWeights, rmGetRewardModel, rmListRewardModels } from "@/lib/a
 import type { RmJobStatus, RmRewardModel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import CreateModelDialog from "@/components/intuitions/CreateModelDialog";
 import LoadExampleButton from "@/components/intuitions/LoadExampleButton";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
 
@@ -32,7 +31,6 @@ export default function RewardModelsPage() {
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rubricModels, setRubricModels] = useState<ModelSummary[]>([]);
-  const [creatingRubric, setCreatingRubric] = useState(false);
   const [judgeConfigured, setJudgeConfigured] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -64,11 +62,10 @@ export default function RewardModelsPage() {
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="m-0 font-display text-[18px] font-semibold tracking-tight text-foreground">Reward models</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <details className="relative text-xs text-muted-foreground"><summary className="cursor-pointer">More options</summary><div className="absolute right-0 z-10 mt-2 flex min-w-48 flex-col gap-2 rounded-md border border-border bg-background p-3 shadow-lg"><LoadExampleButton /><Button size="sm" variant="outline" onClick={() => setCreatingRubric(true)}>Create rubric judge</Button></div></details>
+          <details className="relative text-xs text-muted-foreground"><summary className="cursor-pointer">More options</summary><div className="absolute right-0 z-10 mt-2 flex min-w-48 flex-col gap-2 rounded-md border border-border bg-background p-3 shadow-lg"><LoadExampleButton /></div></details>
           <Button size="sm" onClick={() => setSheetOpen(true)}><Plus />New model</Button>
         </div>
       </div>
-      <CreateModelDialog open={creatingRubric} onOpenChange={setCreatingRubric} />
       {!judgeConfigured && <p className="mb-4 text-xs text-muted-foreground">Live rubric-based predictions are unavailable until the judge is connected. Load the example to explore the sandbox with recorded results.</p>}
       <TrainSheet
         open={sheetOpen}
@@ -149,7 +146,7 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
           {loading && <tr><td colSpan={7} className="px-3 py-5 text-muted-foreground"><span role="status">Loading reward models…</span></td></tr>}
           {!loading && visible.length === 0 && <tr><td colSpan={7} className="px-3 py-5">
             <p className="m-0 font-medium text-foreground">{models.length === 0 ? "No reward models yet" : "No matching models"}</p>
-            <p className="m-0 mt-1 text-[12px] text-muted-foreground">{models.length === 0 ? "Create a rubric-based model, load the example sandbox, or train from your traces." : "Try another name or status."}</p>
+            <p className="m-0 mt-1 text-[12px] text-muted-foreground">{models.length === 0 ? "Train a reward model from your traces." : "Try another name or status."}</p>
             {models.length > 0 && <Button variant="ghost" size="xs" className="mt-2 -ml-2" onClick={() => { setQuery(""); setStatus("all"); }}>Clear filters</Button>}
           </td></tr>}
         </tbody>

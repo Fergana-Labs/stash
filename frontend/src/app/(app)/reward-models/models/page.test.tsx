@@ -15,7 +15,6 @@ vi.mock("@/components/reward-models/ViewSkillButton", () => ({ default: () => nu
 vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn() }));
 
 vi.mock("@/lib/intuition-api", () => ({ imList: vi.fn(), imLoadExample: vi.fn() }));
-vi.mock("@/components/intuitions/CreateModelDialog", () => ({ default: () => null }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -55,6 +54,7 @@ it("keeps the table headers visible in the empty state", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([]);
   render(<RewardModelsPage />);
   await screen.findByText("No reward models yet");
+  expect(screen.queryByRole("button", { name: "Create rubric judge" })).not.toBeInTheDocument();
   expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Est. remaining", "Model type / base", "Examples / traces", "Eval accuracy", "Created"]);
   expect(screen.getByRole("button", { name: "New model" })).toBeVisible();
 });
