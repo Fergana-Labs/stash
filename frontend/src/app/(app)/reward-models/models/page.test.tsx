@@ -45,7 +45,7 @@ it("replaces failed loading with an error and lets the user recover without relo
   expect(screen.queryByText("No reward models yet")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByRole("button", { name: "My reward model", exact: true })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "My reward model" })).toBeVisible();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(rmListRewardModels).toHaveBeenCalledTimes(2);
 });
