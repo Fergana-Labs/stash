@@ -21,8 +21,11 @@ import { toolActionSummary, toolExplanation } from "./tool-action-summary";
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
   stepNumber?: (step: RmStep) => number | undefined;
+  anchorId?: (step: RmStep) => string;
   /** A reward model's score for the step, for views that have no step scores. */
   actionScore?: (step: RmStep) => RmActionScore | undefined;
+  actionScoreSource?: string;
+  footer?: (step: RmStep) => ReactNode;
   taskHeading?: (step: RmStep) => string | null;
   taskName?: (step: RmStep) => string | null;
   /** Each step's score and how it was built; absent unless scores are shown. */
@@ -34,7 +37,7 @@ export interface StepAnnotations {
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
   onViewComments?: (step: RmStep) => void;
-  onComment: (step: RmStep) => void;
+  onComment?: (step: RmStep) => void;
   contextHref?: (step: RmStep) => string;
   onSelectAnnotation: (ids: string[]) => void;
 }
@@ -43,7 +46,7 @@ export interface StepAnnotations {
 function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepAnnotations; children: ReactNode; className?: string }) {
   return (
     <div
-      id={`step-${step.id}`}
+      id={ann.anchorId?.(step) ?? `step-${step.id}`}
       data-step-id={step.id}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
@@ -53,6 +56,7 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
       )}
     >
       {children}
+      {ann.footer?.(step)}
     </div>
   );
 }
@@ -131,13 +135,13 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const comments = ann.commentCount(step);
   return <span onClick={(event) => event.stopPropagation()} className="flex shrink-0 items-center gap-1">
-    {comments > 0 && <button type="button" onClick={() => (ann.onViewComments ?? ann.onComment)(step)}
+    {comments > 0 && <button type="button" onClick={() => (ann.onViewComments ?? ann.onComment)?.(step)}
       aria-label={`View ${comments} ${comments === 1 ? "comment" : "comments"} on this message`} title="View comments"
       className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">{comments}</button>}
-    <button type="button" onClick={() => ann.onComment(step)} title="Comment on message" aria-label="Comment on message"
+    {ann.onComment && <button type="button" onClick={() => ann.onComment?.(step)} title="Comment on message" aria-label="Comment on message"
       className="flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-surface hover:text-foreground group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
       <MessageSquarePlus className="size-3.5" aria-hidden="true" />
-    </button>
+    </button>}
   </span>;
 }
 
@@ -178,7 +182,7 @@ function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
       {reward ? <span className="flex justify-end"><StepScoreChip reward={reward} /></span> : (
         <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
         aria-label={`Action credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}`}
-        title={`${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1). Estimated contribution to the task; not a judgment of the message type.`}>
+        title={`${ann.actionScoreSource ?? (score.stale ? "Previous automatic annotation" : "Automatic action annotation")}: ${formatCredit(score.credit)} (−1 to +1).${ann.actionScoreSource ? ` Raw reward: ${score.score.toFixed(3)}.` : ""} Estimated contribution to the task; not a judgment of the message type.`}>
         {formatCredit(score.credit)}{score.stale && <span className="ml-0.5 text-muted-foreground" aria-hidden="true">*</span>}
       </span>}</span>
       )}
@@ -321,7 +325,7 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
   const [open, setOpen] = useState(false);
   const expanded = open || ann.hasQuotes(step);
   const [copied, setCopied] = useState(false);
-  return <div id={nested ? `step-${step.id}` : undefined} className="group/output border-t border-border-subtle">
+  return <div id={nested ? ann.anchorId?.(step) ?? `step-${step.id}` : undefined} className="group/output border-t border-border-subtle">
     <div className="flex min-h-7 items-center gap-2">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} tool output`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs">
         <DisclosureIcon expanded={expanded} /><span className="shrink-0 text-[13px] font-medium text-foreground">Output</span>

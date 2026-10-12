@@ -9,6 +9,7 @@ import type { RmRewardModelDetail, RmScoringRun, RmTraceDetail } from "@/lib/typ
 import { errorMessage } from "./rm-text";
 import { isActiveJob } from "./rm-ui";
 import TraceSandboxInput from "./TraceSandboxInput";
+import ModelTraceConversation from "./ModelTraceConversation";
 import TraceModelConnect from "./TraceModelConnect";
 
 export default function CustomModelTraceSandbox({ model, embedded = false }: { model: RmRewardModelDetail; embedded?: boolean }) {
@@ -108,18 +109,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
               <p className="text-xs">Overall reward: <span className="font-mono text-lg font-semibold">{overall.score.toFixed(3)}</span></p>
               <Rating label="Overall trace" disabled={saving !== null || selecting} value={outputTrace.annotations.filter((a) => a.step_id === null && !a.label_error && a.rating !== null).at(-1)?.rating} onRate={(rating) => void rate(null, rating)} />
             </div>}
-            <div className="max-h-[min(52vh,420px)] divide-y divide-border overflow-auto border-y border-border" aria-label={showGrades ? "Graded conversation" : "Trace conversation"}>
-              {outputTrace.steps.map((step) => {
-                const score = showGrades ? actionScores.find((item) => item.step_id === step.id) : undefined;
-                const annotation = outputTrace.annotations.filter((a) => a.step_id === step.id && !a.label_error && a.rating !== null).at(-1);
-                return <article key={step.id} className="py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{step.index + 1} · {step.role}{step.tool_name ? " → " + step.tool_name : ""}</span>{score && <span className="font-mono">Reward {score.score.toFixed(3)} · credit {score.credit.toFixed(3)}</span>}</div>
-                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed">{step.content}</p>
-                  {step.tool_input && <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] text-muted-foreground">{JSON.stringify(step.tool_input, null, 2)}</pre>}
-                  {showGrades && step.role === "assistant" && <div className="mt-2"><Rating label={"Step " + (step.index + 1)} disabled={saving !== null || selecting} value={annotation?.rating} onRate={(rating) => void rate(step.id, rating)} /></div>}
-                </article>;
-              })}
-            </div>
+            <ModelTraceConversation key={outputTrace.id} trace={outputTrace} scores={showGrades ? actionScores : []} modelName={model.name} feedback={showGrades ? (step) => step.role === "assistant" ? <div className="mt-2 pb-2"><Rating label={"Step " + (step.index + 1)} disabled={saving !== null || selecting} value={outputTrace.annotations.filter((a) => a.step_id === step.id && !a.label_error && a.rating !== null).at(-1)?.rating} onRate={(rating) => void rate(step.id, rating)} /></div> : null : undefined} />
           </div> : <p className="text-xs text-muted-foreground">{!ready ? (isActiveJob(model.status) ? "Training hasn’t finished yet." : model.error ?? "Training did not finish.") : !supported ? "Choose a trace to inspect it." : "Choose a trace to preview it. Run to see this model’s scores."}</p>)}
       </section>
     </div>
