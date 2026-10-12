@@ -39,3 +39,10 @@ it("keeps scroll anchors unique when the same trace is open under multiple model
   const ids = [...container.querySelectorAll("[data-step-id]")].map((row) => row.id);
   expect(new Set(ids).size).toBe(ids.length);
 });
+
+it("numbers feedback consistently with the displayed rows after pairing tool results", () => {
+  const followup = { ...trace.steps[0], id: "answer", index: 4, role: "assistant" as const, content: "Answer" };
+  render(<ModelTraceConversation trace={{ ...trace, steps: [...trace.steps, followup] }} scores={[]} modelName="Parts accuracy" feedback={(step, number) => step.id === "answer" ? <span>Feedback for step {number}</span> : null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand assistant message" }));
+  expect(screen.getByText("Feedback for step 4")).toBeVisible();
+});

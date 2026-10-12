@@ -10,7 +10,7 @@ import { rowSteps, type TraceRow } from "./trace-rows";
 
 /** Use the same message, Markdown and tool rendering as the main trace viewer. */
 export default function ModelTraceConversation({ trace, scores, modelName, feedback }: {
-  trace: RmTraceDetail; scores: RmActionScore[]; modelName: string; feedback?: (step: RmStep) => ReactNode;
+  trace: RmTraceDetail; scores: RmActionScore[]; modelName: string; feedback?: (step: RmStep, number: number) => ReactNode;
 }) {
   const anchorPrefix = useId();
   const [choices, setChoices] = useState<Map<string, boolean>>(new Map());
@@ -34,7 +34,7 @@ export default function ModelTraceConversation({ trace, scores, modelName, feedb
     onSelectAnnotation: () => {},
     footer: feedback ? (step) => {
       const row = rowByStep.get(step.id);
-      return row && expanded(row) ? feedback(step) : null;
+      return row && expanded(row) ? feedback(step, numberById.get(step.id) ?? step.index + 1) : null;
     } : undefined,
   };
   return <div data-trace-scroll className="scroll-thin max-h-[min(52vh,420px)] space-y-1 overflow-auto overscroll-contain border-y border-border py-2" aria-label={scores.length ? "Graded conversation" : "Trace conversation"}>
