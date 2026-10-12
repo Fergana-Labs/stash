@@ -59,11 +59,11 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
     if (!trace || disabled || selecting || !ready || !supported) return;
     setBusy(true); setError(null); setNotice(null); setOutputTrace(trace); setRun(null);
     try {
-      const pending = trace.scoring_runs?.find((item) => item.reward_model_id === model.id && isActiveJob(item.status));
-      const next = pending ?? await rmScoreTrace(trace.id, model.id);
+      const next = await rmScoreTrace(trace.id, model.id);
       setRun(next);
       if (!isActiveJob(next.status)) {
-        const detail = await rmGetTrace(trace.id);
+        const alreadyLoaded = next.status === "succeeded" && trace.scoring_runs?.some((item) => item.id === next.id && item.status === "succeeded");
+        const detail = alreadyLoaded ? trace : await rmGetTrace(trace.id);
         setTrace(detail); setOutputTrace(detail);
       }
     } catch (e) { setError(errorMessage(e)); }

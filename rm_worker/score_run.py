@@ -9,15 +9,16 @@ from rm_worker.evaluation import action_score_rows
 from rm_worker.progress import Reporter
 
 
-def run(directory: Path) -> None:
-    progress = Reporter()
-    progress.update("downloading")
-    from rm_worker.scoring import RewardModel
+def run(directory: Path, *, model=None, model_dir=None, progress=None) -> None:
+    progress = progress or Reporter()
+    if model is None:
+        progress.update("downloading")
+        from rm_worker.scoring import RewardModel
 
-    job = json.loads((directory / "job.json").read_text())
-    model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
-    progress.update("loading")
-    model = RewardModel(model_dir)
+        job = json.loads((directory / "job.json").read_text())
+        model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
+        progress.update("loading")
+        model = RewardModel(model_dir)
     items = [
         json.loads(line)
         for line in (directory / "action_score_items.jsonl").read_text().splitlines()

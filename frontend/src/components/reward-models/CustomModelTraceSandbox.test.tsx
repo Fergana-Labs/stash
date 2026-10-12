@@ -93,6 +93,20 @@ it("refreshes a completed run and displays its new scores", async () => {
   expect(screen.getByRole("button", { name: "Run" })).toBeEnabled();
 });
 
+it("shows eagerly cached scores without refetching the already loaded conversation", async () => {
+  const completed = { id: "cached", trace_id: "t1", reward_model_id: "custom", status: "succeeded" as const, error: null };
+  vi.mocked(api.rmGetTrace).mockResolvedValue({ ...trace, scoring_runs: [completed] });
+  vi.mocked(api.rmScoreTrace).mockResolvedValue(completed);
+  render(<CustomModelTraceSandbox model={model} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Choose Truck task" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(await screen.findByLabelText("Action credit +0.20")).toBeVisible();
+  expect(screen.queryByRole("progressbar", { name: "Scoring progress" })).not.toBeInTheDocument();
+  expect(api.rmScoreTrace).toHaveBeenCalledWith("t1", "custom");
+  expect(api.rmGetTrace).toHaveBeenCalledTimes(1);
+});
+
 it("displays scoring progress reported by the polling endpoint", async () => {
   vi.mocked(api.rmGetTrace).mockResolvedValueOnce(trace).mockImplementation(async () => ({ ...trace,
     scoring_runs: [{ id: "run", trace_id: "t1", reward_model_id: "custom", status: "running", error: null,

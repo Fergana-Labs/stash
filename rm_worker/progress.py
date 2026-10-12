@@ -22,10 +22,11 @@ ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 class Reporter:
-    def __init__(self):
+    def __init__(self, on_event=None):
         self.stage = None
         self.started = 0.0
         self.last_sent = 0.0
+        self.on_event = on_event
 
     def update(self, stage: str, completed: int = 0, total: int = 0):
         now = time.monotonic()
@@ -35,19 +36,16 @@ class Reporter:
         if not changed and completed != total and now - self.last_sent < 2:
             return
         self.last_sent = now
-        print(
-            PREFIX
-            + json.dumps(
-                {
-                    "stage": stage,
-                    "completed": completed,
-                    "total": total,
-                    "elapsed_seconds": round(now - self.started, 2),
-                    "updated_at": datetime.now(UTC).isoformat(),
-                }
-            ),
-            flush=True,
-        )
+        event = {
+            "stage": stage,
+            "completed": completed,
+            "total": total,
+            "elapsed_seconds": round(now - self.started, 2),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        print(PREFIX + json.dumps(event), flush=True)
+        if self.on_event:
+            self.on_event(event)
 
 
 def parse_event(line: str) -> dict | None:

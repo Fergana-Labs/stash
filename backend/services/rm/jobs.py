@@ -353,20 +353,26 @@ async def store_action_scores(
     )
 
 
-async def run_scoring(run_id: UUID) -> None:
+async def run_scoring(run_id: UUID, *, worker=None) -> None:
     pool = get_pool()
     await scoring_progress.stage(run_id, "preparing")
     run = await pool.fetchrow(
         """
-        SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config FROM rm_scoring_runs r
+        SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config,
+            m.finished_at AS checkpoint_finished_at,t.updated_at AS current_trace_updated_at FROM rm_scoring_runs r
         JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
             OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
+        JOIN rm_traces t ON t.id=r.trace_id AND t.owner_user_id=r.owner_user_id
         WHERE r.id = $1 AND m.status = 'succeeded'
         """,
         run_id,
     )
     if run is None or run["artifact_key"] is None:
         raise ValueError("Reward model is unavailable")
+    if run["model_finished_at"] != run["checkpoint_finished_at"]:
+        raise ValueError("Reward model checkpoint changed; score it again")
+    if run["trace_updated_at"] != run["current_trace_updated_at"]:
+        raise ValueError("Trace changed while waiting for scoring; score it again")
     items = await datasets.action_score_items(
         run["owner_user_id"],
         run["trace_id"],
@@ -393,17 +399,38 @@ async def run_scoring(run_id: UUID) -> None:
     _write_jsonl(directory / "score_items.jsonl", trace_items)
     module = "rm_worker.modal_runner" if run["compute"] == "modal" else "rm_worker.score_run"
     await scoring_progress.stage(run_id, "starting")
-    await run_worker(module, directory)
+    if worker is None:
+        await run_worker(module, directory)
+    else:
+        await worker(directory, run_id)
     await scoring_progress.stage(run_id, "saving")
     scores = _read_jsonl(directory / "action_scores.jsonl")
     validate_action_scores(items, scores)
     trace_scores = _read_jsonl(directory / "scores.jsonl") if trace_items else []
     validate_trace_scores(trace_items, trace_scores)
     async with pool.acquire() as conn, conn.transaction():
-        # Ingestion locks the trace row while replacing its steps. Lock it through publication.
-        await conn.fetchrow(
-            "SELECT id FROM rm_traces WHERE id = $1 FOR NO KEY UPDATE", run["trace_id"]
+        # Parent model before trace/run matches cascading deletion lock order.
+        model = await conn.fetchrow(
+            "SELECT status,finished_at FROM rm_reward_models WHERE id=$1 FOR SHARE",
+            run["reward_model_id"],
         )
+        if (
+            model is None
+            or model["status"] != "succeeded"
+            or model["finished_at"] != run["model_finished_at"]
+        ):
+            raise ValueError("Reward model checkpoint changed; score it again")
+        # Ingestion locks the trace row while replacing its steps. Lock it through publication.
+        trace = await conn.fetchrow(
+            "SELECT id,updated_at FROM rm_traces WHERE id = $1 FOR NO KEY UPDATE", run["trace_id"]
+        )
+        if trace is None or trace["updated_at"] != run["trace_updated_at"]:
+            raise ValueError("Trace changed while scoring; score it again")
+        status = await conn.fetchval(
+            "SELECT status FROM rm_scoring_runs WHERE id=$1 FOR UPDATE", run_id
+        )
+        if status != "running":
+            raise ValueError("Scoring run is no longer active")
         current = await conn.fetch(
             "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
         )
