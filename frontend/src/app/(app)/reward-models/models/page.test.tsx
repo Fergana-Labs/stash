@@ -45,7 +45,7 @@ it("replaces failed loading with an error and lets the user recover without relo
   expect(screen.queryByText("No reward models yet")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("My reward model")).toBeVisible();
+  expect(await screen.findByRole("button", { name: "My reward model" })).toBeVisible();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(rmListRewardModels).toHaveBeenCalledTimes(2);
 });
@@ -172,4 +172,25 @@ it("creates a trace-trained custom model from New model and opens that model", a
   await userEvent.setup().click(screen.getByRole("button", { name: "New model" }));
   await userEvent.setup().click(screen.getByRole("button", { name: "Queue test model" }));
   expect(push).toHaveBeenCalledWith("/reward-models/models/new-custom");
+});
+
+it("keeps one Connect section below the model table and copies the chosen model", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready, queued]);
+  render(<RewardModelsPage />);
+  await user.click(await screen.findByRole("button", { name: ready.name }));
+  const details = await screen.findByRole("region", { name: ready.name + " details" });
+  await within(details).findByRole("heading", { name: "Input" });
+  const connect = screen.getByText("Connect");
+  expect(screen.getAllByText("Connect")).toHaveLength(1);
+  expect(connect.closest("table")).toBeNull();
+  expect(screen.getByRole("table", { name: "Reward models" }).compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await user.click(connect);
+  await user.click(screen.getByRole("combobox", { name: "Connect model" }));
+  await user.click(screen.getByRole("option", { name: queued.name }));
+  await user.click(screen.getByRole("button", { name: "Copy API example" }));
+  expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"reward_model_id": "queued"'));
+  await user.click(screen.getByRole("button", { name: ready.name }));
+  expect(screen.getByText("Connect")).toBeVisible();
 });

@@ -15,6 +15,7 @@ import type { RmJobStatus, RmRewardModel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import ModelPlayground from "@/components/reward-models/ModelPlayground";
+import TraceModelConnect from "@/components/reward-models/TraceModelConnect";
 import IntuitionDetail from "@/components/intuitions/IntuitionDetail";
 import LoadExampleButton from "@/components/intuitions/LoadExampleButton";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
@@ -80,7 +81,10 @@ export default function RewardModelsPage() {
           </Button>
         </div>
       ) : (
-        <ModelTable models={models ?? []} rubricModels={rubricModels} loading={models === null} />
+        <>
+          <ModelTable models={models ?? []} rubricModels={rubricModels} loading={models === null} />
+          {models && models.length > 0 && <div className="mt-4 border-t border-border"><TraceModelConnect modelId={models[0].id} models={models.map((model) => ({ value: model.id, label: model.name }))} /></div>}
+        </>
       )}
     </div>
   );

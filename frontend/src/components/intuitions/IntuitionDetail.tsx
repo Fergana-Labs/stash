@@ -53,7 +53,7 @@ export default function IntuitionDetail({ id, embedded = false }: { id: string; 
   }
   if (!ctx) return <RmPageSkeleton />;
 
-  if (embedded) return <IntuitionProvider value={ctx}><PlaygroundTab /></IntuitionProvider>;
+  if (embedded) return <IntuitionProvider value={ctx}><PlaygroundTab embedded /></IntuitionProvider>;
 
   return (
     <IntuitionProvider value={ctx}>

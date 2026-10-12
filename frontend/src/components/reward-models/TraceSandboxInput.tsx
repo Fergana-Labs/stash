@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, MoreHorizontal, Upload } from "lucide-react";
+import { Check, Loader2, MoreHorizontal, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { rmGetTrace, rmListTraces } from "@/lib/api";
@@ -109,7 +109,7 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange,
   return <section className="space-y-3" aria-label={label}>
     <div className="flex items-center gap-2">
       {item && !selectionOnly ? <><span className="min-w-0 flex-1 truncate text-xs font-medium" title={name}>{name}</span><Button type="button" variant="ghost" size="sm" disabled={disabled || busy} onClick={() => { ++selection.current; setItem(null); setSelectedId(null); setName(""); change.current(""); traceChange.current?.(null); }}>Change trace</Button></> : <input aria-label="Search existing traces" placeholder="Search traces…" value={query} disabled={disabled || busy} onChange={(e) => { setQuery(e.target.value); setOffset(0); setLoading(true); }} className="h-7 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-xs outline-none" />}
-      <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="Trace options" disabled={disabled || busy}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload />Upload your own trace</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+      <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="Trace options" disabled={disabled || busy}>{busy ? <Loader2 role="status" aria-label="Loading trace" className="animate-spin" /> : <MoreHorizontal />}</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload />Upload your own trace</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <input ref={fileInput} type="file" aria-label={`Upload ${label.toLowerCase()}`} accept=".json,.jsonl,.ndjson,.txt,.md" className="sr-only" disabled={disabled || busy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} />
     </div>
     {(!item || selectionOnly) && <div className="overflow-auto border-y border-border">
@@ -123,7 +123,6 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange,
       </table>
     </div>}
     {(!item || selectionOnly) && total > 25 && <div className="flex items-center justify-between text-[11px] text-muted-foreground"><span>{offset + 1}–{Math.min(offset + 25, total)} of {total}</span><div className="flex gap-2"><Button size="xs" variant="ghost" disabled={loading || busy || disabled || offset === 0} onClick={() => { setOffset(offset - 25); setLoading(true); }}>Previous</Button><Button size="xs" variant="ghost" disabled={loading || busy || disabled || offset + 25 >= total} onClick={() => { setOffset(offset + 25); setLoading(true); }}>Next</Button></div></div>}
-    {busy && <p role="status" className="text-xs text-muted-foreground">Loading trace…</p>}
     {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     {!loading && !busy && !item && !traces.length && <p className="text-xs text-muted-foreground">No traces found. Upload one from the trace options menu.</p>}
     {selectionOnly && item && !traces.some((trace) => trace.id === selectedId) && <p className="text-xs text-muted-foreground">Selected: {name}</p>}

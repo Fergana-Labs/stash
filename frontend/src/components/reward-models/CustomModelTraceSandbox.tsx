@@ -121,7 +121,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
           </div> : <p className="text-xs text-muted-foreground">{!ready ? (isActiveJob(model.status) ? "Training hasn’t finished yet." : model.error ?? "Training did not finish.") : !supported ? "This checkpoint does not support trace scoring." : "Choose a trace and run this model to see its scores."}</p>}
       </section>
     </div>
-    <TraceModelConnect modelId={model.id} traceId={trace?.id} />
+    {!embedded && <TraceModelConnect modelId={model.id} traceId={trace?.id} />}
   </div>;
 }
 function Rating({ label, disabled, value, onRate }: { label: string; disabled: boolean; value?: number | null; onRate: (rating: 1 | -1) => void }) {
