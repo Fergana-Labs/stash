@@ -718,7 +718,9 @@ REWARD_MODEL_FIELDS = (
 
 # Training pairs can contain hundreds of MB of recorded context. Never fetch
 # them for UI metadata; count the trace IDs in Postgres instead of transferring them.
-REWARD_MODEL_SUMMARY_COLUMNS = ", ".join(REWARD_MODEL_FIELDS) + ", cardinality(trace_ids) AS trace_count"
+REWARD_MODEL_SUMMARY_COLUMNS = (
+    ", ".join(REWARD_MODEL_FIELDS) + ", cardinality(trace_ids) AS trace_count"
+)
 
 
 async def _timing_history(row):
