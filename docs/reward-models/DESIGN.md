@@ -537,8 +537,18 @@ supervision, not verified task success.
 
 ### Learned action credit
 
-After training, the worker scores every trace the owner has and, when action
-comparisons were trained, every nonempty assistant response and tool call.
+Personal Modal models become Ready after fitting, evaluation and calibration.
+Background scoring then covers every eligible owned trace, including new or
+changed traces after a 30-second idle debounce. The scheduler keeps at most two
+detached GPU batches active, with up to eight traces per batch and one loaded
+checkpoint per batch. Each trace's scores publish independently; the first trace
+does not wait for the rest of the batch. Failed trace revisions get at most three
+automatic attempts, while explicit Run remains retryable. This background work
+does not keep the model in a training state.
+Run requests for queued traces take priority within their checkpoint's batch.
+
+When action comparisons were trained, scoring covers every supported nonempty
+assistant response and tool call.
 Training and inference use the same rendering: prior context followed by the
 target action, ending before any later tool result or user message. System steps
 are excluded and long inputs are left-truncated to the saved 1024-token limit.
@@ -556,12 +566,14 @@ decomposition whose values sum to a trace reward. Compare within one model.
 The trace viewer selects a trained action model and shows action badges, row
 highlights and a minimap heatmap, including collapsed tool calls. New traces can
 be scored using **Score actions**, or `POST /traces/{trace_id}/score` with
-`reward_model_id`. This queues saved-checkpoint inference without another round
-of labeling or training. `rm_scoring_runs` stores status/error; trace detail
+`reward_model_id`. It returns completed scores immediately for the same trace
+revision and checkpoint, or queues saved-checkpoint inference without another
+round of labeling or training. `rm_scoring_runs` stores status/error; trace detail
 returns the latest run per model and the UI polls active runs. Concurrent requests
 reuse the active job; duplicate task deliveries do not run inference twice.
 Errors are visible and retryable. Reimports delete old scores with their steps;
-in-flight inference fails if its input steps were replaced. Models trained before
+in-flight inference fails if the trace revision changed, including appended
+steps or changed evaluation context. Models trained before
 this feature, or solely on trace-level pairs, need new action training before
 they can supply action scores (`metrics.action_scoring_version = 1`).
 
