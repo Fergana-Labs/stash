@@ -491,6 +491,15 @@ async def reconcile() -> dict:
     from ...tasks import reward_models as tasks
 
     pool = get_pool()
+    # Personal training runs detached from Render. Interrupted submissions
+    # and cloud timeouts must become visible failures, not endless retries.
+    await pool.execute("""UPDATE rm_reward_models
+        SET status='failed', finished_at=now(), error=CASE
+            WHEN progress->>'remote_call_id' IS NULL THEN 'Training worker interrupted before cloud submission. Retry training.'
+            ELSE 'Cloud training exceeded its recovery deadline. Retry training.' END
+        WHERE scope='personal' AND status='running' AND started_at < now() -
+            CASE WHEN progress->>'remote_call_id' IS NULL THEN interval '35 minutes'
+            ELSE interval '70 minutes' END""")
     # Recover interrupted workers. Job hard limit is 30 min; allow a margin before retry.
     await pool.execute("""UPDATE rm_scoring_runs SET status = 'failed', error = 'Scoring worker interrupted', finished_at = now()
         WHERE status = 'running' AND started_at < now() - interval '35 minutes'""")
@@ -547,4 +556,9 @@ async def reconcile() -> dict:
     )
     for row in candidates:
         tasks.train_evaluator.delay(str(row["id"]))
+    personal = await pool.fetch(
+        "SELECT id FROM rm_reward_models WHERE scope='personal' AND status='queued' ORDER BY created_at LIMIT 10"
+    )
+    for row in personal:
+        tasks.train_reward_model.delay(str(row["id"]))
     return {"scoring_queued": queued, "collections_queued": len(collections)}

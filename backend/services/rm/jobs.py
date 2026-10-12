@@ -21,6 +21,7 @@ from . import automatic_dataset, datasets, feedback, training_progress
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
+WORKER_STOP_TIMEOUT_SECONDS = 10
 
 
 class WorkerFailed(RuntimeError):
@@ -61,10 +62,27 @@ async def run_worker(module: str, directory: Path) -> None:
             stdout=log,
             stderr=asyncio.subprocess.STDOUT,
         )
-        if job["kind"] == "train":
-            returncode = await training_progress.watch(process, log_path, UUID(directory.name))
-        else:
-            returncode = await process.wait()
+        try:
+            if job["kind"] == "train":
+                returncode = await training_progress.watch(process, log_path, UUID(directory.name))
+            else:
+                returncode = await process.wait()
+        finally:
+            # Cancelling the parent coroutine does not stop its GPU subprocess.
+            # Reap it before allowing a timeout or retry to leave this job.
+            if process.returncode is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=WORKER_STOP_TIMEOUT_SECONDS)
+                except TimeoutError:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                    await process.wait()
     if returncode != 0:
         raise WorkerFailed(log_path.read_text()[-LOG_TAIL_CHARS:])
 
@@ -84,7 +102,7 @@ async def run_training(model_id: UUID) -> None:
         findings = []
         commented = await pool.fetch(
             """SELECT DISTINCT trace_id FROM rm_annotations WHERE owner_user_id=$1
-            AND trace_id=ANY($2::uuid[]) AND comment IS NOT NULL AND NOT label_error""",
+            AND trace_id=ANY($2::uuid[]) AND btrim(comment)<>'' AND NOT label_error""",
             owner_user_id,
             model["trace_ids"],
         )
@@ -147,7 +165,8 @@ async def run_training(model_id: UUID) -> None:
         ) in included and len(pairs) >= datasets.MIN_PAIRS
         if config:
             finding["included_in_evaluation"] = any(
-                p["partition"] == "eval"
+                p.get("source") == "feedback_revision"
+                and p["partition"] == "eval"
                 and p["trace_id"] == finding["trace_id"]
                 and p["evidence"]["step_index"] == finding["step_index"]
                 for p in pairs
@@ -176,13 +195,18 @@ async def run_training(model_id: UUID) -> None:
         job.update(input_version=3, fixed_split=True, rubric=config["rubric"])
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
+    eager_scoring = not (automatic and model["scope"] == "personal")
     trace_items = (
-        await automatic_dataset.score_items(owner_user_id, model["trace_ids"], config["rubric"])
-        if automatic
-        and any(p.get("granularity") == "trace" and p["partition"] == "train" for p in pairs)
-        else []
-        if config
-        else await datasets.score_items(owner_user_id)
+        []
+        if not eager_scoring
+        else (
+            await automatic_dataset.score_items(owner_user_id, model["trace_ids"], config["rubric"])
+            if automatic
+            and any(p.get("granularity") == "trace" and p["partition"] == "train" for p in pairs)
+            else []
+            if config
+            else await datasets.score_items(owner_user_id)
+        )
     )
     _write_jsonl(directory / "score_items.jsonl", trace_items)
     ids = None
@@ -195,16 +219,26 @@ async def run_training(model_id: UUID) -> None:
             model["trace_ids"],
         )
         ids = {str(r["id"]) for r in rows if (str(r["trace_id"]), r["idx"]) in targets}
-    action_items = await datasets.action_score_items(
-        owner_user_id,
-        input_version=3 if config else 1,
-        rubric=config["rubric"] if config else (),
-        trace_ids=model["trace_ids"] if config else None,
-        step_ids=ids,
+    # Personal models become ready after fitting, evaluation and calibration.
+    # Apply their checkpoint to a trace only when the user presses Run.
+    action_items = (
+        []
+        if not eager_scoring
+        else await datasets.action_score_items(
+            owner_user_id,
+            input_version=3 if config else 1,
+            rubric=config["rubric"] if config else (),
+            trace_ids=model["trace_ids"] if config else None,
+            step_ids=ids,
+        )
     )
     _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
-    module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
+    module = (
+        "rm_worker.modal_runner"
+        if model["compute"] == "modal" and os.environ.get("RM_TRAINING_ON_CLOUD_GPU") != "1"
+        else "rm_worker.train"
+    )
     await training_progress.stage(model_id, "starting")
     await run_worker(module, directory)
 

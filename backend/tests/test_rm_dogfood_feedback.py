@@ -194,9 +194,11 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
                 for p in jobs._read_jsonl(directory / "pairs.jsonl")
             )
         items = jobs._read_jsonl(directory / "score_items.jsonl")
-        assert items
         if (directory / "pairs.jsonl").exists():
-            assert {item["trace_id"] for item in items} == {str(tid) for tid in ids}
+            assert items == []
+            assert jobs._read_jsonl(directory / "action_score_items.jsonl") == []
+        else:
+            assert items
         assert all("entire recorded trace" in item["text"] for item in items)
         jobs._write_jsonl(
             directory / "scores.jsonl",
@@ -237,13 +239,13 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
         await pool.fetchval(
             "SELECT count(*) FROM rm_trace_scores WHERE reward_model_id=$1", model_id
         )
-        == 4
+        == 0
     )
     listed = await client.get(
         "/api/v1/rm/traces", headers=user["headers"], params={"reward_model_id": str(model_id)}
     )
-    assert all(t["latest_score"]["score"] == 0.87 for t in listed.json()["traces"])
-    assert all(t["action_credit"]["mean"] == 0.5 for t in listed.json()["traces"])
+    assert all(t["latest_score"] is None for t in listed.json()["traces"])
+    assert all(t["action_credit"] is None for t in listed.json()["traces"])
     stranger = await account(client)
     assert (
         await client.get(
@@ -413,7 +415,7 @@ async def test_comment_corrections_replace_conflicting_automatic_pairs(
     }
 
     async def feedback_pairs(*args, **kwargs):
-        return [human_pair], []
+        return [human_pair], [{"trace_id": str(ids[0]), "step_index": 2}]
 
     monkeypatch.setattr(feedback, "build_feedback_pairs", feedback_pairs)
     monkeypatch.setattr(tasks.train_reward_model, "delay", lambda *args: None)

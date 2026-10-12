@@ -11,9 +11,15 @@ from backend.services.rm import feedback
 from backend.tasks import reward_models as tasks
 
 from .test_rm_api import _annotate, _detail, _import, _register
-from .test_rm_datasets import _create_model, _fake_worker, _trace, artifact_dir  # noqa: F401
+from .test_rm_datasets import (  # noqa: F401
+    _create_model,
+    _fake_worker,
+    _trace,
+    artifact_dir,
+    no_feedback_dispatch,
+)
 
-pytestmark = pytest.mark.usefixtures("rm_title_generator")
+pytestmark = pytest.mark.usefixtures("rm_title_generator", "no_feedback_dispatch")
 
 
 def test_rubric_dropout_keeps_a_nonempty_subset_and_eval_uses_every_criterion(monkeypatch):
@@ -779,3 +785,28 @@ async def test_duplicate_alternative_is_reported_without_aborting_other_learning
     assert result.feedback[0].revision is None
     assert "excluded from training" in result.feedback[0].reason
     assert feedback.render_preferences(uuid4(), conversation(), evidence(), result) == []
+
+
+async def test_automatic_comment_corrections_only_grade_the_commented_action(monkeypatch):
+    steps = conversation()[:2] + [
+        dict(idx=3, role="assistant", content="Unrelated later answer", tool_name=None),
+    ]
+    sources = {"comment:review": dict(kind="comment", step_index=1, text="Check the order first")}
+    calls = []
+
+    async def complete(**kwargs):
+        calls.append(json.loads(kwargs["prompt"])["target_response"]["idx"])
+        return kwargs["output_model"].model_validate(
+            {"reason": "No grounded alternative", "feedback": None}
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(
+        steps,
+        sources,
+        input_version=3,
+        comments_only=True,
+        max_actions=1,
+    )
+    assert result.feedback == []
+    assert calls == [1]

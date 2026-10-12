@@ -576,6 +576,17 @@ space. Successful training uploads a private S3 archive under
 Downloads use a five-minute signed URL after an ownership check; GEPA downloads it into its own temporary
 workspace. No API instance depends on a worker's filesystem.
 
+Personal models using Modal run preparation and training together in a detached
+cloud job with an A10G, 8 GB of host memory, and a 40-minute execution limit.
+Render submits only the model ID; the cloud job uses the existing external
+`DATABASE_URL` and artifact/provider credentials to persist progress and results
+directly. Its call ID is retained in `progress.remote_call_id` through subsequent
+progress updates. Website and worker deployments do not cancel the cloud job.
+Only a queued model can be claimed, so duplicate deliveries cannot restart it.
+The recovery sweep fails interrupted submissions after 35 minutes and overdue
+cloud jobs after 70 minutes (including image startup margin). An owner can retry
+a failed model without changing its ID or selected traces.
+
 ### Job directory contract (backend ↔ worker)
 
 ```
@@ -722,6 +733,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | POST | `/reward-models` | `{name, trace_ids: [uuid, …] (≥1), base_model?, epochs?, max_pairs?, training_config?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
+| POST | `/reward-models/{id}/retry` | | `RewardModel` (status `queued`), HTTP 202; owner-only, 409 unless failed; existing model ID and trace selection are retained |
 | GET | `/reward-models/{id}/weights` | | `{url}`: a five-minute signed download of the private checkpoint archive; owner-only, 404 until `succeeded` |
 | POST | `/gepa-runs` | `{reward_model_id, task_model?, task_api_base?, reflection_model?, max_metric_calls?}` | `GepaRun` (status `queued`; `skill_name`/`skill_description` null until succeeded) |
 | GET | `/gepa-runs` | | `[GepaRun]` |

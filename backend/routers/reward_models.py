@@ -518,6 +518,36 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
     }
 
 
+@router.post("/reward-models/{model_id}/retry", status_code=202)
+async def retry_reward_model(
+    model_id: UUID, current_user: dict = Depends(get_current_user)
+) -> dict:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """UPDATE rm_reward_models SET status='queued', error=NULL, started_at=NULL,
+        finished_at=NULL, progress=NULL WHERE id=$1 AND owner_user_id=$2
+        AND scope='personal' AND status='failed' RETURNING *""",
+        model_id,
+        current_user["id"],
+    )
+    if row is None:
+        if not await pool.fetchval(
+            "SELECT 1 FROM rm_reward_models WHERE id=$1 AND owner_user_id=$2 AND scope='personal'",
+            model_id,
+            current_user["id"],
+        ):
+            raise HTTPException(404, "Reward model not found")
+        raise HTTPException(409, "Only failed training jobs can be retried")
+    try:
+        rm_tasks.train_reward_model.delay(str(model_id))
+    except Exception:
+        # The durable queued row is redispatched by the periodic sweep.
+        logging.getLogger(__name__).warning(
+            "Could not dispatch training retry %s", model_id, exc_info=True
+        )
+    return _reward_model(row, await _timing_history(row))
+
+
 @router.get("/reward-models/{model_id}/examples")
 async def reward_model_examples(
     model_id: UUID,

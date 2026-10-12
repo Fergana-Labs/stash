@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def save(model_id, event):
     try:
         await get_pool().execute(
-            "UPDATE rm_reward_models SET progress=$2 WHERE id=$1 AND status='running'",
+            "UPDATE rm_reward_models SET progress=coalesce(progress, '{}'::jsonb) || $2::jsonb WHERE id=$1 AND status='running'",
             model_id,
             event,
         )
