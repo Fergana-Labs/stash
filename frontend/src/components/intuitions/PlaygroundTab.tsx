@@ -1,15 +1,14 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { Check, Play, Shuffle } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Check, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
 import { imCompare, imPredict, imReview, type Comparison, type Item, type Prediction, type Version } from "@/lib/intuition-api";
-import { detectItemKeys, itemsOf, pct, signed } from "./im-helpers";
+import { pct, signed } from "./im-helpers";
 import { Bar, Callout, Segmented, Spinner, useIntuition } from "./im-ui";
-import ItemInput, { draftFromItem, draftToItem, emptyDraft, type ItemDraft } from "./ItemInput";
 import { ContributionBars, ProbabilityBars, RubricAnswersView } from "./ProbabilityBars";
 import TraceSandboxInput from "@/components/reward-models/TraceSandboxInput";
 import AgentUsagePanel from "./AgentUsagePanel";
@@ -21,17 +20,19 @@ function servable(v: Version | null): boolean {
   return !!v && !!v.head && !v.head_stale;
 }
 
+function hasTrace(item: Item | null): item is Item {
+  return item !== null && (typeof item !== "string" || item.trim().length > 0);
+}
+
 export default function PlaygroundTab() {
   const { id, detail, examples, goTo, reload, reloadExamples } = useIntuition();
   const outputType = detail.model.output_type;
-  const keys = useMemo(() => detectItemKeys(itemsOf(examples ?? [])), [examples]);
   const canActive = servable(detail.active);
   const canDraft = servable(detail.draft);
   const [which, setWhich] = useState<Which>(canActive || !canDraft ? "active" : "draft");
   const [mode, setMode] = useState<Mode>(outputType === "preference" ? "pair" : "item");
-  const [inputMode, setInputMode] = useState<"trace" | "manual">("trace");
-  const [a, setA] = useState<ItemDraft>(emptyDraft);
-  const [b, setB] = useState<ItemDraft>(emptyDraft);
+  const [a, setA] = useState<Item | null>(null);
+  const [b, setB] = useState<Item | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
@@ -46,32 +47,17 @@ export default function PlaygroundTab() {
   }
 
   const pool = examples?.filter((e) => e.item_b == null) ?? [];
-  function fillRandom() {
-    if (pool.length === 0 || running) return;
-    clearResult();
-    setInputMode("manual");
-    const pick = () => pool[Math.floor(Math.random() * pool.length)].item;
-    setA(draftFromItem(pick(), keys));
-    if (mode === "pair") setB(draftFromItem(pick(), keys));
-  }
-
   async function run() {
-    const itemA = draftToItem(a, inputMode === "trace" ? null : keys);
-    if ("error" in itemA) return setError(mode === "pair" ? `Item A: ${itemA.error}` : itemA.error);
-    let itemB: { item: Item } | { error: string } | null = null;
-    if (mode === "pair") {
-      itemB = draftToItem(b, inputMode === "trace" ? null : keys);
-      if ("error" in itemB) return setError(`Item B: ${itemB.error}`);
-    }
+    if (running || !servable(version) || !hasTrace(a) || (mode === "pair" && !hasTrace(b))) return;
     setRunning(true);
     setError(null);
     setReviewed(null);
     try {
-      if (itemB && "item" in itemB) {
-        setComparison(await imCompare(id, itemA.item, itemB.item, which));
+      if (mode === "pair" && hasTrace(b)) {
+        setComparison(await imCompare(id, a, b, which));
         setPrediction(null);
       } else {
-        setPrediction(await imPredict(id, itemA.item, which));
+        setPrediction(await imPredict(id, a, which));
         setComparison(null);
       }
     } catch (e) {
@@ -96,7 +82,7 @@ export default function PlaygroundTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid border-y border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
+      <div className="grid border-b border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
         <Panel
           title="Input"
           actions={
@@ -138,29 +124,15 @@ export default function PlaygroundTab() {
               void run();
             }}
           >
-            <Segmented ariaLabel="Trace or manual input" value={inputMode} onChange={(value) => { if (running) return; setInputMode(value); setA(emptyDraft()); setB(emptyDraft()); clearResult(); }} options={[{ value: "trace", label: "Trace" }, { value: "manual", label: "Manual input" }]} />
-            {inputMode === "trace" ? <>
-              <TraceSandboxInput disabled={running} label={mode === "pair" ? "Trace A" : "Trace"} onChange={(item) => { setA(draftFromItem(item, null)); clearResult(); }} />
-              {mode === "pair" && <TraceSandboxInput disabled={running} label="Trace B" onChange={(item) => { setB(draftFromItem(item, null)); clearResult(); }} />}
-              <p className="text-[11px] text-muted-foreground">Evaluated against this model’s rubric.</p>
-            </> : <>
-            <ItemInput keys={keys} value={a} onChange={(value) => { setA(value); clearResult(); }} label={mode === "pair" ? "Item A" : undefined} disabled={running} onSubmit={() => void run()} />
-            {mode === "pair" && <ItemInput keys={keys} value={b} onChange={(value) => { setB(value); clearResult(); }} label="Item B" disabled={running} onSubmit={() => void run()} />}
-            </>}
+            <TraceSandboxInput disabled={running} label={mode === "pair" ? "Trace A" : "Trace"} onChange={(item) => { setA(item); clearResult(); }} />
+            {mode === "pair" && <TraceSandboxInput disabled={running} label="Trace B" onChange={(item) => { setB(item); clearResult(); }} />}
             <div className="flex items-center gap-2">
-              <Button size="sm" type="submit" disabled={running || (!canActive && !canDraft) || "error" in draftToItem(a, inputMode === "trace" ? null : keys) || (mode === "pair" && "error" in draftToItem(b, inputMode === "trace" ? null : keys))}>
+              <Button size="sm" type="submit" disabled={running || !servable(version) || !hasTrace(a) || (mode === "pair" && !hasTrace(b))}>
                 {running ? <Spinner /> : <Play />}
                 {mode === "pair" ? "Compare" : "Run"}
               </Button>
               <span className="text-[11.5px] text-muted-foreground">⌘↵</span>
-              <span className="flex-1" />
-              {pool.length > 0 && (
-                <Button type="button" variant="ghost" size="sm" onClick={fillRandom} disabled={running}>
-                  <Shuffle /> Load example
-                </Button>
-              )}
             </div>
-            {!canActive && !canDraft && <p className="text-xs text-muted-foreground">This model has no trained version yet. You can inspect a trace now; running it becomes available after training.</p>}
             {error && <Callout tone="danger">{error}</Callout>}
           </form>
         </Panel>
@@ -176,7 +148,7 @@ export default function PlaygroundTab() {
         ) : comparison ? (
           <ComparisonResult comparison={comparison} reviewed={reviewed} onReview={(label) => review(comparison.prediction_id, label, label === "a" ? "A is better" : "B is better")} />
         ) : (
-          <section className="border-t border-border p-5 lg:border-t-0" aria-label="Model output">
+          <section className="border-t border-border px-5 py-3 lg:border-t-0" aria-label="Model output">
             <h2 className="m-0 text-[13px] font-semibold">Output</h2>
             <div className="mt-5 text-[12px] text-muted-foreground">{running ? <span role="status" className="flex items-center gap-2"><Spinner />Evaluating…</span> : "Run an input to see the model’s prediction."}</div>
           </section>
@@ -203,7 +175,7 @@ export default function PlaygroundTab() {
         </div>
       )}
 
-      <AgentUsagePanel modelId={id} outputType={outputType} sample={pool[0]?.item ?? (keys ? Object.fromEntries(keys.map((k) => [k, "…"])) : "…")} />
+      <AgentUsagePanel modelId={id} outputType={outputType} sample={hasTrace(a) ? a : pool[0]?.item ?? "…"} />
     </div>
   );
 }
@@ -327,7 +299,7 @@ function ComparisonResult({ comparison, reviewed, onReview }: { comparison: Comp
 
 /** Flat workspace sections keep the input, result, and diagnostics on one canvas. */
 function Panel({ title, description, actions, children }: { title?: string; description?: string; actions?: ReactNode; children?: ReactNode }) {
-  return <section className="min-w-0 p-5">
+  return <section className="min-w-0 px-5 py-3">
     <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="m-0 text-[13px] font-semibold">{title}</h2>{description && <p className="mb-0 mt-1 text-[12px] text-muted-foreground">{description}</p>}</div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
