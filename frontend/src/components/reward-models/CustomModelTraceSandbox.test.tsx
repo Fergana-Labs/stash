@@ -93,6 +93,23 @@ it("refreshes a completed run and displays its new scores", async () => {
   expect(screen.getByRole("button", { name: "Run" })).toBeEnabled();
 });
 
+it("displays scoring progress reported by the polling endpoint", async () => {
+  vi.mocked(api.rmGetTrace).mockResolvedValueOnce(trace).mockImplementation(async () => ({ ...trace,
+    scoring_runs: [{ id: "run", trace_id: "t1", reward_model_id: "custom", status: "running", error: null,
+      progress: { stage: "scoring", completed: 4, total: 10, elapsed_seconds: 8, updated_at: new Date().toISOString() },
+    }],
+  }));
+  render(<CustomModelTraceSandbox model={model} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Choose Truck task" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(await screen.findByText("Queued for scoring with Parts accuracy…")).toBeVisible();
+  expect(await screen.findByText("4 / 10", {}, { timeout: 3500 })).toBeVisible();
+  expect(screen.getByRole("progressbar", { name: "Scoring progress" })).toHaveAttribute("aria-valuenow", "40");
+  expect(screen.getByText("About 15s scoring left")).toBeVisible();
+  expect(screen.queryByLabelText("Action credit +0.20")).not.toBeInTheDocument();
+});
+
 it("disables Run while another row loads so the previous trace cannot be submitted", async () => {
   const second = { ...trace, id: "t2", title: "Another trace" };
   vi.mocked(api.rmListTraces).mockResolvedValue({ traces: [{ ...trace, can_score: true }, { ...second, can_score: true }], total: 2 });

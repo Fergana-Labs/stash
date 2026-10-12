@@ -233,8 +233,10 @@ def test_saved_checkpoint_inference_uses_the_saved_action_scale(tmp_path, monkey
         def __init__(self, path):
             assert path == checkpoint
 
-        def score(self, texts):
+        def score(self, texts, *, on_progress=None):
             texts_seen.extend(texts)
+            if on_progress:
+                on_progress(len(texts))
             return [2, 5]
 
     monkeypatch.setitem(sys.modules, "rm_worker.scoring", SimpleNamespace(RewardModel=Model))
@@ -259,8 +261,10 @@ def test_whole_trace_checkpoint_inference_without_action_calibration(tmp_path, m
         def __init__(self, path):
             assert path == checkpoint
 
-        def score(self, texts):
+        def score(self, texts, *, on_progress=None):
             texts_seen.extend(texts)
+            if on_progress:
+                on_progress(len(texts))
             return [0.87]
 
     monkeypatch.setitem(sys.modules, "rm_worker.scoring", SimpleNamespace(RewardModel=Model))

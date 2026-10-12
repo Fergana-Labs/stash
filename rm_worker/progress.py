@@ -7,7 +7,17 @@ import time
 from datetime import UTC, datetime
 
 PREFIX = "STASH_TRAINING_PROGRESS "
-STAGES = {"preparing", "starting", "loading", "training", "evaluating", "scoring", "uploading"}
+STAGES = {
+    "preparing",
+    "starting",
+    "downloading",
+    "loading",
+    "training",
+    "evaluating",
+    "scoring",
+    "uploading",
+    "saving",
+}
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 

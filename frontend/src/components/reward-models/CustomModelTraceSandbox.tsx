@@ -11,6 +11,7 @@ import { isActiveJob } from "./rm-ui";
 import TraceSandboxInput from "./TraceSandboxInput";
 import ModelTraceConversation from "./ModelTraceConversation";
 import TraceModelConnect from "./TraceModelConnect";
+import ScoringProgress from "./ScoringProgress";
 
 export default function CustomModelTraceSandbox({ model, embedded = false }: { model: RmRewardModelDetail; embedded?: boolean }) {
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
@@ -103,7 +104,7 @@ export default function CustomModelTraceSandbox({ model, embedded = false }: { m
         {error && <p role="alert" className="mb-3 text-xs text-destructive">{error}</p>}
         {!selecting && (outputTrace ? <div className="space-y-3">
             <div className="flex items-center justify-between gap-2"><h3 className="min-w-0 truncate text-xs font-medium">{outputTrace.title}</h3><Link href={"/reward-models/traces/" + outputTrace.id} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">Open trace</Link></div>
-            {active && <p role="status" className="flex items-center gap-2 text-xs"><Loader2 className="h-3.5 w-3.5 animate-spin" />{run.status === "queued" ? "Queued for scoring" : "Scoring"} with {model.name}…</p>}
+            {(active || (busy && !run)) && <ScoringProgress run={run} modelName={model.name} />}
             {run?.status === "failed" && <p role="alert" className="text-xs text-destructive">{run.error ?? "Scoring failed. Try again."}</p>}
             {showGrades && overall && <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs">Overall reward: <span className="font-mono text-lg font-semibold">{overall.score.toFixed(3)}</span></p>
