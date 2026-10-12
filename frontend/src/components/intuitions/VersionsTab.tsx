@@ -177,7 +177,7 @@ function VersionRow({ modelId, summary, onRestore }: { modelId: string; summary:
           </span>
         )}
         <span className="font-mono text-[11.5px] text-muted-foreground">
-          {summary.provider} · {summary.provider_model}
+          Rubric-based evaluator
         </span>
         <span className="text-[12px] text-muted-foreground">
           acc <span className="font-mono text-foreground">{pct(held?.accuracy, 1)}</span> · log loss <span className="font-mono text-foreground">{num(held?.log_loss)}</span>

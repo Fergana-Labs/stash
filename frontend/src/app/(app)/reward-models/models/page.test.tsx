@@ -137,7 +137,7 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(screen.getByText("2 models")).toBeVisible();
   await userEvent.setup().click(screen.getByText("More options"));
   expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
-  await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Jev");
+  await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Rubric-based");
   expect(screen.getByRole("link", { name: "Support reply" })).toBeVisible();
   expect(screen.queryByRole("link", { name: ready.name })).not.toBeInTheDocument();
 });
