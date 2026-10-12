@@ -69,6 +69,7 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
           <DialogPrimitive.Title className="m-0 font-display text-[17px] font-semibold text-foreground">
             Create new reward model
           </DialogPrimitive.Title>
+          <DialogPrimitive.Description className="mt-1 text-xs text-muted-foreground">Select traces from your agent to train a custom model. Automatic annotations supply initial judgments; your ratings override them. Training and evaluation use separate traces.</DialogPrimitive.Description>
         </div>
         <DialogPrimitive.Close asChild>
           <Button variant="ghost" size="icon-sm" aria-label="Close">
