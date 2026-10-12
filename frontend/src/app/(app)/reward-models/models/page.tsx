@@ -28,20 +28,20 @@ export default function RewardModelsPage() {
   const router = useRouter();
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [rubricLoadError, setRubricLoadError] = useState<string | null>(null);
   const [rubricModels, setRubricModels] = useState<ModelSummary[]>([]);
   const [judgeConfigured, setJudgeConfigured] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const load = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [trained, rubric] = await Promise.all([rmListRewardModels(), imList()]);
-      setModels(trained);
-      setRubricModels(rubric.models);
-      setJudgeConfigured(rubric.judge.configured);
-    } catch (e) {
-      setLoadError(errorMessage(e));
-    }
+    setLoadError(null); setRubricLoadError(null);
+    await Promise.all([
+      rmListRewardModels().then(setModels).catch((e) => setLoadError(errorMessage(e))),
+      imList().then((rubric) => {
+        setRubricModels(rubric.models);
+        setJudgeConfigured(rubric.judge.configured);
+      }).catch((e) => setRubricLoadError(errorMessage(e))),
+    ]);
   }, []);
 
   useEffect(() => {
@@ -64,6 +64,7 @@ export default function RewardModelsPage() {
           <Button size="sm" onClick={() => setSheetOpen(true)}><Plus />New model</Button>
         </div>
       </div>
+      {rubricLoadError && <p role="alert" className="mb-4 text-xs text-muted-foreground">Couldn’t load rubric-based models: {rubricLoadError}. <button className="cursor-pointer underline" onClick={() => void load()}>Retry rubric models</button></p>}
       {!judgeConfigured && <p className="mb-4 text-xs text-muted-foreground">Live rubric-based predictions are unavailable until the judge is connected. Load the example to explore the sandbox with recorded results.</p>}
       <TrainSheet
         open={sheetOpen}

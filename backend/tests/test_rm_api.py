@@ -851,3 +851,45 @@ async def test_timed_operations_survive_storage_and_export(client):
     assert exported["spans"] == spans
     [reimported] = await _import(client, auth, exported)
     assert (await _detail(client, auth, reimported))["spans"] == spans
+
+
+async def test_reward_model_metadata_reads_never_fetch_training_payloads(client, monkeypatch, pool):
+    from backend.routers import reward_models as router
+
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *args: None)
+    auth = await _register(client)
+    await _trainable_labels(client, auth)
+    model = (
+        await client.post(
+            "/api/v1/rm/reward-models",
+            json={"name": "Metadata only", "trace_ids": await _all_trace_ids(client, auth)},
+            headers=auth,
+        )
+    ).json()
+    calls = []
+
+    class MetadataPool:
+        async def fetch(self, query, *args):
+            rows = await pool.fetch(query, *args)
+            calls.append(rows)
+            assert all("training_pairs" not in row and "artifact_key" not in row for row in rows)
+            return rows
+
+        async def fetchrow(self, query, *args):
+            row = await pool.fetchrow(query, *args)
+            calls.append([row])
+            assert "training_pairs" not in row and "artifact_key" not in row
+            return row
+
+    monkeypatch.setattr(router, "get_pool", lambda: MetadataPool())
+    response = await client.get("/api/v1/rm/reward-models", headers=auth)
+    assert response.status_code == 200
+    assert len(calls) == 1  # One model-list DB round trip, including timing history.
+    [listed] = response.json()
+    assert listed["id"] == model["id"]
+    assert listed["trace_count"] == model["trace_count"]
+    assert "trace_ids" not in calls[0][0]
+    assert "feedback" not in calls[0][0]
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model['id']}", headers=auth)).json()
+    assert len(detail["trace_ids"]) == listed["trace_count"]
+    assert detail["feedback"] is None

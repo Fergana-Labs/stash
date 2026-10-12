@@ -221,3 +221,21 @@ it("toggles the playground from any noninteractive cell without double-toggling 
   fireEvent.click(name);
   expect(screen.getByRole("region", { name: ready.name + " details" })).toBeVisible();
 });
+
+it("shows model names without waiting for the legacy model request", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
+  vi.mocked(imList).mockImplementation(() => new Promise(() => {}));
+  render(<RewardModelsPage />);
+  expect(await screen.findByRole("button", { name: ready.name })).toBeVisible();
+  expect(screen.queryByText("Loading reward models…")).not.toBeInTheDocument();
+});
+
+it("keeps trained models usable when the legacy request fails", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
+  vi.mocked(imList).mockRejectedValue(new Error("Legacy unavailable"));
+  render(<RewardModelsPage />);
+  expect(await screen.findByRole("button", { name: ready.name })).toBeVisible();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Legacy unavailable");
+  fireEvent.click(screen.getByRole("button", { name: ready.name }));
+  expect(await screen.findByRole("region", { name: ready.name + " details" })).toBeVisible();
+});

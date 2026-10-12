@@ -496,7 +496,8 @@ async def create_reward_model(
 @router.get("/reward-models")
 async def list_reward_models(current_user: dict = Depends(get_current_user)) -> list[dict]:
     rows = await get_pool().fetch(
-        "SELECT * FROM rm_reward_models WHERE owner_user_id = $1 AND scope = 'personal' ORDER BY created_at DESC",
+        f"SELECT {REWARD_MODEL_SUMMARY_COLUMNS} FROM rm_reward_models "
+        "WHERE owner_user_id = $1 AND scope = 'personal' ORDER BY created_at DESC",
         current_user["id"],
     )
     return [_reward_model(row, rows) for row in rows]
@@ -505,7 +506,8 @@ async def list_reward_models(current_user: dict = Depends(get_current_user)) -> 
 @router.get("/reward-models/{model_id}")
 async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_current_user)) -> dict:
     row = await get_pool().fetchrow(
-        "SELECT * FROM rm_reward_models WHERE owner_user_id = $1 AND id = $2",
+        f"SELECT {REWARD_MODEL_SUMMARY_COLUMNS}, owner_user_id, trace_ids, feedback "
+        "FROM rm_reward_models WHERE owner_user_id = $1 AND id = $2",
         current_user["id"],
         model_id,
     )
@@ -714,11 +716,19 @@ REWARD_MODEL_FIELDS = (
 )
 
 
+# Training pairs can contain hundreds of MB of recorded context. Never fetch
+# them for UI metadata; count the trace IDs in Postgres instead of transferring them.
+REWARD_MODEL_SUMMARY_COLUMNS = (
+    ", ".join(REWARD_MODEL_FIELDS) + ", cardinality(trace_ids) AS trace_count"
+)
+
+
 async def _timing_history(row):
     if row["status"] not in ("queued", "running"):
         return []
     return await get_pool().fetch(
-        "SELECT * FROM rm_reward_models WHERE owner_user_id=$1 AND scope='personal' "
+        f"SELECT {REWARD_MODEL_SUMMARY_COLUMNS} FROM rm_reward_models "
+        "WHERE owner_user_id=$1 AND scope='personal' "
         "AND status='succeeded' AND base_model=$2 AND compute=$3 ORDER BY created_at DESC LIMIT 20",
         row["owner_user_id"],
         row["base_model"],
@@ -728,7 +738,7 @@ async def _timing_history(row):
 
 def _reward_model(row, history=()) -> dict:
     model = {key: row[key] for key in REWARD_MODEL_FIELDS}
-    model["trace_count"] = len(row["trace_ids"])
+    model["trace_count"] = row["trace_count"] if "trace_count" in row else len(row["trace_ids"])
     model["estimated_timing"] = training_timing.estimate(model, history)
     return model
 
