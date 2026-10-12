@@ -159,16 +159,40 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
 }
 
 function RubricModelRow({ model }: { model: ModelSummary }) {
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = `rubric-model-details-${model.id}`;
+  const sandbox = `/reward-models/models/sandbox/${model.id}`;
   const accuracy = model.active_metrics?.eval?.accuracy;
-  return <tr className="h-8 border-b border-border-subtle last:border-0 hover:bg-surface/60 [&>td]:px-3 [&>td]:py-0">
-    <td><Link href={`/reward-models/models/sandbox/${model.id}`} className="block truncate py-1 font-medium hover:text-brand-600 hover:underline">{model.name}</Link></td>
+  return <Fragment><tr data-model-row className={cn("h-8 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
+    <td><div className="flex min-w-0 items-center gap-2">
+      <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">
+        <ChevronRight className={cn("size-3.5 text-muted-foreground", expanded && "rotate-90")} />
+      </button>
+      <Link href={sandbox} className="truncate py-1 font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</Link>
+    </div></td>
     <td>{model.active_number === null ? "Draft" : `Ready · v${model.active_number}`}</td>
     <td className="text-muted-foreground">—</td>
     <td className="text-muted-foreground">Rubric-based · Jev</td>
     <td className="text-right tabular-nums"><span title={`${model.inbox} predictions to review`}>{model.examples}</span></td>
     <td className="text-right tabular-nums">{accuracy == null ? "—" : `${(accuracy * 100).toFixed(1)}%`}</td>
     <td className="text-right text-[11.5px] text-muted-foreground"><time dateTime={model.created_at}>{new Date(model.created_at).toLocaleString()}</time></td>
-  </tr>;
+  </tr>
+    {expanded && <tr><td colSpan={7} className="border-b border-border px-8 py-3">
+      <div id={detailsId} role="region" aria-label={`${model.name} details`}>
+        <div className="flex flex-wrap items-center gap-4 text-xs">
+          <Link href={`${sandbox}?tab=playground`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">Open playground</Link>
+          <Link href={`${sandbox}?tab=examples`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">{model.examples} labeled examples</Link>
+          <Link href={`${sandbox}?tab=inbox`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">{model.inbox} predictions to review</Link>
+        </div>
+        <dl className="m-0 mt-3 flex flex-wrap gap-x-8 gap-y-3 border-t border-border-subtle pt-3">
+          <Metric label="Output" value={model.output_type === "choice" ? "Classifier" : "Preference"} />
+          <Metric label="Version" value={model.active_number === null ? "Draft" : `Active v${model.active_number}`} />
+          <Metric label="Eval accuracy" value={accuracy == null ? "Not available" : `${(accuracy * 100).toFixed(1)}%`} />
+        </dl>
+        {(model.active_description ?? model.draft_description) && <p className="mb-0 mt-3 text-xs text-muted-foreground">{model.active_description ?? model.draft_description}</p>}
+      </div>
+    </td></tr>}
+  </Fragment>;
 }
 
 function ModelRow({ model }: { model: RmRewardModel }) {

@@ -136,6 +136,15 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   expect(screen.getByRole("link", { name: ready.name })).toBeVisible();
   expect(screen.getByText("2 models")).toBeVisible();
   expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
+  const toggle = screen.getByRole("button", { name: "Support reply details" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await userEvent.setup().click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const details = screen.getByRole("region", { name: "Support reply details" });
+  expect(within(details).getByRole("link", { name: "Open playground" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=playground");
+  expect(within(details).getByRole("link", { name: "3 predictions to review" })).toHaveAttribute("href", "/reward-models/models/sandbox/support?tab=inbox");
+  await userEvent.setup().click(toggle);
+  expect(screen.queryByRole("region", { name: "Support reply details" })).not.toBeInTheDocument();
   await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Jev");
   expect(screen.getByRole("link", { name: "Support reply" })).toBeVisible();
   expect(screen.queryByRole("link", { name: ready.name })).not.toBeInTheDocument();
