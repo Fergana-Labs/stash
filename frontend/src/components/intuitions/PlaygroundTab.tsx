@@ -94,23 +94,6 @@ export default function PlaygroundTab() {
     }
   }
 
-  if (!canActive && !canDraft) {
-    return (
-      <div className="space-y-4">
-        <Callout
-          tone="info"
-          action={
-            <Button size="sm" onClick={() => goTo(rubric.length || detail.draft?.rubric.length ? "train" : "rubric")}>
-              {rubric.length || detail.draft?.rubric.length ? "Go to Train" : "Write a rubric"}
-            </Button>
-          }
-        >
-          Nothing to run yet. A model needs rubric questions and a fitted head before it can judge items: write the rubric, label a few examples, then grade and fit on the Train tab.
-        </Callout>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="grid border-y border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
@@ -135,7 +118,7 @@ export default function PlaygroundTab() {
                   ]}
                 />
               )}
-              <Segmented
+              {(canActive || canDraft) && <Segmented
                 size="xs"
                 ariaLabel="Version"
                 value={which}
@@ -144,7 +127,7 @@ export default function PlaygroundTab() {
                   ...(canActive ? [{ value: "active" as const, label: `Active v${detail.active?.number}` }] : []),
                   ...(canDraft ? [{ value: "draft" as const, label: `Draft v${detail.draft?.number}` }] : []),
                 ]}
-              />
+              />}
             </>
           }
         >
@@ -165,7 +148,7 @@ export default function PlaygroundTab() {
             {mode === "pair" && <ItemInput keys={keys} value={b} onChange={(value) => { setB(value); clearResult(); }} label="Item B" disabled={running} onSubmit={() => void run()} />}
             </>}
             <div className="flex items-center gap-2">
-              <Button size="sm" type="submit" disabled={running || "error" in draftToItem(a, inputMode === "trace" ? null : keys) || (mode === "pair" && "error" in draftToItem(b, inputMode === "trace" ? null : keys))}>
+              <Button size="sm" type="submit" disabled={running || (!canActive && !canDraft) || "error" in draftToItem(a, inputMode === "trace" ? null : keys) || (mode === "pair" && "error" in draftToItem(b, inputMode === "trace" ? null : keys))}>
                 {running ? <Spinner /> : <Play />}
                 {mode === "pair" ? "Compare" : "Run"}
               </Button>
@@ -177,6 +160,7 @@ export default function PlaygroundTab() {
                 </Button>
               )}
             </div>
+            {!canActive && !canDraft && <p className="text-xs text-muted-foreground">This model has no trained version yet. You can inspect a trace now; running it becomes available after training.</p>}
             {error && <Callout tone="danger">{error}</Callout>}
           </form>
         </Panel>

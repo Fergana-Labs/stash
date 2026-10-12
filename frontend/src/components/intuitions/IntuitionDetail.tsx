@@ -89,8 +89,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
   if (!ctx) return <RmPageSkeleton />;
 
   const requested = searchParams.get("tab");
-  const hasRubric = (ctx.version?.rubric.length ?? 0) > 0;
-  const tab: TabId = isTabId(requested) ? requested : hasRubric ? "playground" : "rubric";
+  const tab: TabId = isTabId(requested) ? requested : "playground";
 
   return (
     <IntuitionProvider value={ctx}>
