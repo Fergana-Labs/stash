@@ -195,13 +195,18 @@ async def run_training(model_id: UUID) -> None:
         job.update(input_version=3, fixed_split=True, rubric=config["rubric"])
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
+    eager_scoring = not (automatic and model["scope"] == "personal")
     trace_items = (
-        await automatic_dataset.score_items(owner_user_id, model["trace_ids"], config["rubric"])
-        if automatic
-        and any(p.get("granularity") == "trace" and p["partition"] == "train" for p in pairs)
-        else []
-        if config
-        else await datasets.score_items(owner_user_id)
+        []
+        if not eager_scoring
+        else (
+            await automatic_dataset.score_items(owner_user_id, model["trace_ids"], config["rubric"])
+            if automatic
+            and any(p.get("granularity") == "trace" and p["partition"] == "train" for p in pairs)
+            else []
+            if config
+            else await datasets.score_items(owner_user_id)
+        )
     )
     _write_jsonl(directory / "score_items.jsonl", trace_items)
     ids = None
@@ -214,12 +219,18 @@ async def run_training(model_id: UUID) -> None:
             model["trace_ids"],
         )
         ids = {str(r["id"]) for r in rows if (str(r["trace_id"]), r["idx"]) in targets}
-    action_items = await datasets.action_score_items(
-        owner_user_id,
-        input_version=3 if config else 1,
-        rubric=config["rubric"] if config else (),
-        trace_ids=model["trace_ids"] if config else None,
-        step_ids=ids,
+    # Personal models become ready after fitting, evaluation and calibration.
+    # Apply their checkpoint to a trace only when the user presses Run.
+    action_items = (
+        []
+        if not eager_scoring
+        else await datasets.action_score_items(
+            owner_user_id,
+            input_version=3 if config else 1,
+            rubric=config["rubric"] if config else (),
+            trace_ids=model["trace_ids"] if config else None,
+            step_ids=ids,
+        )
     )
     _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
