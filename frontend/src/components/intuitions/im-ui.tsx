@@ -1,17 +1,16 @@
 "use client";
 
-import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { Example, ExampleSource, ModelDetail, Version } from "@/lib/intuition-api";
+import type { ExampleSource, ModelDetail, Version } from "@/lib/intuition-api";
 
 export { inputClass } from "@/components/workbench/workbench-ui";
 
 export const TABS = [
   { id: "playground", label: "Playground" },
-  { id: "examples", label: "Examples" },
   { id: "versions", label: "Versions" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
@@ -28,10 +27,6 @@ export interface IntuitionCtx {
   version: Version | null;
   apply: (detail: ModelDetail) => void;
   reload: () => Promise<void>;
-  examples: Example[] | null;
-  examplesError: string | null;
-  setExamples: Dispatch<SetStateAction<Example[] | null>>;
-  reloadExamples: () => Promise<void>;
   goTo: (tab: TabId, params?: Record<string, string>) => void;
 }
 

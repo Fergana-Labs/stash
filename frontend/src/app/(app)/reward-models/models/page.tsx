@@ -178,7 +178,6 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
       <div id={detailsId} role="region" aria-label={`${model.name} details`}>
         <div className="flex flex-wrap items-center gap-4 text-xs">
           <Link href={`${sandbox}?tab=playground`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">Open playground</Link>
-          <Link href={`${sandbox}?tab=examples`} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">{model.examples} labeled examples</Link>
         </div>
         <dl className="m-0 mt-3 flex flex-wrap gap-x-8 gap-y-3 border-t border-border-subtle pt-3">
           <Metric label="Output" value={model.output_type === "choice" ? "Classifier" : "Preference"} />

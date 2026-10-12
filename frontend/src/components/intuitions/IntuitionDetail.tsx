@@ -6,12 +6,11 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
-import { imExamples, imGet, type Example, type ModelDetail } from "@/lib/intuition-api";
+import { imGet, type ModelDetail } from "@/lib/intuition-api";
 import { workingVersion } from "./im-helpers";
 import { IntuitionProvider, isTabId, LoadError, TABS, type IntuitionCtx, type TabId } from "./im-ui";
 import IntuitionHeader from "./IntuitionHeader";
 import PlaygroundTab from "./PlaygroundTab";
-import ExamplesTab from "./ExamplesTab";
 import VersionsTab from "./VersionsTab";
 
 export default function IntuitionDetail({ id }: { id: string }) {
@@ -20,8 +19,6 @@ export default function IntuitionDetail({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [examples, setExamples] = useState<Example[] | null>(null);
-  const [examplesError, setExamplesError] = useState<string | null>(null);
 
   useBreadcrumbs(
     [{ label: "Reward models", href: "/reward-models/models" }, { label: detail?.model.name ?? "…" }],
@@ -37,19 +34,9 @@ export default function IntuitionDetail({ id }: { id: string }) {
     }
   }, [id]);
 
-  const reloadExamples = useCallback(async () => {
-    try {
-      setExamples(await imExamples(id));
-      setExamplesError(null);
-    } catch (e) {
-      setExamplesError(errorMessage(e));
-    }
-  }, [id]);
-
   useEffect(() => {
     void reload();
-    void reloadExamples();
-  }, [reload, reloadExamples]);
+  }, [reload]);
 
   const goTo = useCallback(
     (tab: TabId, params: Record<string, string> = {}) => {
@@ -67,13 +54,9 @@ export default function IntuitionDetail({ id }: { id: string }) {
         version: workingVersion(detail),
         apply: setDetail,
         reload,
-        examples,
-        examplesError,
-        setExamples,
-        reloadExamples,
         goTo,
       },
-    [id, detail, reload, examples, examplesError, reloadExamples, goTo],
+    [id, detail, reload, goTo],
   );
 
   if (loadError !== null && detail === null) {
@@ -93,10 +76,9 @@ export default function IntuitionDetail({ id }: { id: string }) {
       <div className="scroll-thin h-full overflow-y-auto">
         <div className="mx-auto max-w-6xl px-6 pt-5 pb-12">
           <IntuitionHeader />
-          <TabBar tab={tab} detail={ctx.detail} examples={examples} onSelect={(t) => goTo(t)} />
+          <TabBar tab={tab} onSelect={(t) => goTo(t)} />
           <div role="tabpanel" id={`im-panel-${tab}`} aria-labelledby={`im-tab-${tab}`} className={tab === "playground" ? "pt-0" : "pt-5"}>
             {tab === "playground" && <PlaygroundTab />}
-            {tab === "examples" && <ExamplesTab />}
             {tab === "versions" && <VersionsTab />}
           </div>
         </div>
@@ -105,12 +87,8 @@ export default function IntuitionDetail({ id }: { id: string }) {
   );
 }
 
-function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: ModelDetail; examples: Example[] | null; onSelect: (tab: TabId) => void }) {
+function TabBar({ tab, onSelect }: { tab: TabId; onSelect: (tab: TabId) => void }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const needsReview = examples?.filter((e) => e.needs_review).length ?? detail.counts.needs_review;
-  const counts: Partial<Record<TabId, { n: number; strong?: boolean; title: string }>> = {
-    examples: { n: examples?.length ?? detail.counts.total, strong: needsReview > 0, title: needsReview ? `${needsReview} need review` : "Examples" },
-  };
 
   function onKeyDown(e: KeyboardEvent) {
     const index = TABS.findIndex((t) => t.id === tab);
@@ -125,7 +103,6 @@ function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: Model
   return (
     <div role="tablist" aria-label="Reward model sections" onKeyDown={onKeyDown} className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
       {TABS.map((t) => {
-        const count = counts[t.id];
         const selected = t.id === tab;
         return (
           <button
@@ -146,14 +123,6 @@ function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: Model
             )}
           >
             {t.label}
-            {count && (
-              <span
-                title={count.title}
-                className={cn("rounded-full px-1.5 font-mono text-[10.5px] tabular-nums", count.strong ? "bg-brand-500/12 text-brand-600" : "bg-raised text-muted-foreground")}
-              >
-                {count.n}
-              </span>
-            )}
           </button>
         );
       })}
