@@ -1,14 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { Suspense, use } from "react";
-import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
-import IntuitionDetail from "@/components/intuitions/IntuitionDetail";
-
-export default function IntuitionPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return (
-    <Suspense fallback={<RmPageSkeleton />}>
-      <IntuitionDetail id={decodeURIComponent(id)} />
-    </Suspense>
-  );
+export default async function IntuitionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const { id } = await params;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(await searchParams)) {
+    for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(key, item);
+  }
+  redirect(`/reward-models/models/sandbox/${encodeURIComponent(id)}${query.size ? `?${query}` : ""}`);
 }
