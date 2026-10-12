@@ -27,7 +27,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
   const [examplesError, setExamplesError] = useState<string | null>(null);
 
   useBreadcrumbs(
-    [{ label: "Reward models", href: "/reward-models" }, { label: "Intuitions", href: "/reward-models/intuitions" }, { label: detail?.model.name ?? "…" }],
+    [{ label: "Reward models", href: "/reward-models/models" }, { label: detail?.model.name ?? "…" }],
     `im-${id}-${detail?.model.name ?? ""}`,
   );
 
@@ -82,7 +82,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
   if (loadError !== null && detail === null) {
     return (
       <div className="mx-auto max-w-6xl px-10 pt-7">
-        <LoadError what="this intuition model" message={loadError} onRetry={() => void reload()} />
+        <LoadError what="this reward model" message={loadError} onRetry={() => void reload()} />
       </div>
     );
   }
@@ -132,7 +132,7 @@ function TabBar({ tab, detail, examples, onSelect }: { tab: TabId; detail: Model
   }
 
   return (
-    <div role="tablist" aria-label="Intuition model sections" onKeyDown={onKeyDown} className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
+    <div role="tablist" aria-label="Reward model sections" onKeyDown={onKeyDown} className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
       {TABS.map((t) => {
         const count = counts[t.id];
         const selected = t.id === tab;

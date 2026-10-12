@@ -18,7 +18,7 @@ export default function LoadExampleButton({ variant = "outline" }: { variant?: "
     try {
       const detail = await imLoadExample();
       toast.success(`Loaded “${detail.model.name}”`);
-      router.push(`/reward-models/intuitions/${detail.model.id}`);
+      router.push(`/reward-models/models/sandbox/${detail.model.id}`);
     } catch (e) {
       toast.error(errorMessage(e));
       setBusy(false);

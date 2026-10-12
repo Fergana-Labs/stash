@@ -41,8 +41,8 @@ export default function IntuitionHeader() {
 
   return (
     <header>
-      <Link href="/reward-models/intuitions" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3.5 w-3.5" /> Intuitions
+      <Link href="/reward-models/models" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> Reward models
       </Link>
       <div className="mt-2 flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -133,7 +133,7 @@ export default function IntuitionHeader() {
           try {
             await imDelete(id);
             toast.success("Model deleted");
-            router.push("/reward-models/intuitions");
+            router.push("/reward-models/models");
           } catch (e) {
             toast.error(errorMessage(e));
             return false;

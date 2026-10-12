@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { rmGetRewardModel, rmListRewardModels } from "@/lib/api";
+import { imList } from "@/lib/intuition-api";
 import type { RmRewardModel } from "@/lib/types";
 import RewardModelsPage from "./page";
 
@@ -13,7 +14,13 @@ vi.mock("@/components/reward-models/FeedbackDialog", () => ({ default: () => nul
 vi.mock("@/components/reward-models/ViewSkillButton", () => ({ default: () => null }));
 vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn() }));
 
-beforeEach(() => vi.clearAllMocks());
+vi.mock("@/lib/intuition-api", () => ({ imList: vi.fn(), imLoadExample: vi.fn() }));
+vi.mock("@/components/intuitions/CreateModelDialog", () => ({ default: () => null }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(imList).mockResolvedValue({ models: [], judge: { provider: "jev", configured: true, model: "jev" } });
+});
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 const ready: RmRewardModel = {
@@ -48,7 +55,7 @@ it("keeps the table headers visible in the empty state", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([]);
   render(<RewardModelsPage />);
   await screen.findByText("No reward models yet");
-  expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Est. remaining", "Base model", "Traces", "Eval accuracy", "Created"]);
+  expect(screen.getAllByRole("columnheader").map((el) => el.textContent)).toEqual(["Model", "Status", "Est. remaining", "Model type / base", "Examples / traces", "Eval accuracy", "Created"]);
   expect(screen.getByRole("button", { name: "New model" })).toBeVisible();
 });
 
@@ -112,4 +119,24 @@ it("opens the model playground from the model name", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
   render(<RewardModelsPage />);
   expect(await screen.findByRole("link", { name: ready.name })).toHaveAttribute("href", "/reward-models/models/ready");
+});
+
+
+it("lists rubric-based models alongside trained models and opens their sandbox", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
+  vi.mocked(imList).mockResolvedValue({
+    judge: { provider: "jev", configured: true, model: "jev" },
+    models: [{ id: "support", name: "Support reply", output_type: "choice", active_version_id: null,
+      draft_version_id: "draft", created_at: "2026-10-10T00:00:00Z", updated_at: "2026-10-10T00:00:00Z",
+      active_number: null, active_metrics: null, active_description: null, draft_description: "Support rubric",
+      examples: 12, inbox: 3 }],
+  });
+  render(<RewardModelsPage />);
+  expect(await screen.findByRole("link", { name: "Support reply" })).toHaveAttribute("href", "/reward-models/models/sandbox/support");
+  expect(screen.getByRole("link", { name: ready.name })).toBeVisible();
+  expect(screen.getByText("2 models")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
+  await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Jev");
+  expect(screen.getByRole("link", { name: "Support reply" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: ready.name })).not.toBeInTheDocument();
 });

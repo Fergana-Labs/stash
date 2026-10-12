@@ -39,7 +39,7 @@ export default function CreateModelDialog({ open, onOpenChange }: { open: boolea
         labels: outputType === "choice" ? labels : [],
       });
       toast.success(`Created ${detail.model.name}`);
-      router.push(`/reward-models/intuitions/${detail.model.id}?tab=rubric`);
+      router.push(`/reward-models/models/sandbox/${detail.model.id}?tab=rubric`);
     } catch (err) {
       toast.error(errorMessage(err));
       setBusy(false);
@@ -51,7 +51,7 @@ export default function CreateModelDialog({ open, onOpenChange }: { open: boolea
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={(e) => void create(e)} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>New intuition model</DialogTitle>
+            <DialogTitle>New rubric-based reward model</DialogTitle>
             <DialogDescription>A personal judge that learns your taste from labeled examples.</DialogDescription>
           </DialogHeader>
           <Field label="Name">
