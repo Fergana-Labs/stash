@@ -31,6 +31,9 @@ it("reads the selected existing trace and omits annotations and previous scores"
   vi.mocked(rmGetTrace).mockResolvedValue({ title: "My task", metadata: null, steps: [{ role: "user", content: "Hello" }], annotations: [{ rating: 1 }], scores: [99] } as never);
   const onChange = vi.fn();
   render(<TraceSandboxInput onChange={onChange} />);
+  const choose = await screen.findByRole("button", { name: "Choose My task" });
+  expect(rmGetTrace).not.toHaveBeenCalled();
+  await userEvent.setup().click(choose);
   await waitFor(() => expect(rmGetTrace).toHaveBeenCalledWith("t1"));
   await waitFor(() => expect(onChange).toHaveBeenCalled());
   const input = onChange.mock.calls[0][0];
@@ -38,8 +41,11 @@ it("reads the selected existing trace and omits annotations and previous scores"
   expect(input.steps[0].content).toBe("Hello");
   expect(input).not.toHaveProperty("annotations");
   expect(input).not.toHaveProperty("metadata");
-  expect(screen.getByRole("combobox", { name: "Choose trace" })).toHaveValue("t1");
+  expect(screen.getByRole("button", { name: "Change trace" })).toBeVisible();
   expect(screen.getByText("Hello")).toBeVisible();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Change trace" }));
+  expect(screen.getByRole("table", { name: "Choose a trace" })).toBeVisible();
+  expect(onChange).toHaveBeenLastCalledWith("");
 });
 
 it("keeps uploading in the trace options menu", async () => {

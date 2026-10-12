@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 it("requires an input before running and keeps API instructions secondary", () => {
   render(<PlaygroundTab />);
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
-  expect(screen.getByRole("combobox", { name: "Choose trace" })).toBeVisible();
+  expect(screen.getByRole("table", { name: "Choose a trace" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Trace options" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Input" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Output" })).toBeVisible();
@@ -23,7 +23,7 @@ it("requires an input before running and keeps API instructions secondary", () =
 it("shows the trace sandbox even when the model has no trained version", () => {
   state.trained = false;
   render(<PlaygroundTab />);
-  expect(screen.getByRole("combobox", { name: "Choose trace" })).toBeVisible();
+  expect(screen.getByRole("table", { name: "Choose a trace" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
   expect(screen.getByText(/no trained version yet/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "Write a rubric" })).not.toBeInTheDocument();
