@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import IntuitionDetail from "./IntuitionDetail";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => ({
@@ -15,4 +16,11 @@ it.each(["playground", "rubric", "train", "inbox", "examples", "versions"])("ope
   expect(await screen.findByText("Trace playground")).toBeVisible();
   expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+});
+
+it("embeds the compatible sandbox without overriding the list breadcrumbs", async () => {
+  vi.mocked(useBreadcrumbs).mockClear();
+  render(<IntuitionDetail id="model" embedded />);
+  expect(await screen.findByText("Trace playground")).toBeVisible();
+  expect(useBreadcrumbs).not.toHaveBeenCalled();
 });

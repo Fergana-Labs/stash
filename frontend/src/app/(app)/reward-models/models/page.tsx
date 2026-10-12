@@ -1,25 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Download, Loader2, Plus, Search } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowDown, ArrowUp, ChevronRight, Loader2, Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import ViewSkillButton from "@/components/reward-models/ViewSkillButton";
-import FeedbackDialog from "@/components/reward-models/FeedbackDialog";
 import TrainSheet from "@/components/reward-models/TrainSheet";
-import { SELECTED_PARAM } from "@/components/reward-models/trace-selection";
 import { isActiveJob } from "@/components/reward-models/rm-ui";
-import { errorMessage, formatSeconds } from "@/components/reward-models/rm-text";
-import { JobError } from "@/components/reward-models/JobError";
+import { errorMessage } from "@/components/reward-models/rm-text";
 import ModelTiming, { trainingStage } from "@/components/reward-models/ModelTiming";
-import { rmDownloadWeights, rmGetRewardModel, rmListRewardModels } from "@/lib/api";
+import { rmListRewardModels } from "@/lib/api";
 import type { RmJobStatus, RmRewardModel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import ModelPlayground from "@/components/reward-models/ModelPlayground";
+import IntuitionDetail from "@/components/intuitions/IntuitionDetail";
 import LoadExampleButton from "@/components/intuitions/LoadExampleButton";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
 
@@ -158,14 +154,13 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
 function RubricModelRow({ model }: { model: ModelSummary }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `rubric-model-details-${model.id}`;
-  const sandbox = `/reward-models/models/sandbox/${model.id}`;
   const accuracy = model.active_metrics?.eval?.accuracy;
   return <Fragment><tr data-model-row className={cn("h-8 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
     <td><div className="flex min-w-0 items-center gap-2">
       <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">
         <ChevronRight className={cn("size-3.5 text-muted-foreground", expanded && "rotate-90")} />
       </button>
-      <Link href={sandbox} className="truncate py-1 font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</Link>
+      <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="cursor-pointer truncate py-1 text-left font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</button>
     </div></td>
     <td>{model.active_number === null ? "Draft" : `Ready · v${model.active_number}`}</td>
     <td className="text-muted-foreground">—</td>
@@ -174,17 +169,9 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
     <td className="text-right tabular-nums">{accuracy == null ? "—" : `${(accuracy * 100).toFixed(1)}%`}</td>
     <td className="text-right text-[11.5px] text-muted-foreground"><time dateTime={model.created_at}>{new Date(model.created_at).toLocaleString()}</time></td>
   </tr>
-    {expanded && <tr><td colSpan={7} className="border-b border-border px-8 py-3">
-      <div id={detailsId} role="region" aria-label={`${model.name} details`}>
-        <div className="flex flex-wrap items-center gap-4 text-xs">
-          <Link href={sandbox} className="text-dim underline decoration-border underline-offset-2 hover:text-brand-600">Open playground</Link>
-        </div>
-        <dl className="m-0 mt-3 flex flex-wrap gap-x-8 gap-y-3 border-t border-border-subtle pt-3">
-          <Metric label="Output" value={model.output_type === "choice" ? "Classifier" : "Preference"} />
-          <Metric label="Version" value={model.active_number === null ? "Draft" : `Active v${model.active_number}`} />
-          <Metric label="Eval accuracy" value={accuracy == null ? "Not available" : `${(accuracy * 100).toFixed(1)}%`} />
-        </dl>
-        {(model.active_description ?? model.draft_description) && <p className="mb-0 mt-3 text-xs text-muted-foreground">{model.active_description ?? model.draft_description}</p>}
+    {expanded && <tr><td colSpan={7} className="border-b border-border p-0">
+      <div id={detailsId} role="region" aria-label={model.name + " details"}>
+        <IntuitionDetail id={model.id} embedded />
       </div>
     </td></tr>}
   </Fragment>;
@@ -217,7 +204,7 @@ function ModelRow({ model }: { model: RmRewardModel }) {
             <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">
               <ChevronRight className={cn("size-3.5 text-muted-foreground", expanded && "rotate-90")} />
             </button>
-            <Link href={`/reward-models/models/${model.id}`} className="truncate py-1 font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</Link>
+            <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="cursor-pointer truncate py-1 text-left font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</button>
           </div>
         </td>
         <td><span className="inline-flex items-center gap-1.5 text-[12px]">
@@ -230,103 +217,11 @@ function ModelRow({ model }: { model: RmRewardModel }) {
         <td className="text-right tabular-nums">{metrics?.eval_accuracy == null ? <span className="text-muted-foreground">—</span> : `${(metrics.eval_accuracy * 100).toFixed(1)}%`}</td>
         <td className="text-right text-[11.5px] text-muted-foreground tabular-nums"><time dateTime={model.created_at} title={date.toLocaleString(undefined, { timeZoneName: "long" })}>{timestamp}</time></td>
       </tr>
-      {expanded && <tr><td colSpan={7} className="border-b border-border px-8 py-3">
-        <div id={detailsId} role="region" aria-label={`${model.name} details`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <TrainedOnLink model={model} />
-            <span className="flex-1" />
-            {!isActiveJob(model.status) && <FeedbackDialog modelId={model.id} />}
-            {model.status === "succeeded" && (
-              <>
-                <DownloadWeightsButton modelId={model.id} />
-                <ViewSkillButton modelId={model.id} />
-              </>
-            )}
-          </div>
-          {metrics && (
-            <dl className="m-0 mt-3 flex flex-wrap gap-x-8 gap-y-3 border-t border-border-subtle pt-3">
-              <Metric label="Eval accuracy" value={metrics.eval_accuracy == null ? "Not available" : `${(metrics.eval_accuracy * 100).toFixed(1)}%`} hint={metrics.eval_split === "trace" ? "held-out traces" : undefined} />
-              <Metric label="Pairs" value={`${metrics.train_pairs} + ${metrics.eval_pairs}`} hint="train + held-out" />
-              <Metric label="Device" value={metrics.device} />
-              <Metric label="Time" value={formatSeconds(metrics.seconds)} hint={`loss ${metrics.final_loss.toFixed(3)}`} />
-              {metrics.action_scoring_version === 1 && <>
-                <Metric label="Action accuracy" value={metrics.action_eval_accuracy == null ? "Not available" : `${(metrics.action_eval_accuracy * 100).toFixed(1)}%`} hint={`${metrics.action_eval_pairs ?? 0} held-out action pairs`} />
-                <Metric label="Tool-call accuracy" value={metrics.tool_eval_accuracy == null ? "Not available" : `${(metrics.tool_eval_accuracy * 100).toFixed(1)}%`} hint={`${metrics.tool_eval_pairs ?? 0} held-out tool pairs`} />
-              </>}
-            </dl>
-          )}
-
-          {model.status === "failed" && model.error && (
-            <JobError error={model.error} className="mt-3" />
-          )}
+      {expanded && <tr><td colSpan={7} className="border-b border-border p-0">
+        <div id={detailsId} role="region" aria-label={model.name + " details"}>
+          <ModelPlayground modelId={model.id} embedded />
         </div>
       </td></tr>}
     </Fragment>
-  );
-}
-
-/** "Trained on N traces" opens the Traces tab with exactly those traces selected. */
-function TrainedOnLink({ model }: { model: RmRewardModel }) {
-  const router = useRouter();
-  const [opening, setOpening] = useState(false);
-
-  async function open() {
-    setOpening(true);
-    try {
-      const detail = await rmGetRewardModel(model.id);
-      router.push(`/reward-models?${SELECTED_PARAM}=${detail.trace_ids.join(",")}`);
-    } catch (e) {
-      toast.error(errorMessage(e));
-      setOpening(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => void open()}
-      disabled={opening}
-      className="inline-flex cursor-pointer items-center gap-1 font-sans text-[12px] text-dim underline decoration-border underline-offset-2 hover:text-brand-600 hover:decoration-brand-300 disabled:cursor-wait"
-    >
-      {opening && <Loader2 className="h-3 w-3 animate-spin" />}
-      Trained on {model.trace_count} trace{model.trace_count === 1 ? "" : "s"}
-    </button>
-  );
-}
-
-function DownloadWeightsButton({ modelId }: { modelId: string }) {
-  const [downloading, setDownloading] = useState(false);
-
-  async function download() {
-    setDownloading(true);
-    try {
-      const { url } = await rmDownloadWeights(modelId);
-      const link = document.createElement("a");
-      link.href = url;
-      link.click();
-    } catch (e) {
-      toast.error(errorMessage(e));
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  return (
-    <Button variant="outline" size="xs" onClick={() => void download()} disabled={downloading}>
-      {downloading ? <Loader2 className="animate-spin" /> : <Download />}
-      {downloading ? "Downloading…" : "Download weights"}
-    </Button>
-  );
-}
-
-function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div>
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className="m-0 mt-0.5 text-[13px] text-foreground tabular-nums">
-        {value}
-      </dd>
-      {hint && <div className="text-[10.5px] text-muted-foreground">{hint}</div>}
-    </div>
   );
 }

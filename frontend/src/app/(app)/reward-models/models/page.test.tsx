@@ -10,14 +10,14 @@ const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
 vi.mock("@/components/reward-models/TrainSheet", () => ({ default: ({ open, onTrained }: { open: boolean; onTrained: (model: { id: string }) => void }) => open ? <button onClick={() => onTrained({ id: "new-custom" })}>Queue test model</button> : null }));
-vi.mock("@/components/reward-models/FeedbackDialog", () => ({ default: () => null }));
-vi.mock("@/components/reward-models/ViewSkillButton", () => ({ default: () => null }));
-vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn() }));
+vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmGetRewardModel: vi.fn(), rmListTraces: vi.fn(async () => ({ traces: [], total: 0 })) }));
+vi.mock("@/components/intuitions/IntuitionDetail", () => ({ default: ({ id, embedded }: { id: string; embedded?: boolean }) => <p>{embedded ? "Embedded" : "Standalone"} rubric playground for {id}</p> }));
 
 vi.mock("@/lib/intuition-api", () => ({ imList: vi.fn(), imLoadExample: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(rmGetRewardModel).mockResolvedValue({ ...ready, trace_ids: ["t1", "t2"], feedback: [] });
   vi.mocked(imList).mockResolvedValue({ models: [], judge: { provider: "jev", configured: true, model: "jev" } });
 });
 afterEach(() => window.history.replaceState(null, "", "/"));
@@ -63,8 +63,8 @@ it("searches names and base models, filters status, and sorts rows", async () =>
   const user = userEvent.setup();
   vi.mocked(rmListRewardModels).mockResolvedValue([ready, queued]);
   render(<RewardModelsPage />);
-  await screen.findByRole("link", { name: ready.name });
-  const names = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("link").textContent);
+  await screen.findByRole("button", { name: ready.name });
+  const names = () => Array.from(document.querySelectorAll("[data-model-row]")).map((row) => within(row as HTMLElement).getAllByRole("button")[1].textContent);
   expect(names()).toEqual([queued.name, ready.name]);
   await user.click(screen.getByRole("button", { name: "Created" }));
   expect(names()).toEqual([ready.name, queued.name]);
@@ -87,40 +87,52 @@ it("searches names and base models, filters status, and sorts rows", async () =>
   expect(names()).toHaveLength(2);
 });
 
-it("expands from a model link, preserves zero accuracy, and opens the source traces", async () => {
+it("opens the full inline playground from a model hash and collapses with the chevron", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([ready, queued]);
-  vi.mocked(rmGetRewardModel).mockResolvedValue({ ...ready, trace_ids: ["t1", "t2"], feedback: [] });
   window.history.replaceState(null, "", "#model-ready");
   render(<RewardModelsPage />);
-  const details = await screen.findByRole("region", { name: `${ready.name} details` });
-  expect(within(details).getByText("0.0%")).toBeVisible();
-  expect(within(details).getByText("16 + 4")).toBeVisible();
-  expect(within(details).getByRole("button", { name: "Download weights" })).toBeVisible();
+  const details = await screen.findByRole("region", { name: ready.name + " details" });
+  expect(await within(details).findByRole("heading", { name: "Input" })).toBeVisible();
+  expect(within(details).getByRole("table", { name: "Choose a trace" })).toBeVisible();
+  expect(within(details).getByRole("heading", { name: "Output" })).toBeVisible();
+  expect(screen.getByText("0.0%")).toBeVisible();
+  expect(within(details).queryByText("16 + 4")).not.toBeInTheDocument();
+  expect(within(details).queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
+  expect(within(details).queryByText(/Trained on/)).not.toBeInTheDocument();
   const time = document.querySelector("time");
   expect(time).toHaveAttribute("datetime", queued.created_at);
   expect(time).toHaveAttribute("title");
-  fireEvent.click(within(details).getByRole("button", { name: "Trained on 4 traces" }));
-  await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/reward-models?selected=t1,t2"));
-  fireEvent.click(screen.getByRole("button", { name: `${ready.name} details` }));
-  expect(screen.queryByRole("region", { name: `${ready.name} details` })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: ready.name + " details" }));
+  expect(screen.queryByRole("region", { name: ready.name + " details" })).not.toBeInTheDocument();
 });
 
-it("shows a failed model’s log when its row is expanded", async () => {
-  vi.mocked(rmListRewardModels).mockResolvedValue([{ ...ready, status: "failed", metrics: null, error: "Worker log\nTraining failed: no usable pairs" }]);
+it("shows the failed model state inside the inline playground", async () => {
+  const failed = { ...ready, status: "failed" as const, metrics: null, error: "Training failed: no usable pairs" };
+  vi.mocked(rmListRewardModels).mockResolvedValue([failed]);
+  vi.mocked(rmGetRewardModel).mockResolvedValue({ ...failed, trace_ids: [], feedback: [] });
   render(<RewardModelsPage />);
-  fireEvent.click(await screen.findByRole("button", { name: `${ready.name} details` }));
-  expect(screen.getByText("Training failed: no usable pairs")).toBeVisible();
-  expect(screen.getByText("Show log")).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: ready.name + " details" }));
+  const details = await screen.findByRole("region", { name: ready.name + " details" });
+  expect(await within(details).findByText("Training failed: no usable pairs")).toBeVisible();
+  expect(within(details).getByRole("button", { name: "Run" })).toBeDisabled();
 });
 
-
-it("opens the model playground from the model name", async () => {
+it("toggles the inline playground from the model name without navigating away", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
   render(<RewardModelsPage />);
-  expect(await screen.findByRole("link", { name: ready.name })).toHaveAttribute("href", "/reward-models/models/ready");
+  const name = await screen.findByRole("button", { name: ready.name });
+  expect(rmGetRewardModel).not.toHaveBeenCalled();
+  expect(name).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(name);
+  const details = await screen.findByRole("region", { name: ready.name + " details" });
+  expect(await within(details).findByRole("heading", { name: "Input" })).toBeVisible();
+  expect(name).toHaveAttribute("aria-expanded", "true");
+  expect(rmGetRewardModel).toHaveBeenCalledWith(ready.id);
+  expect(push).not.toHaveBeenCalled();
+  fireEvent.click(name);
+  expect(screen.queryByRole("region", { name: ready.name + " details" })).not.toBeInTheDocument();
+  expect(name).toHaveAttribute("aria-expanded", "false");
 });
-
 
 it("lists rubric-based models alongside trained models and opens their sandbox", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
@@ -132,8 +144,8 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
       examples: 12, inbox: 3 }],
   });
   render(<RewardModelsPage />);
-  expect(await screen.findByRole("link", { name: "Support reply" })).toHaveAttribute("href", "/reward-models/models/sandbox/support");
-  expect(screen.getByRole("link", { name: ready.name })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Support reply" })).toBeVisible();
+  expect(screen.getByRole("button", { name: ready.name })).toBeVisible();
   expect(screen.getByText("2 models")).toBeVisible();
   await userEvent.setup().click(screen.getByText("More options"));
   expect(screen.getByRole("button", { name: "Load example" })).toBeVisible();
@@ -142,14 +154,15 @@ it("lists rubric-based models alongside trained models and opens their sandbox",
   await userEvent.setup().click(toggle);
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   const details = screen.getByRole("region", { name: "Support reply details" });
-  expect(within(details).getByRole("link", { name: "Open playground" })).toHaveAttribute("href", "/reward-models/models/sandbox/support");
+  expect(within(details).getByText("Embedded rubric playground for support")).toBeVisible();
+  expect(within(details).queryByText("Open playground")).not.toBeInTheDocument();
   expect(within(details).queryByRole("link", { name: /predictions to review/ })).not.toBeInTheDocument();
   expect(within(details).queryByRole("link", { name: /labeled examples/ })).not.toBeInTheDocument();
   await userEvent.setup().click(toggle);
   expect(screen.queryByRole("region", { name: "Support reply details" })).not.toBeInTheDocument();
   await userEvent.setup().type(screen.getByRole("textbox", { name: "Search models" }), "Rubric-based");
-  expect(screen.getByRole("link", { name: "Support reply" })).toBeVisible();
-  expect(screen.queryByRole("link", { name: ready.name })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Support reply" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: ready.name })).not.toBeInTheDocument();
 });
 
 it("creates a trace-trained custom model from New model and opens that model", async () => {

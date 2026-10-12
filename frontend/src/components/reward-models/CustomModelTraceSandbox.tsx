@@ -11,7 +11,7 @@ import { isActiveJob } from "./rm-ui";
 import TraceSandboxInput from "./TraceSandboxInput";
 import TraceModelConnect from "./TraceModelConnect";
 
-export default function CustomModelTraceSandbox({ model }: { model: RmRewardModelDetail }) {
+export default function CustomModelTraceSandbox({ model, embedded = false }: { model: RmRewardModelDetail; embedded?: boolean }) {
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
   const [run, setRun] = useState<RmScoringRun | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,7 +78,7 @@ export default function CustomModelTraceSandbox({ model }: { model: RmRewardMode
   const overall = trace?.scores.filter((score) => score.reward_model_id === model.id).at(-1);
   const actionScores = trace?.action_scores?.filter((score) => score.reward_model_id === model.id) ?? [];
   const showResults = ready && supported && !active && run?.status !== "failed" && (overall !== undefined || actionScores.length > 0);
-  return <div className="mt-4 border-t border-border">
+  return <div className={embedded ? undefined : "mt-4 border-t border-border"}>
     <div className="grid border-b border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
       <section className="min-w-0 space-y-3 px-5 py-3" aria-label="Model input">
         <h2 className="m-0 text-[13px] font-semibold">Input</h2>
