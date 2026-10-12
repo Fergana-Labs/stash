@@ -82,6 +82,38 @@ async def run_training(model_id: UUID) -> None:
             owner_user_id, model["trace_ids"], config, model["max_pairs"]
         )
         findings = []
+        commented = await pool.fetch(
+            """SELECT DISTINCT trace_id FROM rm_annotations WHERE owner_user_id=$1
+            AND trace_id=ANY($2::uuid[]) AND comment IS NOT NULL AND NOT label_error""",
+            owner_user_id,
+            model["trace_ids"],
+        )
+        if commented:
+            human_pairs, findings = await feedback.build_feedback_pairs(
+                owner_user_id,
+                [row["trace_id"] for row in commented],
+                model["max_pairs"],
+                training_config=config,
+            )
+            # Only grounded reviewer comments join the saved automatic dataset.
+            # Do not introduce a second set of unconstrained AI judgments.
+            human_pairs = [
+                pair
+                for pair in human_pairs
+                if pair["evidence"]["source"] == "user_feedback"
+                and pair["evidence"]["evidence_id"].startswith("comment:")
+            ]
+            corrected = {(pair["trace_id"], pair["evidence"]["step_index"]) for pair in human_pairs}
+            pairs = [
+                pair
+                for pair in pairs
+                if not any(
+                    (pair["trace_id"], pair.get(key)) in corrected
+                    for key in ("chosen_step_index", "rejected_step_index")
+                )
+            ]
+            # Keep comment-derived corrections ahead of automatic pairs under the cap.
+            pairs = human_pairs + pairs
     else:
         pairs = (
             []

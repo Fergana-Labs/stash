@@ -1,4 +1,4 @@
-"""Distill current automatic annotations into an explicitly requested personal model."""
+"""Distill automatic annotations and overriding human ratings into a personal model."""
 
 import random
 from collections import defaultdict
@@ -45,6 +45,29 @@ async def build_pairs(
         trace_ids,
     )
     blocked = {(r["trace_id"], str(r["step_id"]) if r["step_id"] else None) for r in excluded}
+    ratings = await pool.fetch(
+        """SELECT DISTINCT ON (trace_id,step_id) trace_id,step_id,rating FROM rm_annotations
+        WHERE owner_user_id=$1 AND trace_id=ANY($2::uuid[]) AND NOT label_error
+        AND rating IS NOT NULL ORDER BY trace_id,step_id,updated_at DESC,created_at DESC,id DESC""",
+        owner,
+        trace_ids,
+    )
+    human = {
+        (row["trace_id"], str(row["step_id"]) if row["step_id"] else None): (
+            1.0 if row["rating"] > 0 else -1.0 if row["rating"] < 0 else None
+        )
+        for row in ratings
+    }
+    # Disputed targets remain excluded even if an earlier rating exists.
+    disputed = await pool.fetch(
+        """SELECT trace_id,step_id FROM rm_annotations WHERE owner_user_id=$1
+        AND trace_id=ANY($2::uuid[]) AND label_error""",
+        owner,
+        trace_ids,
+    )
+    disputed_targets = {
+        (r["trace_id"], str(r["step_id"]) if r["step_id"] else None) for r in disputed
+    }
     actions: dict[UUID, dict[str, float]] = {}
     for call in calls:
         trace_id = current[call["evaluation_id"]]["trace_id"]
@@ -56,6 +79,15 @@ async def build_pairs(
             if credit is not None and (trace_id, target["step_id"]) not in blocked:
                 actions.setdefault(trace_id, {})[target["step_id"]] = credit
 
+    for (tid, step_id), rating in human.items():
+        if (
+            step_id is not None
+            and rating is not None
+            and (tid, None) not in disputed_targets
+            and (tid, step_id) not in disputed_targets
+        ):
+            actions.setdefault(tid, {})[step_id] = rating
+
     def partition(trace_id):
         return (
             "eval"
@@ -65,9 +97,9 @@ async def build_pairs(
 
     buckets = defaultdict(list)
     per_trace = max(2, max_pairs // max(1, len(current)))
-    for evaluation in current.values():
-        tid = evaluation["trace_id"]
-        steps = steps_by_trace[tid]
+    evaluations = {row["trace_id"]: row for row in current.values()}
+    for tid, steps in steps_by_trace.items():
+        evaluation = evaluations.get(tid)
         candidates = [
             (index, actions[tid][str(step["id"])])
             for index, step in enumerate(steps)
@@ -88,16 +120,34 @@ async def build_pairs(
                     "action_type": "tool_call"
                     if steps[good]["tool_name"] and steps[bad]["tool_name"]
                     else "response",
-                    "source": "automatic_annotation",
-                    "credit_method": policy.CREDIT_METHOD,
+                    "source": "human_annotation"
+                    if (tid, str(steps[good]["id"])) in human
+                    or (tid, str(steps[bad]["id"])) in human
+                    else "automatic_annotation",
+                    "credit_method": "human_rating_override"
+                    if (tid, str(steps[good]["id"])) in human
+                    or (tid, str(steps[bad]["id"])) in human
+                    else policy.CREDIT_METHOD,
                     "chosen_credit": chosen_credit,
+                    "chosen_step_index": steps[good]["idx"],
+                    "rejected_step_index": steps[bad]["idx"],
                     "rejected_credit": rejected_credit,
-                    "evaluation_id": str(evaluation["id"]),
+                    "evaluation_id": str(evaluation["id"]) if evaluation else None,
                 }
             )
     # Compare definite whole-trace outcomes only within the preassigned split.
     # Uncertain/partial outcomes never become invented binary labels.
-    outcomes = [r for r in current.values() if (r["trace_id"], None) not in blocked]
+    outcomes = [dict(r) for r in current.values() if (r["trace_id"], None) not in blocked]
+    for (tid, step_id), rating in human.items():
+        if step_id is None and rating is not None and (tid, None) not in disputed_targets:
+            outcomes.append(
+                {
+                    "trace_id": tid,
+                    "id": None,
+                    "outcome": "success" if rating > 0 else "failure",
+                    "human": True,
+                }
+            )
     for good in outcomes:
         if good["outcome"] != "success":
             continue
@@ -121,8 +171,12 @@ async def build_pairs(
                     "trace_ids": [str(good["trace_id"]), str(bad["trace_id"])],
                     "granularity": "trace",
                     "action_type": "response",
-                    "source": "automatic_annotation",
-                    "evaluation_ids": [str(good["id"]), str(bad["id"])],
+                    "source": "human_annotation"
+                    if good.get("human") or bad.get("human")
+                    else "automatic_annotation",
+                    "evaluation_ids": [
+                        str(row["id"]) for row in (good, bad) if row["id"] is not None
+                    ],
                 }
             )
     # Preserve both signals and the held-out split when applying the dataset cap.

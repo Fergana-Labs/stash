@@ -28,6 +28,7 @@ const POLL_MS = 3000;
 
 export default function RewardModelsPage() {
   useBreadcrumbs([{ label: "Reward models" }], "rm-models");
+  const router = useRouter();
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rubricModels, setRubricModels] = useState<ModelSummary[]>([]);
@@ -63,9 +64,8 @@ export default function RewardModelsPage() {
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="m-0 font-display text-[18px] font-semibold tracking-tight text-foreground">Reward models</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <LoadExampleButton />
-          <Button size="sm" onClick={() => setCreatingRubric(true)}><Plus />New model</Button>
-          <Button size="sm" variant="outline" onClick={() => setSheetOpen(true)}>Train from traces</Button>
+          <details className="relative text-xs text-muted-foreground"><summary className="cursor-pointer">More options</summary><div className="absolute right-0 z-10 mt-2 flex min-w-48 flex-col gap-2 rounded-md border border-border bg-background p-3 shadow-lg"><LoadExampleButton /><Button size="sm" variant="outline" onClick={() => setCreatingRubric(true)}>Create rubric judge</Button></div></details>
+          <Button size="sm" onClick={() => setSheetOpen(true)}><Plus />New model</Button>
         </div>
       </div>
       <CreateModelDialog open={creatingRubric} onOpenChange={setCreatingRubric} />
@@ -73,9 +73,9 @@ export default function RewardModelsPage() {
       <TrainSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onTrained={() => {
+        onTrained={(model) => {
           setSheetOpen(false);
-          void load();
+          router.push(`/reward-models/models/${model.id}`);
         }}
       />
       {loadError !== null ? (

@@ -3,7 +3,7 @@
 import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TracesPage";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -13,7 +13,6 @@ import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
 import ConnectAgentDialog from "@/components/reward-models/ConnectAgentDialog";
 import TraceDropzone from "@/components/reward-models/TraceDropzone";
 import TraceTable from "@/components/reward-models/TraceTable";
-import TrainPanel from "@/components/reward-models/TrainPanel";
 import { RmPage } from "@/components/reward-models/rm-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { RmListSkeleton, RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
@@ -34,7 +33,6 @@ function LatestTracesPage() {
 
 function Traces() {
   useBreadcrumbs([{ label: "Traces" }], "reward-models");
-  const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
   const [traces, setTraces] = useState<RmTraceSummary[] | null>(null);
@@ -101,7 +99,6 @@ function Traces() {
   }
 
   // Only ids that still exist count: a deleted trace from ?selected= must not be sent to training.
-  const selectedIds = (traces ?? []).filter((t) => selected.has(t.id)).map((t) => t.id);
   const deletable = (traces ?? []).filter((t) => selected.has(t.id) && t.can_score !== false);
   const summary = summarizeSelection(traces ?? [], selected);
 
@@ -137,15 +134,6 @@ function Traces() {
                 <Button variant="destructive" size="sm" disabled={!!deleting || deletable.length === 0} onClick={() => void remove(deletable)}>
                   {deleting ? "Deleting…" : "Delete selected"}
                 </Button>
-                <span className="flex-1" />
-                <div inert={!!deleting}>
-                  <TrainPanel
-                    traceIds={selectedIds}
-                    summary={summary}
-                    optionsPlacement="below"
-                    onTrained={() => router.push("/reward-models/models")}
-                  />
-                </div>
               </div>
             )}
             <TraceTable
