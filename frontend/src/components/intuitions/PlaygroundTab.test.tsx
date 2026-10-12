@@ -18,6 +18,8 @@ it("requires an input before running and keeps API instructions secondary", () =
   expect(screen.getByRole("heading", { name: "Output" })).toBeVisible();
   expect(screen.getByText("API access").closest("details")).not.toHaveAttribute("open");
   expect(screen.queryByText(/why the head decided/)).not.toBeInTheDocument();
+  expect(screen.queryByText("Manual input")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Load example" })).not.toBeInTheDocument();
 });
 
 it("shows the trace sandbox even when the model has no trained version", () => {
@@ -25,6 +27,6 @@ it("shows the trace sandbox even when the model has no trained version", () => {
   render(<PlaygroundTab />);
   expect(screen.getByRole("table", { name: "Choose a trace" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
-  expect(screen.getByText(/no trained version yet/)).toBeVisible();
+  expect(screen.queryByText(/no trained version yet/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Write a rubric" })).not.toBeInTheDocument();
 });
