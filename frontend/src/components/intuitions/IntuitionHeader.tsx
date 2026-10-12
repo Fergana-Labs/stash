@@ -13,13 +13,13 @@ import { imDelete, imRename } from "@/lib/intuition-api";
 import { Callout, ConfirmDialog, inputClass, useIntuition } from "./im-ui";
 
 export default function IntuitionHeader() {
-  const { id, detail, apply, goTo } = useIntuition();
+  const { id, detail, apply } = useIntuition();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(detail.model.name);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const { active, draft, judge } = detail;
+  const { judge } = detail;
 
   async function save() {
     const next = name.trim();
@@ -80,19 +80,6 @@ export default function IntuitionHeader() {
               </button>
             </h1>
           )}
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-            <span>{detail.model.output_type === "choice" ? "Classifier" : "Preference model"}</span>
-            {active ? <span className="text-emerald-700 dark:text-emerald-400">Active v{active.number}</span> : <span>No active version</span>}
-            {draft && (
-              <button type="button" onClick={() => goTo("versions")} className="tag tag-warning hover:opacity-80" title="Edits land on the draft until you promote it">
-                Draft v{draft.number} · unpromoted changes
-              </button>
-            )}
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11.5px]" title={judge.configured ? "Judge configured" : "Judge not configured"}>
-              <span className={cn("h-1.5 w-1.5 rounded-full", judge.configured ? "bg-emerald-500" : "bg-red-500")} />
-              {judge.configured ? "Evaluator connected" : "Evaluator unavailable"}
-            </span>
-          </div>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
