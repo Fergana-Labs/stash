@@ -10,16 +10,17 @@ import type { RmPlaygroundRun, RmPlaygroundHistory, RmRewardModelDetail, RmTrain
 import { cn } from "@/lib/utils";
 import { errorMessage } from "./rm-text";
 import { isActiveJob } from "./rm-ui";
+import CustomModelTraceSandbox from "./CustomModelTraceSandbox";
 import ModelTiming, { trainingStage } from "./ModelTiming";
 
-type Tab = "Playground" | "History" | "Training examples";
+type Tab = "Trace sandbox" | "Playground" | "History" | "Training examples";
 const field = "w-full resize-y rounded-md border border-border bg-background p-3 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground focus:border-brand-400 focus:ring-2 focus:ring-brand-400/15 disabled:opacity-60";
 
 export default function ModelPlayground({ modelId }: { modelId: string }) {
   const [model, setModel] = useState<RmRewardModelDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
-  const [tab, setTab] = useState<Tab>("Playground");
+  const [tab, setTab] = useState<Tab>("Trace sandbox");
   const [prompt, setPrompt] = useState("");
   const [instructions, setInstructions] = useState("");
   const [responseA, setResponseA] = useState("");
@@ -124,11 +125,12 @@ export default function ModelPlayground({ modelId }: { modelId: string }) {
     </header>
     {loadError ? <ErrorNotice error={loadError} retry={() => setReload((n) => n + 1)} /> : !model ? <p role="status" className="py-8 text-sm text-muted-foreground">Loading model…</p> : <>
       <nav aria-label="Model views" className="mt-5 flex gap-6 border-b border-border">
-        {(["Playground", "History", "Training examples"] as const).map((name) => <button key={name} type="button" onClick={() => { setTab(name); setRunError(null); }} aria-current={tab === name ? "page" : undefined} className={cn("-mb-px cursor-pointer border-b-2 px-0.5 pb-2.5 text-[13px]", tab === name ? "border-brand-500 font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>{name}</button>)}
+        {(["Trace sandbox", "Playground", "History", "Training examples"] as const).map((name) => <button key={name} type="button" onClick={() => { setTab(name); setRunError(null); }} aria-current={tab === name ? "page" : undefined} className={cn("-mb-px cursor-pointer border-b-2 px-0.5 pb-2.5 text-[13px]", tab === name ? "border-brand-500 font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>{name}</button>)}
       </nav>
       {!ready && <div className="border-b border-border py-3 text-sm text-muted-foreground">
         {isActiveJob(model.status) ? <>The playground will be ready when training finishes. <ModelTiming model={model} /></> : model.error ?? "Training did not finish. Create a new model to use the playground."}
       </div>}
+      {tab === "Trace sandbox" && <CustomModelTraceSandbox model={model} />}
       {runError && <ErrorNotice error={runError} />}
       {tab === "Playground" && <div className="grid gap-8 pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.48fr)]">
         <div className="min-w-0">

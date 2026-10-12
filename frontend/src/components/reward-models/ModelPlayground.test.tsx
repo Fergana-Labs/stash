@@ -5,11 +5,12 @@ import type { RmPlaygroundRun, RmRewardModelDetail } from "@/lib/types";
 import ModelPlayground from "./ModelPlayground";
 
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
-vi.mock("@/lib/api", () => ({ rmGetRewardModel: vi.fn(), rmListPlaygroundRuns: vi.fn(), rmGetPlaygroundRun: vi.fn(), rmRunPlayground: vi.fn(), rmGetTrainingExamples: vi.fn() }));
+vi.mock("@/lib/api", () => ({ rmGetRewardModel: vi.fn(), rmListPlaygroundRuns: vi.fn(), rmGetPlaygroundRun: vi.fn(), rmRunPlayground: vi.fn(), rmGetTrainingExamples: vi.fn(), rmListTraces: vi.fn() }));
 const model = { id: "model", name: "Parts assistant", status: "succeeded", trace_count: 2, trace_ids: ["t1", "t2"], feedback: [], metrics: null } as unknown as RmRewardModelDetail;
 const run: RmPlaygroundRun = { id: "r1", reward_model_id: "model", status: "succeeded", input: { prompt: "Find the part", instructions: "Ask first", responses: ["Here is the part", "No"] }, scores: [0, -0.5], error: null, created_at: "2026-10-09T12:00:00Z", started_at: null, finished_at: "2026-10-09T12:00:01Z" };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.rmListTraces).mockResolvedValue({ traces: [], total: 0 });
   vi.mocked(api.rmGetRewardModel).mockResolvedValue(model);
   vi.mocked(api.rmListPlaygroundRuns).mockResolvedValue({ items: [], total: 0 });
   vi.mocked(api.rmRunPlayground).mockResolvedValue(run);
@@ -17,6 +18,7 @@ beforeEach(() => {
   vi.mocked(api.rmGetTrainingExamples).mockResolvedValue({ items: [], total: 0 });
 });
 async function fill() {
+  fireEvent.click(await screen.findByRole("button", { name: "Playground" }));
   fireEvent.change(await screen.findByRole("textbox", { name: "Task / user message" }), { target: { value: "Find the part" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Response" }), { target: { value: "Here is the part" } });
 }
