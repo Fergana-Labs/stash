@@ -89,8 +89,8 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange 
       <table aria-label="Choose a trace" className="w-full table-fixed border-collapse text-left text-xs">
         <colgroup><col /><col className="w-28" /><col className="w-14" /></colgroup>
         <thead className="h-7 border-b border-border bg-surface/60 text-[11px] text-muted-foreground"><tr><th className="px-2 font-medium">Trace</th><th className="px-2 font-medium">Source</th><th className="px-2 text-right font-medium">Steps</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={3} className="px-2 py-3 text-muted-foreground">Loading traces…</td></tr> : traces.map((trace) => <tr key={trace.id} className="h-7 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60">
-          <td className="px-2"><button type="button" aria-label={`Choose ${trace.title}`} title={trace.title} disabled={disabled || busy} onClick={() => void choose(trace)} className="block h-7 w-full cursor-pointer truncate text-left font-medium hover:text-brand-600 disabled:cursor-default">{trace.title}</button></td>
+        <tbody>{loading ? <tr><td colSpan={3} className="px-2 py-3 text-muted-foreground">Loading traces…</td></tr> : traces.map((trace) => <tr key={trace.id} onClick={() => { if (!disabled && !busy) void choose(trace); }} className="h-7 cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60">
+          <td className="px-2"><button type="button" aria-label={`Choose ${trace.title}`} title={trace.title} disabled={disabled || busy} onClick={(e) => { e.stopPropagation(); void choose(trace); }} className="block h-7 w-full cursor-pointer truncate text-left font-medium hover:text-brand-600 disabled:cursor-default">{trace.title}</button></td>
           <td className="px-2 text-muted-foreground"><span className="block truncate" title={traceSourceName(trace)}>{traceSourceName(trace)}</span></td><td className="px-2 text-right tabular-nums text-muted-foreground">{trace.step_count}</td>
         </tr>)}</tbody>
       </table>
