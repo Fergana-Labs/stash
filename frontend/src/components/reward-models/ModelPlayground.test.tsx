@@ -22,7 +22,7 @@ it("opens the actual selected model directly on the compact trace selector", asy
   for (const name of ["Playground", "History", "Training examples"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox", { name: "Response" })).not.toBeInTheDocument();
   expect(rmGetRewardModel).toHaveBeenCalledWith("model");
-  expect(screen.getByRole("link", { name: "Trained on 2 traces" })).toHaveAttribute("href", "/reward-models?selected=t1,t2");
+  expect(screen.getByRole("link", { name: "2 training traces" })).toHaveAttribute("href", "/reward-models?selected=t1,t2");
 });
 it("recovers from missing model data through Try again", async () => {
   vi.mocked(rmGetRewardModel).mockRejectedValueOnce(new Error("Missing model"));

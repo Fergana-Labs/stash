@@ -41,7 +41,7 @@ export default function ModelPlayground({ modelId }: { modelId: string }) {
         </Link>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="m-0 truncate font-display text-lg font-semibold tracking-tight">{current?.name ?? "Reward model"}</h1>
-          {current && <Link className="text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" href={"/reward-models?selected=" + current.trace_ids.join(",")}>Trained on {current.trace_count} traces</Link>}
+          {current && <Link className="text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" href={"/reward-models?selected=" + current.trace_ids.join(",")}>{current.trace_count} training traces</Link>}
         </div>
       </header>
       {loadError ? <div role="alert" className="py-5 text-sm text-destructive">
