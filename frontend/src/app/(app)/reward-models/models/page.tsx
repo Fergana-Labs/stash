@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState, type MouseEvent } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Loader2, Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -156,11 +156,18 @@ function ModelTable({ models: trainedModels, rubricModels, loading }: { models: 
   </>;
 }
 
+function toggleFromRow(event: MouseEvent<HTMLTableRowElement>, toggle: () => void) {
+  // The name and chevron retain their own keyboard-accessible handlers.
+  if (event.defaultPrevented || (event.target as Element).closest("button, a, input, select, textarea, [contenteditable]")) return;
+  if (window.getSelection()?.type === "Range") return;
+  toggle();
+}
+
 function RubricModelRow({ model }: { model: ModelSummary }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `rubric-model-details-${model.id}`;
   const accuracy = model.active_metrics?.eval?.accuracy;
-  return <Fragment><tr data-model-row className={cn("h-8 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
+  return <Fragment><tr data-model-row onClick={(event) => toggleFromRow(event, () => setExpanded(!expanded))} className={cn("h-8 cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
     <td><div className="flex min-w-0 items-center gap-2">
       <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">
         <ChevronRight className={cn("size-3.5 text-muted-foreground", expanded && "rotate-90")} />
@@ -203,7 +210,7 @@ function ModelRow({ model }: { model: RmRewardModel }) {
   const timestamp = date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
   return (
     <Fragment>
-      <tr id={`model-${model.id}`} data-model-row className={cn("h-8 scroll-mt-4 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 target:bg-brand-500/5 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
+      <tr id={`model-${model.id}`} data-model-row onClick={(event) => toggleFromRow(event, () => setExpanded(!expanded))} className={cn("h-8 cursor-pointer scroll-mt-4 border-b border-border-subtle last:border-0 hover:bg-surface/60 focus-within:bg-surface/60 target:bg-brand-500/5 [&>td]:px-3 [&>td]:py-0", expanded && "bg-surface/60")}>
         <td>
           <div className="flex min-w-0 items-center gap-2">
             <button type="button" onClick={() => setExpanded(!expanded)} aria-label={`${model.name} details`} aria-expanded={expanded} aria-controls={detailsId} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50">

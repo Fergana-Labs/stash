@@ -208,3 +208,16 @@ it("dismisses More options with Escape and an outside click", async () => {
   await user.click(screen.getByRole("heading", { name: "Reward models" }));
   expect(screen.queryByRole("menuitem", { name: "Load example" })).not.toBeInTheDocument();
 });
+
+it("toggles the playground from any noninteractive cell without double-toggling the name", async () => {
+  vi.mocked(rmListRewardModels).mockResolvedValue([ready]);
+  render(<RewardModelsPage />);
+  const name = await screen.findByRole("button", { name: ready.name });
+  const row = name.closest("tr")!;
+  fireEvent.click(within(row).getByText("Ready"));
+  expect(await screen.findByRole("region", { name: ready.name + " details" })).toBeVisible();
+  fireEvent.click(within(row).getByText("4", { exact: true }));
+  expect(screen.queryByRole("region", { name: ready.name + " details" })).not.toBeInTheDocument();
+  fireEvent.click(name);
+  expect(screen.getByRole("region", { name: ready.name + " details" })).toBeVisible();
+});
