@@ -40,7 +40,7 @@ export default function AgentUsagePanel({ modelId, outputType, sample }: { model
     <details className="group border-t border-border">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-3 text-[13px] font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-        API access
+        Connect
       </summary>
       <div className="pb-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

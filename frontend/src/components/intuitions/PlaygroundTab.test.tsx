@@ -16,7 +16,7 @@ it("requires an input before running and keeps API instructions secondary", () =
   expect(screen.getByRole("button", { name: "Trace options" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Input" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Output" })).toBeVisible();
-  expect(screen.getByText("API access").closest("details")).not.toHaveAttribute("open");
+  expect(screen.getByText("Connect").closest("details")).not.toHaveAttribute("open");
   expect(screen.queryByText(/why the head decided/)).not.toBeInTheDocument();
   expect(screen.queryByText("Manual input")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Load example" })).not.toBeInTheDocument();
