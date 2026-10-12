@@ -16,6 +16,7 @@ from backend.tasks.extraction import extract_file_text
 from backend.tasks.optimization import score_run
 from backend.tasks.reward_models import (
     collect_examples,
+    playground_score,
     reconcile,
     run_gepa,
     score_trace,
@@ -42,6 +43,7 @@ REWARD_TASKS = {
     train_reward_model.name,
     run_gepa.name,
     score_trace.name,
+    playground_score.name,
     collect_examples.name,
     train_evaluator.name,
     score_run.name,
