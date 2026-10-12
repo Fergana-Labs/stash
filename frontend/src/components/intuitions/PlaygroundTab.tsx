@@ -96,7 +96,7 @@ export default function PlaygroundTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid border-y border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
+      <div className="grid border-b border-border lg:grid-cols-2 lg:divide-x lg:divide-border">
         <Panel
           title="Input"
           actions={
@@ -142,7 +142,6 @@ export default function PlaygroundTab() {
             {inputMode === "trace" ? <>
               <TraceSandboxInput disabled={running} label={mode === "pair" ? "Trace A" : "Trace"} onChange={(item) => { setA(draftFromItem(item, null)); clearResult(); }} />
               {mode === "pair" && <TraceSandboxInput disabled={running} label="Trace B" onChange={(item) => { setB(draftFromItem(item, null)); clearResult(); }} />}
-              <p className="text-[11px] text-muted-foreground">Evaluated against this model’s rubric.</p>
             </> : <>
             <ItemInput keys={keys} value={a} onChange={(value) => { setA(value); clearResult(); }} label={mode === "pair" ? "Item A" : undefined} disabled={running} onSubmit={() => void run()} />
             {mode === "pair" && <ItemInput keys={keys} value={b} onChange={(value) => { setB(value); clearResult(); }} label="Item B" disabled={running} onSubmit={() => void run()} />}
@@ -176,7 +175,7 @@ export default function PlaygroundTab() {
         ) : comparison ? (
           <ComparisonResult comparison={comparison} reviewed={reviewed} onReview={(label) => review(comparison.prediction_id, label, label === "a" ? "A is better" : "B is better")} />
         ) : (
-          <section className="border-t border-border p-5 lg:border-t-0" aria-label="Model output">
+          <section className="border-t border-border px-5 py-3 lg:border-t-0" aria-label="Model output">
             <h2 className="m-0 text-[13px] font-semibold">Output</h2>
             <div className="mt-5 text-[12px] text-muted-foreground">{running ? <span role="status" className="flex items-center gap-2"><Spinner />Evaluating…</span> : "Run an input to see the model’s prediction."}</div>
           </section>
@@ -327,7 +326,7 @@ function ComparisonResult({ comparison, reviewed, onReview }: { comparison: Comp
 
 /** Flat workspace sections keep the input, result, and diagnostics on one canvas. */
 function Panel({ title, description, actions, children }: { title?: string; description?: string; actions?: ReactNode; children?: ReactNode }) {
-  return <section className="min-w-0 p-5">
+  return <section className="min-w-0 px-5 py-3">
     <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="m-0 text-[13px] font-semibold">{title}</h2>{description && <p className="mb-0 mt-1 text-[12px] text-muted-foreground">{description}</p>}</div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

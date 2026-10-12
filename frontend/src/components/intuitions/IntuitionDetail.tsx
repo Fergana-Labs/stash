@@ -97,7 +97,7 @@ export default function IntuitionDetail({ id }: { id: string }) {
         <div className="mx-auto max-w-6xl px-6 pt-5 pb-12">
           <IntuitionHeader />
           <TabBar tab={tab} detail={ctx.detail} examples={examples} onSelect={(t) => goTo(t)} />
-          <div role="tabpanel" id={`im-panel-${tab}`} aria-labelledby={`im-tab-${tab}`} className="pt-5">
+          <div role="tabpanel" id={`im-panel-${tab}`} aria-labelledby={`im-tab-${tab}`} className={tab === "playground" ? "pt-0" : "pt-5"}>
             {tab === "playground" && <PlaygroundTab />}
             {tab === "inbox" && <InboxTab />}
             {tab === "examples" && <ExamplesTab />}
