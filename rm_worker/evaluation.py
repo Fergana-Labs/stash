@@ -35,6 +35,32 @@ def reward_stats(scores: list[float]) -> dict:
     return {"mean": statistics.fmean(scores), "std": std}
 
 
+def preference_accuracies(pairs: list[dict], rewards: list[float]) -> dict:
+    """Reuse one held-out scoring pass for all reported preference metrics."""
+    if len(rewards) != 2 * len(pairs) or not all(math.isfinite(r) for r in rewards):
+        raise ValueError("need two finite rewards per held-out pair")
+    groups = {"eval_accuracy": [], "action_eval_accuracy": [], "tool_eval_accuracy": []}
+    for i, pair in enumerate(pairs):
+        correct = rewards[2 * i] > rewards[2 * i + 1]
+        groups["eval_accuracy"].append(correct)
+        if pair.get("granularity") == "action":
+            groups["action_eval_accuracy"].append(correct)
+            if pair.get("action_type") == "tool_call":
+                groups["tool_eval_accuracy"].append(correct)
+    return {key: sum(values) / len(values) if values else None for key, values in groups.items()}
+
+
+def action_reference_rewards(pairs: list[dict], rewards: list[float]) -> list[float]:
+    if len(rewards) != 2 * len(pairs):
+        raise ValueError("need two calibration rewards per training pair")
+    return [
+        rewards[2 * i + side]
+        for i, pair in enumerate(pairs)
+        if pair.get("granularity") == "action"
+        for side in (0, 1)
+    ]
+
+
 def action_score_rows(items: list[dict], scores: list[float], stats: dict) -> list[dict]:
     """Credit is a relative reward, not correctness probability or causal contribution."""
     mean, std = stats["mean"], stats["std"]

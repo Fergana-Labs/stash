@@ -274,3 +274,27 @@ def test_whole_trace_checkpoint_inference_without_action_calibration(tmp_path, m
     assert texts_seen == ["whole recorded trace"]
     assert read_rows(tmp_path / "scores.jsonl") == [{"trace_id": "trace", "score": 0.87}]
     assert read_rows(tmp_path / "action_scores.jsonl") == []
+
+
+def test_cached_rewards_preserve_metric_groups_and_action_calibration():
+    pairs = [
+        {"granularity": "trace"},
+        {"granularity": "action", "action_type": "response"},
+        {"granularity": "action", "action_type": "tool_call"},
+    ]
+    rewards = [10, 1, 2, 3, 5, 4]
+    assert evaluation.preference_accuracies(pairs, rewards) == {
+        "eval_accuracy": 2 / 3,
+        "action_eval_accuracy": 0.5,
+        "tool_eval_accuracy": 1,
+    }
+    assert evaluation.action_reference_rewards(pairs, rewards) == [2, 3, 5, 4]
+    assert evaluation.preference_accuracies([], []) == {
+        "eval_accuracy": None,
+        "action_eval_accuracy": None,
+        "tool_eval_accuracy": None,
+    }
+    with pytest.raises(ValueError, match="finite rewards"):
+        evaluation.preference_accuracies(pairs, [float("nan")] * 6)
+    with pytest.raises(ValueError, match="calibration rewards"):
+        evaluation.action_reference_rewards(pairs, rewards[:2])
