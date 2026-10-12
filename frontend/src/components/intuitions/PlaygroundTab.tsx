@@ -11,6 +11,7 @@ import { detectItemKeys, itemsOf, pct, signed } from "./im-helpers";
 import { Bar, Callout, Panel, Segmented, Spinner, useIntuition } from "./im-ui";
 import ItemInput, { draftFromItem, draftToItem, emptyDraft, type ItemDraft } from "./ItemInput";
 import { ContributionBars, ProbabilityBars, RubricAnswersView } from "./ProbabilityBars";
+import TraceSandboxInput from "@/components/reward-models/TraceSandboxInput";
 import AgentUsagePanel from "./AgentUsagePanel";
 
 type Which = "active" | "draft";
@@ -28,6 +29,7 @@ export default function PlaygroundTab() {
   const canDraft = servable(detail.draft);
   const [which, setWhich] = useState<Which>(canActive || !canDraft ? "active" : "draft");
   const [mode, setMode] = useState<Mode>(outputType === "preference" ? "pair" : "item");
+  const [inputMode, setInputMode] = useState<"trace" | "manual">("trace");
   const [a, setA] = useState<ItemDraft>(emptyDraft);
   const [b, setB] = useState<ItemDraft>(emptyDraft);
   const [running, setRunning] = useState(false);
@@ -47,17 +49,18 @@ export default function PlaygroundTab() {
   function fillRandom() {
     if (pool.length === 0 || running) return;
     clearResult();
+    setInputMode("manual");
     const pick = () => pool[Math.floor(Math.random() * pool.length)].item;
     setA(draftFromItem(pick(), keys));
     if (mode === "pair") setB(draftFromItem(pick(), keys));
   }
 
   async function run() {
-    const itemA = draftToItem(a, keys);
+    const itemA = draftToItem(a, inputMode === "trace" ? null : keys);
     if ("error" in itemA) return setError(mode === "pair" ? `Item A: ${itemA.error}` : itemA.error);
     let itemB: { item: Item } | { error: string } | null = null;
     if (mode === "pair") {
-      itemB = draftToItem(b, keys);
+      itemB = draftToItem(b, inputMode === "trace" ? null : keys);
       if ("error" in itemB) return setError(`Item B: ${itemB.error}`);
     }
     setRunning(true);
@@ -112,7 +115,7 @@ export default function PlaygroundTab() {
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         <Panel
-          title="Try it"
+          title="Test this model"
           actions={
             <>
               {outputType === "preference" && (
@@ -152,8 +155,15 @@ export default function PlaygroundTab() {
               void run();
             }}
           >
+            <Segmented ariaLabel="Trace or manual input" value={inputMode} onChange={(value) => { if (running) return; setInputMode(value); setA(emptyDraft()); setB(emptyDraft()); clearResult(); }} options={[{ value: "trace", label: "Trace" }, { value: "manual", label: "Manual input" }]} />
+            {inputMode === "trace" ? <>
+              <TraceSandboxInput disabled={running} label={mode === "pair" ? "Trace A" : "Trace"} onChange={(item) => { setA(draftFromItem(item, null)); clearResult(); }} />
+              {mode === "pair" && <TraceSandboxInput disabled={running} label="Trace B" onChange={(item) => { setB(draftFromItem(item, null)); clearResult(); }} />}
+              <p className="text-xs text-muted-foreground">The selected model judges the full trace using its rubric. A model trained on another input format may need trace examples and a matching rubric.</p>
+            </> : <>
             <ItemInput keys={keys} value={a} onChange={(value) => { setA(value); clearResult(); }} label={mode === "pair" ? "Item A" : undefined} disabled={running} onSubmit={() => void run()} />
             {mode === "pair" && <ItemInput keys={keys} value={b} onChange={(value) => { setB(value); clearResult(); }} label="Item B" disabled={running} onSubmit={() => void run()} />}
+            </>}
             <div className="flex items-center gap-2">
               <Button type="submit" disabled={running}>
                 {running ? <Spinner /> : <Play />}
@@ -183,7 +193,7 @@ export default function PlaygroundTab() {
           <ComparisonResult comparison={comparison} reviewed={reviewed} onReview={(label) => review(comparison.prediction_id, label, label === "a" ? "A is better" : "B is better")} />
         ) : (
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-border bg-surface/40 px-6 text-center text-[12.5px] text-muted-foreground">
-            {running ? <Spinner className="h-4 w-4" /> : "Run an item to see the prediction, the judge’s answers to each question, and why the head decided."}
+            {running ? <Spinner className="h-4 w-4" /> : "Upload or select a trace, then run it to see the prediction, the judge’s answers to each question, and why the head decided."}
           </div>
         )}
       </div>
