@@ -26,28 +26,38 @@ const BELIEFS = [
   ],
 ];
 
-const RESEARCH = [
-  [
-    "Memory as a world model, not retrieval",
-    "Pure search is not sufficient for good memory. We argue for the need to build “world models” where agents develop internal representations of their environment.",
-    "Aug 2026",
-  ],
-  [
-    "Blast radius",
-    "Information can expire, be outdated, or only apply in specific situations. Humans are great at these judgement calls around scope but agents are currently lacking.",
-    "Jul 2026",
-  ],
-  [
-    "Stability under accumulation",
-    "Memory stores degrade over time due to slop, context rot, and entropy. We measure this problem using a technique inspired by PCR.",
-    "Jun 2026",
-  ],
+const WRITING = [
+  {
+    title: "State of the art on BEAM 10M",
+    body: "Stash leads BEAM at every scale, by +4.6 points at 10M tokens where grep collapses, and answers a 1M-token corpus 46x cheaper than putting it in context.",
+    date: "Oct 2026",
+    href: "/blog/state-of-the-art-beam-10m",
+  },
+  {
+    title: "Why memory is unsolved",
+    body: "Memory is not retrieval. Perfect search is not enough; the problems actually holding memory back are blast radius and stability under accumulation.",
+    date: "Sep 2026",
+    href: "/blog/why-memory-is-unsolved",
+  },
+  {
+    title: "Agent traces are the new oil",
+    body: "The tokens agents produce will become the most valuable data in any organization: the decisions, context, and work output of teams, ready to train new models.",
+    date: "Sep 2026",
+    href: "/blog/agent-traces-are-the-new-oil",
+  },
 ];
 
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <AppRedirectForSignedInUsers appUrl={APP_URL} />
+      <Link
+        href="/blog/state-of-the-art-beam-10m"
+        className="block bg-brand px-5 py-2.5 text-center text-[14px] text-white transition hover:bg-brand-hover"
+      >
+        <span className="font-medium">New:</span> Stash sets state of the art on the BEAM 10M
+        memory benchmark <span aria-hidden="true">→</span>
+      </Link>
       <SiteHeader />
 
       <section className="mx-auto max-w-[1180px] px-5 pb-14 pt-24 sm:px-7 md:pb-20 md:pt-36">
@@ -116,12 +126,12 @@ export default function HomePage() {
 
       <section className="border-t border-border-subtle py-16 md:py-24">
         <div className="mx-auto max-w-[1180px] px-5 sm:px-7">
-          <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-muted">Research</p>
+          <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-muted">Writing</p>
           <div className="mt-6">
-            {RESEARCH.map(([title, body, date]) => (
+            {WRITING.map(({ title, body, date, href }) => (
               <Link
                 key={title}
-                href="/blog"
+                href={href}
                 className="group grid grid-cols-[minmax(0,1fr)_110px] items-baseline gap-5 border-t border-border-subtle py-5 last:border-b"
               >
                 <span>
