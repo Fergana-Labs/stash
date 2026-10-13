@@ -218,7 +218,7 @@ async def test_chart_thins_after_window_calculation_not_before(client, pool):
     assert data["points"][-1]["window_count"] == 20
 
 
-async def test_gepa_results_are_workspace_history_and_do_not_count_as_accepted_prompts(
+async def test_monitoring_does_not_load_legacy_skill_trials_or_count_them_as_prompt_changes(
     client, pool
 ):
     auth, owner = await enabled(client, pool)
@@ -235,9 +235,8 @@ async def test_gepa_results_are_workspace_history_and_do_not_count_as_accepted_p
             [{"skill": "candidate", "score": 0.8}],
         )
     data = await monitoring.overview(owner)
-    assert len(data["gepa"]) == 1
-    assert data["gepa"][0]["candidate_count"] == 1
-    assert "best_skill" not in data["gepa"][0]
+    assert data["gepa"] == []
+    assert await pool.fetchval("SELECT count(*) FROM rm_gepa_runs") == 2
     assert data["programs"] == []
 
 
