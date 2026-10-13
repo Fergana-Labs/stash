@@ -144,7 +144,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </section>
         </aside>
         <div className="min-w-0 space-y-4">      <section aria-labelledby="eval-examples-heading" className="overflow-hidden rounded border border-border">
-        <div className="flex items-center justify-between gap-3 px-4 pt-3">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
           <h2 id="eval-examples-heading" className="text-sm font-semibold">Examples <span className="font-normal text-muted-foreground">({examples.length})</span></h2>
           <Button size="sm" variant="outline" disabled={!!busy} onClick={() => { setNewLabel(labels[0] ?? ""); setError(""); setAddOpen(true); }}><Plus />Add example</Button>
         </div>
