@@ -238,6 +238,35 @@ def test_access_error_classification(status, host, path, payload, actionable):
 
 
 @pytest.mark.asyncio
+async def test_streaming_mcp_access_error_records_actionable_status(client, pool, monkeypatch):
+    import httpx
+
+    _, owner = await _register(client, "stream_error")
+    source = await source_service.create_source(
+        owner_user_id=owner,
+        source_type="posthog_project",
+        external_ref="project",
+        display_name="PostHog",
+    )
+    sid = UUID(source["id"])
+    response = httpx.Response(
+        403,
+        stream=httpx.ByteStream(b"private provider body"),
+        request=httpx.Request("POST", "https://mcp.posthog.com/mcp"),
+    )
+    await response.aclose()
+    error = httpx.HTTPStatusError("private details", request=response.request, response=response)
+    monkeypatch.setitem(
+        sources.INDEXERS, "posthog_project", AsyncMock(side_effect=ExceptionGroup("MCP", [error]))
+    )
+    assert await sources._sync_source(sid) == {"status": "needs_setup"}
+    row = await pool.fetchrow("SELECT sync_status,sync_error FROM user_sources WHERE id=$1", sid)
+    assert row["sync_status"] == "needs_setup"
+    assert "PostHog access was denied" in row["sync_error"]
+    assert "private" not in row["sync_error"]
+
+
+@pytest.mark.asyncio
 async def test_missing_alert_destination_fails_loudly(client, monkeypatch):
     monkeypatch.setattr(settings, "ALERT_SLACK_TEAM_ID", None)
     with pytest.raises(RuntimeError, match="required"):
