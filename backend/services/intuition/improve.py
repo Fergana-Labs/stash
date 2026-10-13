@@ -192,8 +192,12 @@ async def _candidates(owner_id: UUID, model_id: UUID, active: dict) -> list[dict
             )
         except service.Conflict:
             pass  # No mistakes to learn from.
-    if len(rubric) >= 2:
-        weakest = sorted(rubric, key=lambda q: shares.get(q["id"], 0))[: max(1, len(rubric) // 4)]
+    # Questions answered by other evals are kept as they are; only judge
+    # questions are rewritten or redrafted.
+    signals = [q for q in rubric if q["type"] == "eval"]
+    judged = [q for q in rubric if q["type"] != "eval"]
+    if len(judged) >= 2:
+        weakest = sorted(judged, key=lambda q: shares.get(q["id"], 0))[: max(1, len(judged) // 4)]
         rewritten, why = await _rewrite(active, weakest)
         out.append(
             {
@@ -213,7 +217,11 @@ async def _candidates(owner_id: UUID, model_id: UUID, active: dict) -> list[dict
                 "rubric": pruned,
             }
         )
-    fresh = await service.draft_rubric(owner_id, model_id, max(3, len(rubric)), "")
+    fresh = await service.draft_rubric(owner_id, model_id, max(3, len(judged)), "")
+    taken = {q["id"] for q in signals}
+    fresh["rubric"] = [q for q in fresh["rubric"] if q["id"] not in taken][
+        : MAX_QUESTIONS - len(signals)
+    ] + signals
     out.append(
         {
             "name": "fresh",

@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 OutputType = Literal["choice", "preference"]
-QuestionType = Literal["noul", "choice", "score"]
+QuestionType = Literal["noul", "choice", "score", "eval"]
 SLUG = r"^[a-z0-9][a-z0-9_-]{0,63}$"
 MAX_QUESTIONS = 12
 MAX_SEEDS = 20
@@ -35,12 +35,16 @@ class Question(Strict):
     noul:   criteria = {"true": ..., "false": ...}; feature = P(yes)
     choice: criteria = {option: description}; one feature per option
     score:  criteria = ordered level descriptions; one feature per level
+    eval:   another eval's decision (composition.py); criteria = its decisions,
+            one feature per decision; eval_id and its pinned version_id are required
     """
 
     id: str = Field(pattern=SLUG)
     type: QuestionType
     prompt: str = Field(min_length=1, max_length=2000)
     criteria: dict[str, str] | list[str]
+    eval_id: str | None = None
+    version_id: str | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -55,13 +59,18 @@ class Question(Strict):
         if self.type == "noul":
             if not isinstance(c, dict) or set(c) != {"true", "false"}:
                 raise ValueError(f"{self.id}: yes/no criteria need exactly 'true' and 'false'")
-        elif self.type == "choice":
+        elif self.type in ("choice", "eval"):
             if not isinstance(c, dict) or not 2 <= len(c) <= 12:
                 raise ValueError(f"{self.id}: choice questions need 2-12 options")
             if any(not k.strip() for k in c):
                 raise ValueError(f"{self.id}: option names must not be blank")
         elif not isinstance(c, list) or not 2 <= len(c) <= 10:
             raise ValueError(f"{self.id}: score questions need 2-10 ordered levels")
+        signal = self.eval_id is not None or self.version_id is not None
+        if self.type == "eval" and not (self.eval_id and self.version_id):
+            raise ValueError(f"{self.id}: eval questions name an eval and its pinned version")
+        if self.type != "eval" and signal:
+            raise ValueError(f"{self.id}: only eval questions name another eval")
         return self
 
     def options(self) -> list[str]:
@@ -94,7 +103,7 @@ class VersionSpec(Strict):
 def feature_names(rubric: list[dict]) -> list[str]:
     names = []
     for q in rubric:
-        if q["type"] == "choice":
+        if q["type"] in ("choice", "eval"):
             names.extend(f"{q['id']}={option}" for option in q["criteria"])
         elif q["type"] == "score":
             # One feature per level so the head can learn non-monotone effects

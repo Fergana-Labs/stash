@@ -4,14 +4,15 @@ import { apiFetch } from "@/lib/api";
 const IM = "/api/v1/intuitions";
 
 export type OutputType = "choice" | "preference";
-export type QuestionType = "noul" | "choice" | "score";
+export type QuestionType = "noul" | "choice" | "score" | "eval";
 export type ExampleSource = "human" | "agent" | "generated" | "production";
 export type Split = "train" | "eval";
 export type Item = string | Record<string, unknown>;
 
 export interface OutputLabel { id: string; description: string }
 /** noul: criteria {true, false}; choice: {option: description}; score: ordered level descriptions. */
-export interface RubricQuestion { id: string; type: QuestionType; prompt: string; criteria: Record<string, string> | string[] }
+/** eval: another eval's decision used as a signal; the server fills criteria and pins version_id. */
+export interface RubricQuestion { id: string; type: QuestionType; prompt: string; criteria: Record<string, string> | string[]; eval_id?: string; version_id?: string }
 
 export interface Head {
   feature_names: string[];
@@ -239,3 +240,13 @@ export interface ImproveJob {
 }
 export const imStartImprove = (id: string) => post<ImproveJob>(`${IM}/${id}/improve`);
 export const imImproveStatus = (id: string) => apiFetch<{ job: ImproveJob | null }>(`${IM}/${id}/improve`);
+
+export interface Credit {
+  decisions: string[]; runs: number; calls: number; success_rate: number | null; minimum_runs: number;
+  by_decision: { decision: string; runs: number; success_rate: number | null }[];
+  ready: boolean; reason?: string;
+  weights?: { decision: string; weight: number; low: number | null; high: number | null }[];
+  cv_accuracy?: number | null;
+  calls_by_credit?: { prediction_id: string; run: string; outcome: number; decision: string; credit: number; suspect: boolean }[];
+}
+export const imCredit = (id: string) => apiFetch<Credit>(`${IM}/${id}/credit`);

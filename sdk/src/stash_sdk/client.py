@@ -474,12 +474,22 @@ class Stash:
         ref: str | None = None,
         metadata: dict | None = None,
         caller: str = "sdk",
+        run: str | None = None,
+        step: int | None = None,
     ) -> dict:
         """Judge one item with the eval's saved version. Pass ``ref`` (your own id for
-        what was judged) so feedback can find this call later."""
+        what was judged) so feedback can find this call later, and ``run`` (the task it
+        belongs to) so ``run_outcome`` can credit the task's result to it."""
         return self._post(
             f"/api/v1/intuitions/{eval_id}/predict",
-            json={"item": item, "ref": ref, "metadata": metadata or {}, "caller": caller},
+            json={
+                "item": item,
+                "ref": ref,
+                "metadata": metadata or {},
+                "caller": caller,
+                "run": run,
+                "step": step,
+            },
         )
 
     def eval_compare(
@@ -535,3 +545,13 @@ class Stash:
         return self._patch(
             f"/api/v1/intuitions/{eval_id}/examples/{example_id}", json={"pinned": pinned}
         )
+
+    def run_outcome(self, run: str, value: float, note: str = "") -> dict:
+        """Report how a task ended (0 failed … 1 succeeded); credited to its eval calls."""
+        return self._post(
+            f"/api/v1/intuitions/runs/{run}/outcome", json={"value": value, "note": note}
+        )
+
+    def eval_credit(self, eval_id: str) -> dict:
+        """Whether the eval's decisions inside runs predict the runs' outcomes."""
+        return self._get(f"/api/v1/intuitions/{eval_id}/credit")

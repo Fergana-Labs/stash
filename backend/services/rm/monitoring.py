@@ -32,11 +32,12 @@ async def overview(owner):
         owner,
     )
     programs = await pool.fetch(
-        """SELECT o.id,o.name,o.agent,o.scope,o.status,o.reward_model_id,
-        m.name AS reward_model_name,o.active_revision_id,p.version AS active_version,o.error,
+        """SELECT o.id,o.name,o.agent,o.scope,o.status,o.reward_model_id,o.intuition_model_id,
+        m.name AS reward_model_name,e.name AS eval_name,o.active_revision_id,p.version AS active_version,o.error,
         (SELECT count(*)::int FROM rm_optimization_runs r WHERE r.optimization_id=o.id) AS run_count,
         (SELECT count(*)::int FROM rm_optimization_rounds r WHERE r.optimization_id=o.id AND r.status='promoted') AS accepted_count
-        FROM rm_optimizations o JOIN rm_reward_models m ON m.id=o.reward_model_id
+        FROM rm_optimizations o LEFT JOIN rm_reward_models m ON m.id=o.reward_model_id
+        LEFT JOIN intuition_models e ON e.id=o.intuition_model_id
         LEFT JOIN rm_prompt_revisions p ON p.id=o.active_revision_id
         WHERE o.owner_user_id=$1 ORDER BY o.created_at DESC""",
         owner,
@@ -53,26 +54,34 @@ async def rewards(owner, agent, model_id, window, program_id=None):
     if window not in (20, 50, 100):
         raise ValueError("Choose a window of 20, 50 or 100 runs")
     pool = get_pool()
-    model = await pool.fetchrow(
-        """SELECT id,name,metrics,status,finished_at FROM rm_reward_models
-        WHERE id=$1 AND owner_user_id=$2 AND scope='personal'""",
-        model_id,
-        owner,
-    )
+    program = await optimization.owned(owner, program_id) if program_id else None
+    if program and program["intuition_model_id"]:
+        # Eval-scored programs: model_id names the eval, rewards are P(success decision).
+        model = {"metrics": {}, "status": "succeeded", "finished_at": None}
+        if program["agent"] != agent or program["intuition_model_id"] != model_id:
+            raise ValueError("Choose the agent and eval belonging to this optimization")
+    else:
+        model = await pool.fetchrow(
+            """SELECT id,name,metrics,status,finished_at FROM rm_reward_models
+            WHERE id=$1 AND owner_user_id=$2 AND scope='personal'""",
+            model_id,
+            owner,
+        )
     if not model:
         raise LookupError("Reward model not found")
     if not program_id and model["status"] != "succeeded":
         raise ValueError("Choose a ready reward model")
     active_revision = None
     if program_id:
-        program = await optimization.owned(owner, program_id)
-        if program["agent"] != agent or program["reward_model_id"] != model_id:
+        if not program["intuition_model_id"] and (
+            program["agent"] != agent or program["reward_model_id"] != model_id
+        ):
             raise ValueError("Choose the agent and reward model belonging to this optimization")
         active_revision = program["active_revision_id"]
         observations = """SELECT r.id,r.trace_id,r.work_key AS title,r.assigned_at AS recorded_at,
             r.reward,r.revision_id FROM rm_optimization_runs r
             WHERE r.optimization_id=$5 AND r.status='completed' AND r.reward IS NOT NULL"""
-        unit = "action_credit"
+        unit = "eval_probability" if program["intuition_model_id"] else "action_credit"
     elif (model["metrics"] or {}).get("action_scoring_version") == 1:
         observations = f"""SELECT t.id,t.id AS trace_id,t.title,t.created_at AS recorded_at,
             ac.reward,NULL::uuid AS revision_id FROM rm_traces t

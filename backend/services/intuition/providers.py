@@ -204,7 +204,15 @@ async def grade(version: dict, questions: list[dict], seeds: list[dict], item) -
     """Answer the given questions about one item. Callers own caching."""
     if version["provider"] != "jev":
         raise ProviderError(f"Unknown judge provider {version['provider']!r}")
-    return await _grade_jev(version, questions, seeds, item)
+    # Questions answered by another eval never reach the judge.
+    judged = [q for q in questions if q["type"] != "eval"]
+    answers = await _grade_jev(version, judged, seeds, item) if judged else {}
+    for q in questions:
+        if q["type"] == "eval":
+            from . import composition
+
+            answers[q["id"]] = await composition.answer(version, q, item)
+    return answers
 
 
 async def grade_many(jobs: list[tuple[dict, list[dict], list[dict], object]]) -> list:

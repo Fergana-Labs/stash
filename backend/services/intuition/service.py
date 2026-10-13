@@ -126,7 +126,9 @@ def _validate(output_type: str, description: str, labels: list, rubric: list) ->
     spec = VersionSpec.model_validate(
         {"output_type": output_type, "description": description, "labels": labels, "rubric": rubric}
     )
-    return spec.model_dump(mode="json")
+    # exclude_none keeps stored questions (and so judge cache keys) unchanged for
+    # every question type that has no eval fields.
+    return spec.model_dump(mode="json", exclude_none=True)
 
 
 async def list_models(owner_id: UUID) -> list[dict]:
@@ -157,6 +159,9 @@ async def create_model(
     labels: list,
     rubric: list,
 ) -> dict:
+    from . import composition
+
+    rubric = await composition.resolve(owner_id, None, rubric)
     spec = _validate(output_type, description, labels, rubric)
     provider, model_name = "jev", settings.JEV_MODEL
     async with get_pool().acquire() as conn, conn.transaction():
@@ -269,6 +274,10 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     model = await _model(owner_id, model_id)
     draft = await ensure_draft(owner_id, model_id)
     merged = {k: changes.get(k, draft[k]) for k in ("description", "labels", "rubric")}
+    if "rubric" in changes:
+        from . import composition
+
+        merged["rubric"] = await composition.resolve(owner_id, model_id, merged["rubric"])
     spec = _validate(
         model["output_type"], merged["description"], merged["labels"], merged["rubric"]
     )
@@ -863,7 +872,16 @@ async def version_detail(owner_id: UUID, model_id: UUID, version_id: UUID) -> di
 # ── Serving ──────────────────────────────────────────────────────────────
 
 
-async def _serving_version(model: dict, which: str) -> dict:
+async def _serving_version(model: dict, which: str, version_id: UUID | None = None) -> dict:
+    if version_id is not None:
+        # A pinned version (eval dependencies, optimization rewards) serves even
+        # after it is retired, so its consumers never change judge mid-flight.
+        version = await _load_version(version_id)
+        if version is None or version["model_id"] != model["id"]:
+            raise NotFound("Version not found")
+        if version["head_stale"]:
+            raise Conflict(f"Version {version['number']} has no fitted head")
+        return version
     version_id = model["draft_version_id"] if which == "draft" else model["active_version_id"]
     version = await _load_version(version_id)
     if version is None:
@@ -876,12 +894,16 @@ async def _serving_version(model: dict, which: str) -> dict:
     return version
 
 
-async def _log(model_id, version, kind, payload, output, caller, ref=None, metadata=None) -> str:
+async def _log(
+    model_id, version, kind, payload, output, caller, ref=None, metadata=None, run=None
+) -> str:
+    run_id, step = run if run else (None, None)
     return str(
         await get_pool().fetchval(
             """INSERT INTO intuition_predictions
-                 (model_id, version_id, kind, input, output, confidence, caller, ref, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id""",
+                 (model_id, version_id, kind, input, output, confidence, caller, ref, metadata,
+                  run_id, step)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id""",
             model_id,
             version["id"],
             kind,
@@ -891,8 +913,18 @@ async def _log(model_id, version, kind, payload, output, caller, ref=None, metad
             caller,
             ref,
             metadata or {},
+            run_id,
+            step,
         )
     )
+
+
+async def _run_link(owner_id: UUID, run: str | None, step: int | None):
+    if run is None:
+        return None
+    from . import runs
+
+    return await runs.ensure(owner_id, run), step
 
 
 async def predict(
@@ -905,9 +937,13 @@ async def predict(
     log: bool = True,
     ref: str | None = None,
     metadata: dict | None = None,
+    version_id: UUID | None = None,
+    run: str | None = None,
+    step: int | None = None,
 ) -> dict:
     model = await _model(owner_id, model_id)
-    version = await _serving_version(model, which)
+    version = await _serving_version(model, which, version_id)
+    run_link = await _run_link(owner_id, run, step) if log else None
     try:
         (features,) = await _features(model_id, version, [item], grade_missing=True)
     except providers.ProviderError as exc:
@@ -921,6 +957,7 @@ async def predict(
                 caller,
                 ref,
                 metadata,
+                run_link,
             )
         raise
     if model["output_type"] == "choice":
@@ -930,7 +967,9 @@ async def predict(
     output["rubric"] = await _answers(model_id, version, item)
     output["version"] = version["number"]
     prediction_id = (
-        await _log(model_id, version, "predict", {"item": item}, output, caller, ref, metadata)
+        await _log(
+            model_id, version, "predict", {"item": item}, output, caller, ref, metadata, run_link
+        )
         if log
         else None
     )
@@ -948,11 +987,14 @@ async def compare_items(
     log: bool = True,
     ref: str | None = None,
     metadata: dict | None = None,
+    run: str | None = None,
+    step: int | None = None,
 ) -> dict:
     model = await _model(owner_id, model_id)
     if model["output_type"] != "preference":
         raise Conflict("Pairwise comparison is only available for preference models")
     version = await _serving_version(model, which)
+    run_link = await _run_link(owner_id, run, step) if log else None
     try:
         f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
     except providers.ProviderError as exc:
@@ -966,6 +1008,7 @@ async def compare_items(
                 caller,
                 ref,
                 metadata,
+                run_link,
             )
         raise
     output = heads.compare(version["head"], f_a, f_b)
@@ -982,6 +1025,7 @@ async def compare_items(
             caller,
             ref,
             metadata,
+            run_link,
         )
         if log
         else None

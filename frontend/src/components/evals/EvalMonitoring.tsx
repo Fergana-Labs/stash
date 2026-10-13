@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/select";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { value } from "@/components/monitoring/RollingRewardChart";
 import { evalSurfaceClass } from "./eval-ui";
+import { OutcomeLink } from "./EvalComposition";
 import { imMonitoring, type Monitoring } from "@/lib/intuition-api";
 
 // Buckets are calendar days (YYYY-MM-DD); parse them as local dates, not UTC midnight.
@@ -45,6 +46,7 @@ export default function EvalMonitoring({ id, onOpenCall }: { id: string; onOpenC
         <Drift drift={data.drift} />
       </div>
       <Versions data={data} />
+      <OutcomeLink id={id} />
       <Disagreements data={data} onOpenCall={onOpenCall} />
     </>}
   </section>;

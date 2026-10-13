@@ -23,7 +23,8 @@ function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: Mon
   const [selectedProgram, setProgram] = useState(programs.find((p) => p.status === "active")?.id ?? programs[0]?.id ?? "recorded");
   const program = programs.find((p) => p.id === selectedProgram);
   const [selectedModel, setModel] = useState(overview.models[0]?.id ?? "");
-  const modelId = program?.reward_model_id ?? selectedModel;
+  // Eval-scored programs chart the eval's rewards; the history endpoint takes its id.
+  const modelId = program?.reward_model_id ?? program?.intuition_model_id ?? selectedModel;
   const [creating, setCreating] = useState(false);
   const selection = `${agent.agent}:${modelId}:${program?.id ?? "recorded"}`;
   const loader = useCallback(async () => ({ selection, history: modelId ? await getRewardHistory(agent.agent, modelId, REWARD_WINDOW, program?.id) : null }), [selection, agent.agent, modelId, program?.id]);
@@ -38,9 +39,9 @@ function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: Mon
   return <section aria-label={`${agent.display_name} monitoring`} className="px-6 py-4">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-3">
       {!!programs.length && <Select aria-label="Workload" value={selectedProgram} onChange={setProgram} options={[{ value: "recorded", label: "All recorded runs" }, ...programs.map((p) => ({ value: p.id, label: `${p.name} · ${p.scope}` }))]} className="h-9 max-w-lg px-3 text-xs" />}
-      <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && !overview.models.some((m) => m.id === program.reward_model_id) ? [{ value: program.reward_model_id, label: program.reward_model_name }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
+      <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && modelId && !overview.models.some((m) => m.id === modelId) ? [{ value: modelId, label: program.reward_model_name ?? `Eval · ${program.eval_name ?? ""}` }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
       {program && <RecordBadge value={program.status === "active" ? "optimizing" : program.status} />}
-    </div><Button size="sm" variant="outline" disabled={!overview.models.length} onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "Optimize prompt"}</Button></div>
+    </div><Button size="sm" variant="outline" onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "Optimize prompt"}</Button></div>
     {creating && <div className="mb-5"><CreateOptimization initialModelId={modelId} initialAgent={agent.agent} /></div>}
     <ErrorNotice error={error ?? detailError} onRetry={() => { void reload(); void reloadDetail(); }} />
     {!overview.models.length && !program ? <p className="text-sm text-muted-foreground">Choose a <Link className="underline" href="/reward-models/models">reward model</Link> once it is ready to monitor agent performance.</p> : !history ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading agent rewards…</p> : <>

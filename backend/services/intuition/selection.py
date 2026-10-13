@@ -26,6 +26,7 @@ QUEUE_SIZE = 20
 UNCERTAINTY_WEIGHT = 0.5
 NOVELTY_WEIGHT = 0.3
 CONFLICT_BONUS = 1.0
+RUN_CREDIT_BONUS = 0.6
 
 
 def _uncertainty(output: dict) -> float:
@@ -71,6 +72,12 @@ async def label_queue(owner_id: UUID, model_id: UUID, limit: int = QUEUE_SIZE) -
         rows, _ = await service._rows(model, active)
         labeled = [r["f"] for r in rows if r["kind"] == "item"]
     labeled_matrix = np.asarray(labeled, dtype=float) if labeled else None
+    from . import runs
+
+    linked = await runs.credit(owner_id, model_id)
+    suspects = {
+        c["prediction_id"]: c for c in (linked.get("calls_by_credit") or []) if c["suspect"]
+    }
 
     ranked, seen = [], set()
     for r in records:
@@ -95,9 +102,18 @@ async def label_queue(owner_id: UUID, model_id: UUID, limit: int = QUEUE_SIZE) -
         score = UNCERTAINTY_WEIGHT * uncertainty + NOVELTY_WEIGHT * (novelty or 0.0)
         if conflict:
             score += CONFLICT_BONUS
+        suspect = suspects.get(str(r["id"]))
+        if suspect:
+            score += RUN_CREDIT_BONUS
         reasons = []
         if conflict:
             reasons.append(f"{r['conflict_source']} feedback says {r['conflict_label']}")
+        if suspect:
+            reasons.append(
+                "its run failed after this decision"
+                if suspect["outcome"] < 0.5
+                else "its run succeeded despite this decision"
+            )
         if uncertainty >= 0.5:
             reasons.append("the eval was unsure")
         if novelty is not None and novelty >= 0.35:

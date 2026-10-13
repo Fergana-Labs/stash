@@ -19,6 +19,7 @@ from ..services.intuition import (
     improve,
     monitoring,
     providers,
+    runs,
     selection,
     service,
 )
@@ -114,6 +115,9 @@ class Predict(Body):
     # Your own id for this call (ticket, message, run step); feedback can use it later.
     ref: str | None = Field(default=None, min_length=1, max_length=200)
     metadata: dict = Field(default_factory=dict)
+    # The task this call belongs to; report its outcome at /runs/{run}/outcome.
+    run: str | None = Field(default=None, min_length=1, max_length=200)
+    step: int | None = Field(default=None, ge=0)
 
 
 class Compare(Body):
@@ -123,6 +127,9 @@ class Compare(Body):
     caller: str = Field(default="api", max_length=100)
     ref: str | None = Field(default=None, min_length=1, max_length=200)
     metadata: dict = Field(default_factory=dict)
+    # The task this call belongs to; report its outcome at /runs/{run}/outcome.
+    run: str | None = Field(default=None, min_length=1, max_length=200)
+    step: int | None = Field(default=None, ge=0)
 
 
 class Feedback(Body):
@@ -185,6 +192,32 @@ async def read_input(file: UploadFile, user: User):
         )
     except TimeoutError as exc:
         raise HTTPException(422, "Document took too long to read; use a smaller file") from exc
+
+
+class RunOutcome(Body):
+    value: float = Field(ge=0, le=1)
+    source: str = Field(default="outcome", min_length=1, max_length=100)
+    note: str = Field(default="", max_length=2000)
+
+
+@router.get("/runs")
+async def list_runs(
+    user: User, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0)
+):
+    return await checked(runs.list_runs(user["id"], limit, offset))
+
+
+@router.get("/runs/{external_id}")
+async def get_run(external_id: str, user: User):
+    return await checked(runs.get(user["id"], external_id))
+
+
+@router.post("/runs/{external_id}/outcome")
+async def run_outcome(external_id: str, req: RunOutcome, user: User):
+    """Report how a task ended (0 failed … 1 succeeded); credited to the evals' calls in it."""
+    return await checked(
+        runs.record_outcome(user["id"], external_id, req.value, req.source, req.note)
+    )
 
 
 @router.post("/{model_id}/builder/examples", status_code=201)
@@ -358,6 +391,8 @@ async def predict(model_id: UUID, req: Predict, user: User):
             caller=req.caller,
             ref=req.ref,
             metadata=req.metadata,
+            run=req.run,
+            step=req.step,
         )
     )
 
@@ -374,6 +409,8 @@ async def compare(model_id: UUID, req: Compare, user: User):
             caller=req.caller,
             ref=req.ref,
             metadata=req.metadata,
+            run=req.run,
+            step=req.step,
         )
     )
 
@@ -432,3 +469,9 @@ async def start_improve(model_id: UUID, user: User):
 @router.get("/{model_id}/improve")
 async def improve_status(model_id: UUID, user: User):
     return {"job": await checked(improve.latest(user["id"], model_id))}
+
+
+@router.get("/{model_id}/credit")
+async def outcome_credit(model_id: UUID, user: User):
+    """How well this eval's decisions inside runs predict the runs' outcomes."""
+    return await checked(runs.credit(user["id"], model_id))

@@ -14,6 +14,7 @@ import {
   type Example, type Gate, type Item, type LoggedPrediction, type ModelDetail, type Prediction,
 } from "@/lib/intuition-api";
 import { ImprovePanel, LabelQueue, promoteChecked, RegressionPanel, VersionsPanel } from "./EvalLearning";
+import { EvalSignals } from "./EvalComposition";
 import EvalInput from "./EvalInput";
 import EvalEndpoint from "./EvalEndpoint";
 import EvalMonitoring from "./EvalMonitoring";
@@ -94,7 +95,10 @@ export default function EvalWorkspace({ id }: { id: string }) {
         await evalPrepare(id);
         stage(1, "Creating evaluation criteria from your examples and feedback…");
         const proposed = await imDraftRubric(id, {});
-        await imEditDraft(id, { rubric: proposed.rubric });
+        // Signals from other evals are chosen by the user, not drafted; keep them.
+        const current = await imGet(id);
+        const signals = (current.draft ?? current.active)?.rubric.filter((q) => q.type === "eval") ?? [];
+        await imEditDraft(id, { rubric: [...proposed.rubric.filter((q) => !signals.some((s) => s.id === q.id)), ...signals] });
         let scored = 0;
         stage(2, "Evaluating your examples against the criteria…");
         for (let batch = 0; batch < 100; batch++) {
@@ -156,6 +160,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
         <textarea aria-label="Eval instructions" rows={5} maxLength={6000} className={inputClass} value={description} disabled={!!busy} onChange={(e) => setDescription(e.target.value)} />
       </section>
       {saveProgress && <SaveStatus progress={saveProgress} error={saveError} onTest={() => { setTestItem(null); setView("test"); }} />}
+      <EvalSignals id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
       <ImprovePanel id={id} detail={detail} examples={examples} busy={!!busy} onChanged={() => { void load(); }} />
       <VersionsPanel id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
         </aside>

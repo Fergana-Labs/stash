@@ -2,12 +2,15 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import EvalMonitoring from "./EvalMonitoring";
 
-const api = vi.hoisted(() => ({ imMonitoring: vi.fn() }));
+const api = vi.hoisted(() => ({ imMonitoring: vi.fn(), imCredit: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 
 const empty = { calls: 0, errors: 0, with_feedback: 0, accuracy: null, ece: null, mean_confidence: null, mean_value: null };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  api.imCredit.mockResolvedValue({ decisions: ["good", "bad"], runs: 2, calls: 2, success_rate: 0.5, minimum_runs: 6, by_decision: [{ decision: "good", runs: 1, success_rate: 1 }, { decision: "bad", runs: 1, success_rate: 0 }], ready: false, reason: "Needs at least 6 runs with outcomes, including successes and failures" });
+});
 
 it("explains that accuracy needs feedback when there are calls but no feedback", async () => {
   api.imMonitoring.mockResolvedValue({ days: 30, truncated: false, summary: { ...empty, calls: 4, errors: 1, reliability: [] }, daily: [{ date: "2026-10-12", ...empty, calls: 4, errors: 1, labels: { good: 3 } }], versions: [{ version: 2, ...empty, calls: 4, errors: 1 }], drift: { window_days: 7, version: 2, recent_calls: 3, train_examples: 10, labels: [{ label: "good", train_share: 0.5, recent_share: 1 }], features: [{ feature: "polite", train_mean: 0.4, recent_mean: 0.9, shift: 0.5 }] }, disagreements: [] });

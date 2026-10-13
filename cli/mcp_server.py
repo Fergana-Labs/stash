@@ -901,8 +901,13 @@ def stash_optimization_begin(
     initial_prompt: str = "",
     runs_per_arm: int = 20,
     max_rounds: int = 10,
+    eval_id: str = "",
+    target_label: str = "",
 ) -> str:
     """Begin ongoing prompt optimization when the user asks to improve this agent.
+    Runs are scored by reward_model_id, or by an eval: pass eval_id (leave
+    reward_model_id empty) and target_label, the eval decision that counts as
+    success; the eval's saved version is pinned for the whole program.
     Authorizes up to max_rounds candidate generations and remote scoring of submitted
     runs. Future tasks receive randomized current/candidate instructions; winners
     promote automatically when the selected reward model establishes an improvement.
@@ -917,7 +922,11 @@ def stash_optimization_begin(
                 "/api/v1/rm/optimizations",
                 json={
                     "name": name,
-                    "reward_model_id": reward_model_id,
+                    **(
+                        {"eval_id": eval_id, "target_label": target_label or None}
+                        if eval_id
+                        else {"reward_model_id": reward_model_id}
+                    ),
                     "agent": agent,
                     "scope": scope,
                     "initial_prompt": initial_prompt,
@@ -1081,21 +1090,52 @@ def stash_intuition_get(model_id: str) -> str:
 
 
 @mcp.tool()
-def stash_intuition_predict(model_id: str, item: str, caller: str = "agent", ref: str = "") -> str:
+def stash_intuition_predict(
+    model_id: str, item: str, caller: str = "agent", ref: str = "", run: str = ""
+) -> str:
     """Judge one item with the user's active intuition model. `item` is text or a
     JSON object string shaped like the model's examples. Returns the label,
     per-label probabilities, confidence, the rubric answers and each answer's
     contribution. Low-confidence results deserve a human check. The call is
     logged; pass `ref` (your own id for the thing judged, e.g. a ticket id) so
-    later feedback can find it. If the user corrects it, send the correction with
-    stash_intuition_review; for outcomes learned later use stash_intuition_feedback."""
+    later feedback can find it, and `run` (the task this decision is part of) so the
+    task's eventual outcome can be credited to it with stash_intuition_run_outcome. If
+    the user corrects it, send the correction with stash_intuition_review; for
+    outcomes of this one call use stash_intuition_feedback."""
     with _client() as client:
         return _json(
             client._post(
                 f"/api/v1/intuitions/{model_id}/predict",
-                json={"item": _item(item), "caller": caller, "ref": ref or None},
+                json={
+                    "item": _item(item),
+                    "caller": caller,
+                    "ref": ref or None,
+                    "run": run or None,
+                },
             )
         )
+
+
+@mcp.tool()
+def stash_intuition_run_outcome(run: str, value: float, note: str = "") -> str:
+    """Report how a task ended, from 0 (failed) to 1 (succeeded). `run` is the id
+    passed to stash_intuition_predict for the decisions made during that task; the
+    outcome is credited to those decisions across every eval that was called."""
+    with _client() as client:
+        return _json(
+            client._post(
+                f"/api/v1/intuitions/runs/{run}/outcome", json={"value": value, "note": note}
+            )
+        )
+
+
+@mcp.tool()
+def stash_intuition_credit(model_id: str) -> str:
+    """Whether an intuition model's decisions inside runs predict the runs'
+    outcomes: success rate per decision, learned weights with intervals,
+    cross-validated accuracy, and the calls that pushed against their run's outcome."""
+    with _client() as client:
+        return _json(client._get(f"/api/v1/intuitions/{model_id}/credit"))
 
 
 @mcp.tool()

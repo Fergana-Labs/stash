@@ -4,7 +4,7 @@ import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
 import { ApiError } from "@/lib/api";
 
-const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn(), imFeedback: vi.fn(), imMonitoring: vi.fn(), imImproveStatus: vi.fn(), imStartImprove: vi.fn(), imLabelQueue: vi.fn(), imRestore: vi.fn() }));
+const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn(), imFeedback: vi.fn(), imMonitoring: vi.fn(), imImproveStatus: vi.fn(), imStartImprove: vi.fn(), imLabelQueue: vi.fn(), imRestore: vi.fn(), imList: vi.fn(), imCredit: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 vi.mock("./EvalInput", () => ({ default: ({ initialItem, onChange }: { initialItem?: string; onChange: (item: string) => void }) => <textarea aria-label="Example output" defaultValue={initialItem ?? ""} onChange={(event) => onChange(event.target.value)} /> }));
 
@@ -18,6 +18,7 @@ beforeEach(() => {
   api.imPredictions.mockResolvedValue([]);
   api.imEditDraft.mockResolvedValue(undefined); api.imPromote.mockResolvedValue(detail);
   api.imImproveStatus.mockResolvedValue({ job: null }); api.imLabelQueue.mockResolvedValue([]);
+  api.imList.mockResolvedValue({ models: [], judge: {} }); api.imCredit.mockResolvedValue({ decisions: [], runs: 0, calls: 0, success_rate: null, minimum_runs: 6, by_decision: [], ready: false, reason: "Needs runs" });
 });
 
 it("creates an eval from user criteria without trace-training settings", async () => {
@@ -161,6 +162,14 @@ it("blocks a save that regresses, shows what got worse, and saves anyway on requ
   fireEvent.click(within(panel).getByRole("button", { name: "Save anyway" }));
   await waitFor(() => expect(api.imPromote).toHaveBeenLastCalledWith("eval", true));
   await waitFor(() => expect(screen.queryByRole("region", { name: "Regressions" })).not.toBeInTheDocument());
+});
+
+it("keeps signals from other evals when Save redrafts the criteria", async () => {
+  const signal = { id: "eval_tone", type: "eval", prompt: "Decision of the “Tone” eval", criteria: { good: "", bad: "" }, eval_id: "tone", version_id: "v1" };
+  api.imGet.mockResolvedValue({ ...detail, draft: { ...version, rubric: [{ id: "old", prompt: "Old?" }, signal] } });
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.imEditDraft).toHaveBeenCalledWith("eval", { rubric: [{ id: "helpful", prompt: "Is it helpful?" }, signal] }));
 });
 
 it("pins an example as a regression test from its inspector", async () => {

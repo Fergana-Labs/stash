@@ -27,7 +27,7 @@ def answers_to_features(rubric: list[dict], answers: dict[str, dict]) -> list[fl
     values = []
     for q in rubric:
         probabilities = answers[q["id"]]["probabilities"]
-        if q["type"] == "choice":
+        if q["type"] in ("choice", "eval"):
             values.extend(probabilities[option] for option in q["criteria"])
         elif q["type"] == "noul":
             values.append(probabilities["true"])
