@@ -12,7 +12,6 @@ import { ErrorNotice, RecordBadge, useWorkbenchLoad } from "@/components/workben
 import CreateOptimization from "@/components/optimization/CreateOptimization";
 import RollingRewardChart, { signed, value } from "@/components/monitoring/RollingRewardChart";
 import PromptEvolution from "@/components/monitoring/PromptEvolution";
-import GepaHistory from "@/components/monitoring/GepaHistory";
 import { getOptimization } from "@/lib/optimization-api";
 import { getMonitoring, getRewardHistory, type MonitoredAgent, type MonitoringOverview } from "@/lib/monitoring-api";
 import { cn } from "@/lib/utils";
@@ -68,7 +67,6 @@ export default function MonitoringPage() {
     <ErrorNotice error={error} onRetry={() => void reload()} />
     {!data ? <p role="status" className="text-sm text-muted-foreground">Loading agents…</p> : <>
       {!data.agents.length ? <p className="text-sm text-muted-foreground">Connect an agent or import its traces to start monitoring.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-surface/50 text-xs text-muted-foreground"><tr className="border-y border-border"><th className="px-3 py-2.5">Agent</th><th className="px-3">Prompt optimization</th><th className="px-3">Current prompt</th><th className="px-3 text-right">Recorded runs</th><th className="px-3 text-right">Last activity</th></tr></thead><tbody>{data.agents.map((agent) => <AgentRow key={agent.agent} agent={agent} overview={data} />)}</tbody></table></div>}
-      <GepaHistory runs={data.gepa} />
     </>}
   </RmPage>;
 }

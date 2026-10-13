@@ -6,11 +6,7 @@ export interface MonitoringProgram {
   id: string; name: string; agent: string; scope: string; status: string; reward_model_id: string; reward_model_name: string;
   active_revision_id: string; active_version: number; run_count: number; accepted_count: number; error: string | null;
 }
-export interface GepaSummary {
-  id: string; status: string; skill_name: string | null; task_model: string; reward_model_id: string; reward_model_name: string;
-  seed_score: number | null; best_score: number | null; candidate_count: number | null; error: string | null; created_at: string;
-}
-export interface MonitoringOverview { agents: MonitoredAgent[]; models: MonitoringModel[]; programs: MonitoringProgram[]; gepa: GepaSummary[] }
+export interface MonitoringOverview { agents: MonitoredAgent[]; models: MonitoringModel[]; programs: MonitoringProgram[] }
 export interface RewardPoint {
   id: string; trace_id: string | null; title: string; recorded_at: string; reward: number; revision_id: string | null; rolling_mean: number; window_count: number;
 }

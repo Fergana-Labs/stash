@@ -41,18 +41,11 @@ async def overview(owner):
         WHERE o.owner_user_id=$1 ORDER BY o.created_at DESC""",
         owner,
     )
-    gepa = await pool.fetch(
-        """SELECT g.id,g.status,g.skill_name,g.task_model,g.reward_model_id,m.name AS reward_model_name,
-        g.seed_score,g.best_score,jsonb_array_length(g.candidates) AS candidate_count,g.error,g.created_at
-        FROM rm_gepa_runs g JOIN rm_reward_models m ON m.id=g.reward_model_id
-        WHERE g.owner_user_id=$1 ORDER BY g.created_at DESC LIMIT 100""",
-        owner,
-    )
     return {
         "agents": agents,
         "models": [dict(r) for r in models],
         "programs": [dict(r) for r in programs],
-        "gepa": [dict(r) for r in gepa],
+        "gepa": [],  # Older clients expect this key; Monitoring no longer loads skill trials.
     }
 
 

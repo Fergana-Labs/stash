@@ -3,16 +3,15 @@ import { beforeEach, expect, it, vi } from "vitest";
 import MonitoringPage from "./page";
 import type { MonitoringOverview, RewardHistory } from "@/lib/monitoring-api";
 
-const api = vi.hoisted(() => ({ overview: vi.fn(), history: vi.fn(), detail: vi.fn(), gepa: vi.fn() }));
+const api = vi.hoisted(() => ({ overview: vi.fn(), history: vi.fn(), detail: vi.fn() }));
 vi.mock("@/lib/monitoring-api", () => ({ getMonitoring: api.overview, getRewardHistory: api.history }));
 vi.mock("@/lib/optimization-api", () => ({ getOptimization: api.detail }));
-vi.mock("@/lib/api", () => ({ rmGetGepaRun: api.gepa }));
 vi.mock("@/components/optimization/CreateOptimization", () => ({ default: ({ initialAgent }: { initialAgent: string }) => <p>Begin optimization for {initialAgent}</p> }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/reward-models/monitoring" }));
 
 const overview: MonitoringOverview = {
   agents: [{ agent: "codex", display_name: "Codex", trace_count: 60, last_seen: "2026-10-12" }, { agent: "support", display_name: "Support", trace_count: 10, last_seen: "2026-10-11" }],
-  models: [{ id: "one", name: "Model one", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }, { id: "two", name: "Model two", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }], programs: [], gepa: [],
+  models: [{ id: "one", name: "Model one", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }, { id: "two", name: "Model two", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }], programs: [],
 };
 const history: RewardHistory = { agent: "codex", model_id: "one", program_id: null, active_revision_id: null, unit: "action_credit", window: 20, total: 60, mean: 0.2, current_n: 20, current_mean: 0.4, previous_n: 20, previous_mean: 0.1, points: [{ id: "trace", trace_id: "trace", title: "Recorded task", recorded_at: "2026-10-10", reward: 0.5, revision_id: null, rolling_mean: 0.4, window_count: 20 }] };
 
@@ -25,7 +24,6 @@ it("starts with agents, shows reward units and does not imply an accepted prompt
   expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText("No prompt optimization is connected to this agent yet.")).toBeVisible();
   expect(screen.getByText("Not tracked")).toBeVisible();
-  expect(screen.getByText("No GEPA trials recorded yet.")).toBeVisible();
   expect(api.history).toHaveBeenCalledWith("codex", "one", 20, undefined);
   fireEvent.click(screen.getByRole("button", { name: "Optimize prompt" }));
   expect(screen.getByText("Begin optimization for codex")).toBeVisible();
@@ -76,15 +74,13 @@ it("shows accepted and rejected trials, baseline diffs, outcomes, and prompt usa
   await waitFor(() => expect(api.history).toHaveBeenCalledWith("codex", "one", 50, "program"));
 });
 
-it("keeps GEPA selection separate from accepted and delivered agent prompts", async () => {
-  api.overview.mockResolvedValue({ ...overview, gepa: [{ id: "gepa", skill_name: "Parts skill", status: "succeeded", task_model: "task-model", reward_model_name: "Model one", seed_score: 0.2, best_score: 0.8, candidate_count: 2, created_at: "2026-10-10" }] });
-  api.gepa.mockResolvedValue({ id: "gepa", seed_skill: "old skill", best_skill: "better skill", candidates: [{ skill: "old skill", score: 0.2 }, { skill: "better skill", score: 0.8 }] });
+it("omits the retired skill section even if an older API returns legacy trials", async () => {
+  api.overview.mockResolvedValue({ ...overview, gepa: [{ id: "gepa", skill_name: "Parts skill" }] });
   render(<MonitoringPage />);
-  fireEvent.click(await screen.findByRole("button", { name: /Parts skill/ }));
-  expect(await screen.findByText("Selected by GEPA")).toBeInTheDocument();
-  expect(screen.queryByText("accepted", { exact: true })).not.toBeInTheDocument();
-  expect(screen.getByText(/agent delivery and acceptance are not recorded here/)).toBeVisible();
-  expect(api.gepa).toHaveBeenCalledWith("gepa");
+  expect(await screen.findByRole("button", { name: "Codex" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "GEPA experiments" })).not.toBeInTheDocument();
+  expect(screen.queryByText("GEPA skill experiments")).not.toBeInTheDocument();
+  expect(screen.queryByText("Parts skill")).not.toBeInTheDocument();
 });
 
 it("expands each agent directly below its row and toggles from both the name and chevron", async () => {
