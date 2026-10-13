@@ -18,6 +18,9 @@ For API file inputs, upload with `POST /api/v1/intuitions/inputs` (multipart `fi
 
 ## Use and review
 
+- Open an eval from anywhere on its list row to visit its dedicated page. The page’s three-dot menu offers Download and Connect.
+- Download a JSON snapshot of the saved model definition, active/draft calibration heads and frozen seeds, validation results, and examples. This is a definition export; inference still uses the configured judge provider.
+- Connect opens this eval’s API and MCP examples in a dismissible dialog.
 - Test against any output or recorded trace, independently of eval creation.
 - Run an activated eval from the trace viewer and display its scorecard.
 - Call the versioned prediction API for completed-run evals, proposed-action guardrails, or output verification in an agent loop. The existing API and MCP contracts are retained.
@@ -34,3 +37,5 @@ These screenshots use a separate local database and explicitly labeled demo data
 ![Eval builder with labeled examples and automatic holdout](assets/eval-builder-preview.png)
 
 ![Eval decision and criteria scorecard](assets/eval-scorecard-preview.png)
+
+![Dedicated eval page with Download and Connect menu](assets/eval-options-preview.png)

@@ -6,7 +6,6 @@ import CreateEval from "./CreateEval";
 const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 vi.mock("./EvalInput", () => ({ default: ({ onChange }: { onChange: (item: string) => void }) => <textarea aria-label="Example output" onChange={(event) => onChange(event.target.value)} /> }));
-vi.mock("@/components/intuitions/AgentUsagePanel", () => ({ default: () => <p>Connect</p> }));
 
 const version = { id: "draft", status: "draft", number: 1, description: "Be helpful", labels: [{ id: "good" }, { id: "bad" }], rubric: [], head: null, head_stale: true, metrics: null, gate: null };
 const detail = { model: { id: "eval", name: "Replies", output_type: "choice" }, draft: version, active: null, judge: { configured: true }, versions: [], counts: {} };
@@ -72,4 +71,37 @@ it("logs test calls through the prediction API and saves human corrections", asy
   fireEvent.click(screen.getByRole("button", { name: "Mark bad" }));
   await waitFor(() => expect(api.imReview).toHaveBeenCalledWith("eval", "call", { label: "bad", note: "Too vague" }));
   expect(await screen.findByText("Correction saved as an example. Update the eval to include it.")).toBeVisible();
+});
+
+
+it("opens eval-specific connection examples from the menu and closes with Escape", async () => {
+  render(<EvalWorkspace id="eval" />);
+  const trigger = await screen.findByRole("button", { name: "Eval options" });
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Connect" }));
+  const dialog = await screen.findByRole("dialog", { name: "Connect Replies" });
+  expect(dialog).toHaveTextContent("/api/v1/intuitions/eval/predict");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it("downloads saved definitions, fitted heads, frozen seeds, and examples for this eval", async () => {
+  const active = { ...version, id: "active", status: "active", head: { weights: [[1, 2]] }, seed_snapshot: [{ item: "Frozen seed", label: "good" }] };
+  const examples = [{ id: "example", item: "A reply", label: "bad", note: "Needs specifics" }];
+  api.imGet.mockResolvedValue({ ...detail, active }); api.imExamples.mockResolvedValue(examples);
+  const create = vi.fn((blob: Blob) => { expect(blob.type).toBe("application/json"); return "blob:eval"; });
+  const oldCreate = URL.createObjectURL, oldRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = create; URL.revokeObjectURL = vi.fn();
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    render(<EvalWorkspace id="eval" />);
+    fireEvent.keyDown(await screen.findByRole("button", { name: "Eval options" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Download" }));
+    expect(click).toHaveBeenCalledOnce();
+    const link = click.mock.instances[0] as HTMLAnchorElement;
+    expect(link.download).toBe("Replies.json");
+    const exported = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(create.mock.calls[0][0]); });
+    expect(JSON.parse(exported)).toMatchObject({ format: "stash-eval", format_version: 1, model: detail.model, active, examples });
+  } finally { click.mockRestore(); URL.createObjectURL = oldCreate; URL.revokeObjectURL = oldRevoke; }
 });

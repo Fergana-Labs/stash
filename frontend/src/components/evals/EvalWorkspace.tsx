@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, MoreHorizontal, Plug } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { inputClass } from "@/components/workbench/workbench-ui";
@@ -17,7 +20,7 @@ import EvalInput from "./EvalInput";
 import ModelTraceConversation from "@/components/reward-models/ModelTraceConversation";
 import type { RmTraceDetail } from "@/lib/types";
 
-export default function EvalWorkspace({ id, onUpdated, embedded = false }: { id: string; onUpdated?: () => void; embedded?: boolean }) {
+export default function EvalWorkspace({ id }: { id: string }) {
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [examples, setExamples] = useState<Example[]>([]);
   const [description, setDescription] = useState("");
@@ -33,6 +36,7 @@ export default function EvalWorkspace({ id, onUpdated, embedded = false }: { id:
   const [testItem, setTestItem] = useState<Item | null>(null);
   const [inputRevision, setInputRevision] = useState(0);
   const [confirm, setConfirm] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const load = useCallback(async () => {
     const [next, rows] = await Promise.all([imGet(id), imExamples(id)]);
     setDetail(next); setExamples(rows);
@@ -45,7 +49,7 @@ export default function EvalWorkspace({ id, onUpdated, embedded = false }: { id:
   const results = metrics?.eval.rows ?? [];
   async function action(message: string, perform: () => Promise<unknown>) {
     setBusy(message); setError("");
-    try { await perform(); await load(); onUpdated?.(); }
+    try { await perform(); await load(); }
     catch (e) { setError(errorMessage(e)); }
     finally { setBusy(""); }
   }
@@ -78,8 +82,25 @@ export default function EvalWorkspace({ id, onUpdated, embedded = false }: { id:
     });
   }
   if (!detail) return <div className="p-5">{error ? <p role="alert">{error}</p> : <p role="status" className="text-xs text-muted-foreground">Loading eval…</p>}</div>;
-  return <section aria-label={`${detail.model.name} eval`} className="space-y-5 px-5 py-4">
-    {!embedded && <h2 className="font-display text-lg font-semibold">{detail.model.name}</h2>}
+  return <section aria-label={`${detail.model.name} eval`} className="space-y-5 py-4">
+    <div className="flex items-center justify-between gap-4">
+      <h1 className="font-display text-[22px] font-semibold tracking-tight">{detail.model.name}</h1>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="Eval options"><MoreHorizontal /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem disabled={!!busy} onSelect={() => {
+            const blob = new Blob([JSON.stringify({ format: "stash-eval", format_version: 1, exported_at: new Date().toISOString(), ...detail, examples }, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `${detail.model.name.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "eval"}.json`;
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}><Download />Download</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setConnectOpen(true)}><Plug />Connect</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex gap-2" role="group" aria-label="Eval workspace">{["build", "test", "usage"].map((tab) => <Button key={tab} size="sm" variant={view === tab ? "secondary" : "ghost"} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setItem(null); setTraceId(null); if (tab === "test") setTestItem(null); }}>{tab === "build" ? "Build eval" : tab === "test" ? "Test eval" : "Usage & corrections"}</Button>)}</div>
       <span className="text-xs text-muted-foreground">{detail.active ? `Active v${detail.active.number}` : "Draft"}{detail.draft && detail.active ? ` · updating v${detail.draft.number}` : ""}</span>
@@ -120,9 +141,14 @@ export default function EvalWorkspace({ id, onUpdated, embedded = false }: { id:
         </>}
         {!!version?.rubric.length && <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">View evaluation criteria</summary><ul className="space-y-2">{version.rubric.map((q) => <li key={q.id}>{q.prompt}</li>)}</ul></details>}
       </section>
-    </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); onUpdated?.(); }} />}
+    </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
     <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Use this eval with limited validation?" description={<><p>Review the held-out scorecard before using this eval.</p>{detail.draft?.gate?.checks.filter((c) => !c.passed).map((c) => <p key={c.name}>{c.detail}</p>)}<p>Activating makes this version available to API callers.</p></>} confirmLabel="Activate anyway" onConfirm={async () => { let failed = false; await action("Activating eval…", async () => { try { await imPromote(id, true); } catch (e) { failed = true; throw e; } }); return !failed; }} />
-    {!embedded && <AgentUsagePanel modelId={id} outputType={detail.model.output_type} sample={item ?? "An output or agent action to evaluate"} />}
+    <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" aria-describedby={undefined}>
+        <DialogHeader><DialogTitle>Connect {detail.model.name}</DialogTitle></DialogHeader>
+        <AgentUsagePanel standalone modelId={id} outputType={detail.model.output_type} sample="An output or agent action to evaluate" />
+      </DialogContent>
+    </Dialog>
   </section>;
 }
 
