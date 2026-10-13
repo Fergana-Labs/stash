@@ -133,7 +133,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
       <div className="flex gap-1" role="group" aria-label="Eval workspace">{["build", "test", "usage"].map((tab) => <Button key={tab} size="sm" variant="ghost" data-eval-tab className={`h-9 rounded-none border-0 border-b-2 px-3 text-xs ${view === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setSelectedExample(null); closeAdd(); if (tab === "test") setTestItem(null); }}>{tab === "build" ? "Build eval" : tab === "test" ? "Sandbox" : "Usage & corrections"}</Button>)}</div>
     </div>
-    <EvalEndpoint id={id} outputType={detail.model.output_type} />
+    {view === "build" && <EvalEndpoint id={id} outputType={detail.model.output_type} />}
     {error && !addOpen && !selectedExample && !(saveProgress?.status === "failed" && error === saveError) && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {busy && !selectedExample && saveProgress?.status !== "running" && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
     {view !== "build" && saveProgress && <SaveStatus progress={saveProgress} error={saveError} onTest={() => { setTestItem(null); setView("test"); }} />}

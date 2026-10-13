@@ -6,7 +6,7 @@ The main product has two areas: Traces for observability and Evals for creating,
 
 ## Workspace design
 
-The eval list and detail workspace follow the compact toolbar, neutral surfaces, and table-oriented structure shown in [Braintrust’s playground UI](https://www.braintrust.dev/docs/evaluate/playgrounds). Instructions sit in a narrow configuration column; a single Save button in the page toolbar generates and applies the updated evaluator. One examples table shows outputs, labels, calibration/holdout/reference use, and feedback; opening a row expands a focused inspector directly beneath it for full content, corrections, and sandbox inspection. Add example and the API request example expand inline. A persistent Connect row shows this eval's full POST endpoint and offers a copy control; Connect is removed from the menu. There is no separate activation control or Draft/Active status in the workspace. These flows use no modal overlays. Held-out checks and generated criteria occupy separate panels in the main pane. Small sample checks carry a Limited data badge and show matched-label counts. Inline panels use a minus icon to collapse. Creation, testing, and usage share the same scoped visual styles, preserving the rest of the application and pinned product snapshots.
+The eval list and detail workspace follow the compact toolbar, neutral surfaces, and table-oriented structure shown in [Braintrust’s playground UI](https://www.braintrust.dev/docs/evaluate/playgrounds). Instructions sit in a narrow configuration column; a single Save button in the page toolbar generates and applies the updated evaluator. One examples table shows outputs, labels, calibration/holdout/reference use, and feedback; opening a row expands a focused inspector directly beneath it for full content, corrections, and sandbox inspection. Add example and the API request example expand inline. On Build eval, a Connect row shows this eval's full POST endpoint and offers a copy control; Connect is removed from the menu. There is no separate activation control or Draft/Active status in the workspace. These flows use no modal overlays. Held-out checks and generated criteria occupy separate panels in the main pane. Small sample checks carry a Limited data badge and show matched-label counts. Inline panels use a minus icon to collapse. Creation, testing, and usage share the same scoped visual styles, preserving the rest of the application and pinned product snapshots.
 
 ## Create and update
 
@@ -24,7 +24,7 @@ For API file inputs, upload with `POST /api/v1/intuitions/inputs` (multipart `fi
 
 - Open an eval from anywhere on its list row to visit its dedicated page. The page’s three-dot menu offers Download.
 - Download a JSON snapshot of the saved model definition, active/draft calibration heads and frozen seeds, validation results, and examples. This is a definition export; inference still uses the configured judge provider.
-- The visible Connect row displays this eval's POST endpoint and copy control. A subtle info icon with an API request details tooltip expands an authenticated trace-shaped cURL request and MCP example inline. Calls to this endpoint are logged with input, output, caller, version, and timestamp and appear in Usage & corrections.
+- On Build eval only, the Connect row displays this eval's POST endpoint and copy control. A subtle info icon with an API request details tooltip expands an authenticated trace-shaped cURL request and MCP example inline. Calls to this endpoint are logged with input, output, caller, version, and timestamp and appear in Usage & corrections.
 - Open in sandbox preloads a saved example directly into the editable sandbox input; Run eval explicitly scores it. Structured examples appear as JSON and retain their object input type when edited; invalid JSON disables the run until corrected. This inspects criterion answers and decisions, rather than providing independent evidence on examples used to build the eval. Test against any new output or recorded trace independently of eval creation.
 - Sandbox and normal API calls use the same saved evaluator. Editing instructions does not silently switch either to a different test version. After Save succeeds, both use the updated version.
 - Run a saved eval from the trace viewer and display its scorecard.
@@ -43,7 +43,7 @@ These screenshots use a separate local database and explicitly labeled demo data
 
 ![One Save action and visible Connect endpoint, with separate checks and criteria](assets/eval-save-preview.png)
 
-![Sandbox with a selected example preloaded in the editable input](assets/eval-sandbox-preview.png)
+![Sandbox with a selected example preloaded in the editable input and no Connect row](assets/eval-sandbox-preview.png)
 
 ![An endpoint call recorded in Usage & corrections](assets/eval-api-usage-preview.png)
 

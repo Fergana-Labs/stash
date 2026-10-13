@@ -97,6 +97,12 @@ it("shows the endpoint directly, keeps Connect out of the menu, and expands requ
   fireEvent.keyDown(panel, { key: "Escape" });
   expect(screen.queryByRole("region", { name: "API request" })).not.toBeInTheDocument();
   expect(screen.getByRole("region", { name: "API endpoint" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Sandbox" }));
+  expect(screen.queryByRole("region", { name: "API endpoint" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Usage & corrections" }));
+  expect(screen.queryByRole("region", { name: "API endpoint" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Build eval" }));
+  expect(screen.getByRole("region", { name: "API endpoint" })).toBeVisible();
 });
 
 it("shows calls from external agents in usage and saves corrections against those calls", async () => {
