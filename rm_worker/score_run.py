@@ -1,6 +1,7 @@
 """Apply a saved learned evaluator to new actions without training or calling an LLM."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -18,6 +19,10 @@ def run(directory: Path) -> None:
     model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
     progress.update("loading")
     model = RewardModel(model_dir)
+    head = job.get("customer_head")
+    if head is not None and getattr(model, "basis", None) is None:
+        raise ValueError("Customer heads require a shared learned reward basis")
+    head_options = {"head": head} if head is not None else {}
     items = [
         json.loads(line)
         for line in (directory / "action_score_items.jsonl").read_text().splitlines()
@@ -38,6 +43,7 @@ def run(directory: Path) -> None:
             model.score(
                 [item["text"] for item in items],
                 on_progress=lambda completed: progress.update("scoring", completed, total),
+                **head_options,
             ),
             stats,
         )
@@ -46,6 +52,7 @@ def run(directory: Path) -> None:
         model.score(
             [item["text"] for item in trace_items],
             on_progress=lambda completed: progress.update("scoring", len(items) + completed, total),
+            **head_options,
         )
         if trace_items
         else []
@@ -57,7 +64,23 @@ def run(directory: Path) -> None:
             for item, score in zip(trace_items, trace_scores, strict=True)
         )
     )
-    (directory / "result.json").write_text(json.dumps({"action_count": len(rows)}))
+    result = {"action_count": len(rows)}
+    if head is not None:
+        manifest = model.basis.manifest
+        result["customer_provenance"] = {
+            "evaluator_kind": manifest["evaluator_kind"],
+            "feature_version": manifest["feature_version"],
+            "manifest_digest": manifest["manifest_digest"],
+            "customer_head_id": head["head_id"],
+            "customer_head_version": head["head_version"],
+            "head_snapshot_digest": hashlib.sha256(
+                json.dumps(
+                    head, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+                ).encode()
+            ).hexdigest(),
+            "score_scale": "global_training_reward_normalization",
+        }
+    (directory / "result.json").write_text(json.dumps(result))
 
 
 if __name__ == "__main__":

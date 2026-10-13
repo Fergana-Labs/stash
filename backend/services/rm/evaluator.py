@@ -8,6 +8,7 @@ import hashlib
 import json
 from uuid import UUID
 
+from rm_worker.basis_manifest import validate_manifest
 from rm_worker.release_gate import DEFAULT_POLICY, check_partition, evaluate_release
 
 from ...database import get_pool
@@ -24,10 +25,20 @@ def digest(value) -> str:
 
 async def default_evaluator() -> dict | None:
     row = await get_pool().fetchrow("""
-        SELECT m.id, m.name, r.revision, r.updated_at FROM rm_evaluator_registry r
+        SELECT m.id, m.name, r.revision, r.updated_at, m.metrics FROM rm_evaluator_registry r
         JOIN rm_reward_models m ON m.id = r.model_id WHERE m.status = 'succeeded'
     """)
-    return dict(row) if row else None
+    if not row:
+        return None
+    result = dict(row)
+    metrics = result.pop("metrics") or {}
+    result["evaluator_kind"] = metrics.get("evaluator_kind", "scalar_preference_v1")
+    manifest = metrics.get("basis_manifest") or {}
+    if result["evaluator_kind"] == "shared_basis_v1":
+        result.update(
+            {k: manifest.get(k) for k in ("feature_version", "manifest_digest", "basis_dimension")}
+        )
+    return result
 
 
 async def can_score(owner: UUID, model_id: UUID):
@@ -42,27 +53,43 @@ async def can_score(owner: UUID, model_id: UUID):
 
 
 async def enqueue_score(
-    owner: UUID, trace_id: UUID, model_id: UUID, *, automatic=False
+    owner: UUID, trace_id: UUID, model_id: UUID, *, automatic=False, customer_head_id=None
 ) -> tuple[dict, bool]:
     pool = get_pool()
-    run = await pool.fetchrow(
-        """
-        INSERT INTO rm_scoring_runs(owner_user_id, trace_id, reward_model_id, automatic, trace_updated_at)
-        SELECT $1, id, $3, $4, updated_at FROM rm_traces WHERE id = $2 AND owner_user_id = $1
-        ON CONFLICT (trace_id, reward_model_id) WHERE status IN ('queued', 'running') DO NOTHING RETURNING *
-    """,
-        owner,
-        trace_id,
-        model_id,
-        automatic,
-    )
-    created = run is not None
-    if run is None:
-        run = await pool.fetchrow(
-            "SELECT * FROM rm_scoring_runs WHERE trace_id = $1 AND reward_model_id = $2 ORDER BY created_at DESC LIMIT 1",
+    async with pool.acquire() as conn, conn.transaction():
+        if customer_head_id is not None:
+            from . import customer_heads
+
+            if automatic:
+                raise EvaluatorInvalid(
+                    "Automatic shared scoring cannot use a private customer head"
+                )
+            manifest = await customer_heads.basis(conn, model_id)
+            await customer_heads.checked_head(conn, owner, customer_head_id, manifest, model_id)
+        run = await conn.fetchrow(
+            """
+            INSERT INTO rm_scoring_runs(owner_user_id, trace_id, reward_model_id, automatic,
+                trace_updated_at, customer_head_id)
+            SELECT $1, id, $3, $4, updated_at, $5 FROM rm_traces WHERE id = $2 AND owner_user_id = $1
+            ON CONFLICT (trace_id, reward_model_id,
+                (coalesce(customer_head_id,'00000000-0000-0000-0000-000000000000'::uuid)))
+            WHERE status IN ('queued', 'running') DO NOTHING RETURNING *
+        """,
+            owner,
             trace_id,
             model_id,
+            automatic,
+            customer_head_id,
         )
+        created = run is not None
+        if run is None:
+            run = await conn.fetchrow(
+                """SELECT * FROM rm_scoring_runs WHERE trace_id=$1 AND reward_model_id=$2
+                AND customer_head_id IS NOT DISTINCT FROM $3 ORDER BY created_at DESC LIMIT 1""",
+                trace_id,
+                model_id,
+                customer_head_id,
+            )
     if run is None:
         raise EvaluatorInvalid("Trace was deleted")
     return dict(run), created
@@ -212,6 +239,9 @@ async def corpus_snapshot(conn=None) -> list[dict]:
             "task_group": r["task_group"],
             "domain": r["domain"],
             "agent": r["agent"],
+            "profile_id": str(r["owner_user_id"]),
+            "workflow_id": (r["provenance"] or {}).get("workflow_id", r["domain"]),
+            "customer_id": (r["provenance"] or {}).get("customer_id"),
             "trace_id": str(r["trace_id"] or r["id"]),
             "granularity": "action",
         }
@@ -233,18 +263,49 @@ async def check_snapshot_valid(pairs: list[dict]) -> None:
         )
 
 
-async def create_candidate(owner: UUID, name: str, base_model: str, epochs: int) -> dict:
+async def create_candidate(
+    owner: UUID,
+    name: str,
+    base_model: str,
+    epochs: int,
+    *,
+    evaluator_kind="scalar_preference_v1",
+    basis_dimension=4,
+    basis_options=None,
+    base_model_license=None,
+    base_model_revision=None,
+) -> dict:
     # Shared training is always remote; the worker must never default to this laptop.
     pairs = await corpus_snapshot()
     check_partition(pairs)
+    if evaluator_kind not in ("scalar_preference_v1", "shared_basis_v1"):
+        raise EvaluatorInvalid("Unknown shared evaluator architecture")
+    if type(basis_dimension) is not int or not 1 <= basis_dimension <= 64:
+        raise EvaluatorInvalid("Shared basis dimension must be between 1 and 64")
+    config = None
+    if evaluator_kind == "shared_basis_v1":
+        if not isinstance(base_model_license, str) or not base_model_license.strip():
+            raise EvaluatorInvalid("Record the reviewed base model license for a shared basis")
+        config = {
+            "evaluator_kind": evaluator_kind,
+            "basis_dimension": basis_dimension,
+            "input_version": 2,
+            "basis_options": basis_options or {},
+            "base_model_license": base_model_license,
+            "base_model_revision": base_model_revision,
+        }
     if not await get_pool().fetchval("SELECT 1 FROM users WHERE id = $1", owner):
         raise EvaluatorInvalid("Operator owner account does not exist")
     async with get_pool().acquire() as conn, conn.transaction():
         await conn.execute("SELECT pg_advisory_xact_lock(hashtext('rm_shared_training'))")
-        return await _insert_candidate(conn, owner, name, base_model, epochs, pairs)
+        return await _insert_candidate(
+            conn, owner, name, base_model, epochs, pairs, training_config=config
+        )
 
 
-async def _insert_candidate(conn, owner, name, base_model, epochs, pairs, automatic_release=False):
+async def _insert_candidate(
+    conn, owner, name, base_model, epochs, pairs, automatic_release=False, training_config=None
+):
     if await conn.fetchval(
         "SELECT 1 FROM rm_reward_models WHERE scope = 'shared' AND status IN ('queued', 'running')"
     ):
@@ -252,8 +313,8 @@ async def _insert_candidate(conn, owner, name, base_model, epochs, pairs, automa
     parent = await conn.fetchval("SELECT model_id FROM rm_evaluator_registry WHERE singleton")
     row = await conn.fetchrow(
         """
-        INSERT INTO rm_reward_models(owner_user_id,name,base_model,compute,epochs,max_pairs,trace_ids,scope,parent_model_id,training_pairs,num_pairs,automatic_release)
-        VALUES ($1,$2,$3,'modal',$4,$5,'{}','shared',$6,$7,$5,$8) RETURNING id, status, parent_model_id
+        INSERT INTO rm_reward_models(owner_user_id,name,base_model,compute,epochs,max_pairs,trace_ids,scope,parent_model_id,training_pairs,num_pairs,automatic_release,training_config)
+        VALUES ($1,$2,$3,'modal',$4,$5,'{}','shared',$6,$7,$5,$8,$9) RETURNING id, status, parent_model_id
     """,
         owner,
         name,
@@ -263,6 +324,7 @@ async def _insert_candidate(conn, owner, name, base_model, epochs, pairs, automa
         parent,
         pairs,
         automatic_release,
+        training_config,
     )
     return dict(row)
 
@@ -369,6 +431,15 @@ async def train_candidate(model_id: UUID) -> None:
         "fixed_split": True,
         "input_version": 2,
     }
+    config = model.get("training_config") or {}
+    if config.get("evaluator_kind") == "shared_basis_v1":
+        job.update(
+            kind="basis_train",
+            basis_dimension=config["basis_dimension"],
+            basis_options=config.get("basis_options") or {},
+            base_model_license=config["base_model_license"],
+            base_model_revision=config.get("base_model_revision"),
+        )
     (directory / "job.json").write_text(json.dumps(job))
     jobs._write_jsonl(directory / "pairs.jsonl", pairs)
     jobs._write_jsonl(directory / "score_items.jsonl", [])
@@ -377,6 +448,12 @@ async def train_candidate(model_id: UUID) -> None:
     metrics = json.loads((directory / "result.json").read_text())["metrics"]
     if metrics.get("action_scoring_version") != 1 or metrics.get("input_version") != 2:
         raise EvaluatorInvalid("Candidate checkpoint does not support shared action scoring")
+    if config.get("evaluator_kind") == "shared_basis_v1":
+        if metrics.get("evaluator_kind") != "shared_basis_v1" or not metrics.get("basis_manifest"):
+            raise EvaluatorInvalid("Candidate did not produce the configured shared basis")
+        manifest = validate_manifest(metrics["basis_manifest"])
+        if manifest["basis_dimension"] != config["basis_dimension"]:
+            raise EvaluatorInvalid("Candidate basis dimension does not match its configuration")
     predictions = await evaluate_checkpoint(directory / "candidate-eval", key, benchmark)
     baseline = (
         await evaluate_checkpoint(directory / "baseline-eval", parent_key, benchmark)
@@ -389,6 +466,9 @@ async def train_candidate(model_id: UUID) -> None:
             "parent_model_id": str(model["parent_model_id"]) if model["parent_model_id"] else None,
             "dataset_hash": digest(pairs),
             "evaluated_example_ids": [p["example_id"] for p in benchmark],
+            "evaluator_kind": metrics.get("evaluator_kind", "scalar_preference_v1"),
+            "benchmark_provenance": "operator_reviewed_human_or_verified_outcome",
+            "research_guarantees_established": False,
         }
     )
     await check_snapshot_valid(pairs)
@@ -518,15 +598,15 @@ async def reconcile() -> dict:
         await pool.execute(
             """UPDATE rm_auto_scores q SET error = r.error
             FROM rm_scoring_runs r, rm_traces t WHERE r.trace_id=q.trace_id AND t.id=q.trace_id
-            AND r.reward_model_id=$1 AND r.trace_updated_at=t.updated_at AND r.status='failed'
-            AND r.id=(SELECT id FROM rm_scoring_runs WHERE trace_id=q.trace_id AND reward_model_id=$1 ORDER BY created_at DESC LIMIT 1)""",
+            AND r.reward_model_id=$1 AND r.customer_head_id IS NULL AND r.trace_updated_at=t.updated_at AND r.status='failed'
+            AND r.id=(SELECT id FROM rm_scoring_runs WHERE trace_id=q.trace_id AND reward_model_id=$1 AND customer_head_id IS NULL ORDER BY created_at DESC LIMIT 1)""",
             default["id"],
         )
         rows = await pool.fetch(
             """SELECT t.* FROM rm_auto_scores q JOIN rm_traces t ON t.id = q.trace_id
             WHERE q.due_at <= now() AND q.attempts < 3
             AND EXISTS (SELECT 1 FROM rm_trace_steps s WHERE s.trace_id = t.id AND s.role = 'assistant' AND (s.tool_name IS NOT NULL OR btrim(s.content) <> ''))
-            AND NOT EXISTS (SELECT 1 FROM rm_scoring_runs r WHERE r.trace_id = t.id AND r.reward_model_id = $1 AND r.status IN ('queued','running'))
+            AND NOT EXISTS (SELECT 1 FROM rm_scoring_runs r WHERE r.trace_id = t.id AND r.reward_model_id = $1 AND r.customer_head_id IS NULL AND r.status IN ('queued','running'))
             ORDER BY q.due_at LIMIT 50""",
             default["id"],
         )

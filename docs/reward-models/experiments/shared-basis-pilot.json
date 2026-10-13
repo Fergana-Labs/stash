@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-10-12",
+  "scope": "public_development_pilot",
+  "cloud_execution": "Modal A10G; no substantive local training",
+  "artifact_persisted": true,
+  "artifact_storage": "private; not promoted",
+  "model": {
+    "evaluator_kind": "shared_basis_v1",
+    "basis_dimension": 4,
+    "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+    "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+    "encoder": {
+      "base_model": "Skywork/Skywork-Reward-V2-Qwen3-0.6B",
+      "requested_revision": "8c14a4e9e6321deaf572544339b16b8d6bbe8886",
+      "resolved_revision": "8c14a4e9e6321deaf572544339b16b8d6bbe8886",
+      "license": "Apache-2.0",
+      "artifact_sha256": "afcc52cc47df211581883de5632ba57a4abd6efc56486079208f74a34c1fba47",
+      "frozen": true
+    },
+    "fitting_audit": {
+      "fit_pairs": 512,
+      "source_profiles": 3,
+      "heterogeneous_profile_training": true,
+      "source_profile_counts": {
+        "human_rating_criterion:helpfulness": 205,
+        "human_rating_criterion:correctness": 189,
+        "human_rating_criterion:coherence": 118
+      },
+      "source_profiles_balanced": true,
+      "trainable_basis_parameters": 3072,
+      "trainable_default_parameters": 0,
+      "trainable_source_profile_parameters": 12,
+      "projection_changed": true,
+      "fit_steps": 200,
+      "learning_rate": 0.01,
+      "l2": 0.05,
+      "seed": 0,
+      "final_loss": 0.7359261512756348,
+      "semantic_dimensions_validated": false,
+      "pretrained_anchor_preserved": true,
+      "default_is_pretrained_anchor": true,
+      "global_residual_fitted": false,
+      "learned_residual_dimensions": 3,
+      "encoder_parameters": 596050944,
+      "optimized_encoder_parameters": 0,
+      "encoder_frozen": true,
+      "encoder_tensor_versions_unchanged": true,
+      "normalizer_partition": "train",
+      "basis_fit_partition": "train",
+      "evaluation_used_for_fitting": false,
+      "profile_field": "profile_id_or_domain",
+      "customer_field": "explicit_customer_id_only",
+      "workflow_field": "workflow_id_or_domain"
+    },
+    "basis_components": {
+      "pretrained_anchor": {
+        "enabled": true,
+        "feature_index": 0,
+        "head_name": "score",
+        "model_type": "qwen3",
+        "score_mapping": "normalizer_scaled_linear_head_plus_mean_and_bias_offset",
+        "frozen": true
+      },
+      "learned_residual_feature_indices": [
+        1,
+        2,
+        3
+      ],
+      "default_uses_learned_residual": false
+    }
+  },
+  "input_serialization": "skywork_official_chat_template",
+  "metrics": {
+    "evaluator_kind": "shared_basis_v1",
+    "train_pairs": 512,
+    "eval_pairs": 128,
+    "eval_accuracy": 0.765625,
+    "pretrained_eval_accuracy": 0.765625,
+    "paired_wins_over_pretrained": 0,
+    "paired_losses_to_pretrained": 0,
+    "default_is_pretrained_anchor": true,
+    "evaluation_claim_scope": "development_pilot; foundation_training_exposure_unknown",
+    "eval_split": "curated_task_groups",
+    "input_version": 2,
+    "max_length": 1024,
+    "context_policy": "left_truncation",
+    "action_scoring_version": 1,
+    "action_train_pairs": 512,
+    "initial_scored_actions": 0,
+    "final_loss": 0.7359261512756348,
+    "fit_steps": 200,
+    "epochs": null,
+    "device": "cuda",
+    "seconds": 102.5
+  },
+  "data": {
+    "name": "nvidia/HelpSteer2",
+    "revision": "990b2711a36180dd19d9c94b8627844866f8982a",
+    "license": "CC-BY-4.0",
+    "rating_profiles_are_customers": false,
+    "foundation_training_exposure": "unknown"
+  },
+  "claims": {
+    "improved_stash_default": false,
+    "20_30_labels_on_real_customers": false,
+    "reward_hacking_immunity": false,
+    "actual_repository_agent_improvement": false
+  }
+}

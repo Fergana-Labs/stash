@@ -112,7 +112,24 @@ def collect_examples(trace_id: str) -> None:
 
 @celery.task(name="backend.tasks.reward_models.reconcile")
 def reconcile() -> None:
-    run_async(evaluator.reconcile())
+    async def sweep():
+        from ..services.rm import feature_jobs
+
+        await evaluator.reconcile()
+        await feature_jobs.reconcile()
+
+    run_async(sweep())
+
+
+@celery.task(
+    name="backend.tasks.reward_models.compute_customer_features",
+    soft_time_limit=1700,
+    time_limit=1800,
+)
+def compute_customer_features(job_id: str) -> None:
+    from ..services.rm.feature_jobs import run
+
+    run_async(run(UUID(job_id)))
 
 
 @celery.task(name="backend.tasks.reward_models.score_trace")

@@ -367,6 +367,28 @@ async def run_scoring(run_id: UUID) -> None:
     )
     if run is None or run["artifact_key"] is None:
         raise ValueError("Reward model is unavailable")
+    customer_head = None
+    customer_manifest = None
+    if run.get("customer_head_id") is not None:
+        from . import customer_heads
+
+        async with pool.acquire() as conn, conn.transaction():
+            customer_manifest = await customer_heads.basis(conn, run["reward_model_id"])
+            head_row = await customer_heads.checked_head(
+                conn,
+                run["owner_user_id"],
+                run["customer_head_id"],
+                customer_manifest,
+                run["reward_model_id"],
+            )
+            customer_head = customer_heads.worker_head(head_row)
+            trace = await conn.fetchrow(
+                "SELECT updated_at FROM rm_traces WHERE id=$1 AND owner_user_id=$2 FOR SHARE",
+                run["trace_id"],
+                run["owner_user_id"],
+            )
+            if not trace or trace["updated_at"] != run["trace_updated_at"]:
+                raise ValueError("Trace changed before customer scoring; score it again")
     items = await datasets.action_score_items(
         run["owner_user_id"],
         run["trace_id"],
@@ -377,9 +399,10 @@ async def run_scoring(run_id: UUID) -> None:
         items = []
     directory = job_dir(run_id)
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "job.json").write_text(
-        json.dumps({"kind": "score", "reward_model_key": run["artifact_key"]})
-    )
+    job = {"kind": "score", "reward_model_key": run["artifact_key"]}
+    if customer_head is not None:
+        job["customer_head"] = customer_head
+    (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "action_score_items.jsonl", items)
     trace_items = (
         await automatic_dataset.score_items(
@@ -391,7 +414,11 @@ async def run_scoring(run_id: UUID) -> None:
     if not items and not trace_items:
         raise ValueError("Trace has no supported actions or outcome to score")
     _write_jsonl(directory / "score_items.jsonl", trace_items)
-    module = "rm_worker.modal_runner" if run["compute"] == "modal" else "rm_worker.score_run"
+    module = (
+        "rm_worker.modal_runner"
+        if run["compute"] == "modal" or customer_head is not None
+        else "rm_worker.score_run"
+    )
     await scoring_progress.stage(run_id, "starting")
     await run_worker(module, directory)
     await scoring_progress.stage(run_id, "saving")
@@ -399,11 +426,35 @@ async def run_scoring(run_id: UUID) -> None:
     validate_action_scores(items, scores)
     trace_scores = _read_jsonl(directory / "scores.jsonl") if trace_items else []
     validate_trace_scores(trace_items, trace_scores)
+    customer_provenance = None
+    if customer_head is not None:
+        customer_provenance = customer_heads.scoring_provenance(customer_head, customer_manifest)
+        received = json.loads((directory / "result.json").read_text()).get("customer_provenance")
+        if received != customer_provenance:
+            raise ValueError("Customer scoring worker used a different checkpoint or head")
     async with pool.acquire() as conn, conn.transaction():
+        if customer_head is not None:
+            current_manifest = await customer_heads.basis(conn, run["reward_model_id"])
+            current_head = await customer_heads.checked_head(
+                conn,
+                run["owner_user_id"],
+                run["customer_head_id"],
+                current_manifest,
+                run["reward_model_id"],
+            )
+            if customer_heads.worker_head(current_head) != customer_head:
+                raise ValueError("Customer head changed while scoring; score it again")
         # Ingestion locks the trace row while replacing its steps. Lock it through publication.
-        await conn.fetchrow(
-            "SELECT id FROM rm_traces WHERE id = $1 FOR NO KEY UPDATE", run["trace_id"]
+        trace = await conn.fetchrow(
+            "SELECT id,updated_at FROM rm_traces WHERE id=$1 AND owner_user_id=$2 "
+            + ("FOR SHARE" if customer_head is not None else "FOR NO KEY UPDATE"),
+            run["trace_id"],
+            run["owner_user_id"],
         )
+        if customer_head is not None and (
+            not trace or trace["updated_at"] != run["trace_updated_at"]
+        ):
+            raise ValueError("Trace changed while customer scoring; score it again")
         current = await conn.fetch(
             "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
         )
@@ -411,8 +462,24 @@ async def run_scoring(run_id: UUID) -> None:
             trace_items and set(trace_items[0]["step_ids"]) != {str(s["id"]) for s in current}
         ) or not {UUID(item["step_id"]) for item in items} <= {s["id"] for s in current}:
             raise ValueError("Trace changed while scoring; score it again")
-        await store_action_scores(conn, run["owner_user_id"], run["reward_model_id"], scores)
-        if trace_scores:
+        if customer_head is not None:
+            customer_provenance["shared_model_id"] = str(run["reward_model_id"])
+            await conn.execute(
+                "UPDATE rm_scoring_runs SET customer_scores=$2 WHERE id=$1",
+                run_id,
+                {
+                    "actions": scores,
+                    "trace_scores": trace_scores,
+                    "provenance": customer_provenance,
+                    "trace_updated_at": str(run["trace_updated_at"]),
+                    "input_digest": customer_heads.digest(
+                        {"actions": items, "traces": trace_items}
+                    ),
+                },
+            )
+        else:
+            await store_action_scores(conn, run["owner_user_id"], run["reward_model_id"], scores)
+        if trace_scores and customer_head is None:
             await conn.execute(
                 """INSERT INTO rm_trace_scores(reward_model_id,trace_id,score) VALUES($1,$2,$3)
                 ON CONFLICT (reward_model_id,trace_id) DO UPDATE SET score=EXCLUDED.score,created_at=now()""",
@@ -426,10 +493,11 @@ async def run_scoring(run_id: UUID) -> None:
         )
         await conn.execute(
             """DELETE FROM rm_auto_scores q USING rm_traces t, rm_evaluator_registry er
-            WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3""",
+            WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3 AND $4::uuid IS NULL""",
             run["trace_id"],
             run["trace_updated_at"],
             run["reward_model_id"],
+            run["customer_head_id"],
         )
 
 

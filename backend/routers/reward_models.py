@@ -132,7 +132,9 @@ class CreateGepaRunRequest(BaseModel):
 
 
 class ScoreTraceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     reward_model_id: UUID | None = None
+    customer_head_id: UUID | None = None
 
 
 class PlaygroundRequest(BaseModel):
@@ -305,7 +307,14 @@ async def score_trace(
         trace_id,
     ):
         raise HTTPException(status_code=422, detail="Trace has no assistant actions to score")
-    run, created = await evaluator.enqueue_score(owner, trace_id, model_id)
+    try:
+        run, created = await evaluator.enqueue_score(
+            owner, trace_id, model_id, customer_head_id=req.customer_head_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if created:
         try:
             rm_tasks.score_trace.delay(str(run["id"]))
@@ -507,7 +516,7 @@ async def list_reward_models(current_user: dict = Depends(get_current_user)) -> 
 async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_current_user)) -> dict:
     row = await get_pool().fetchrow(
         f"SELECT {REWARD_MODEL_SUMMARY_COLUMNS}, owner_user_id, trace_ids, feedback "
-        "FROM rm_reward_models WHERE owner_user_id = $1 AND id = $2",
+        "FROM rm_reward_models WHERE owner_user_id = $1 AND id = $2 AND scope = 'personal'",
         current_user["id"],
         model_id,
     )
@@ -683,7 +692,7 @@ async def download_reward_model_weights(
 ) -> dict:
     model = await get_pool().fetchrow(
         "SELECT name, artifact_key FROM rm_reward_models "
-        "WHERE owner_user_id = $1 AND id = $2 AND status = 'succeeded'",
+        "WHERE owner_user_id = $1 AND id = $2 AND scope = 'personal' AND status = 'succeeded'",
         current_user["id"],
         model_id,
     )

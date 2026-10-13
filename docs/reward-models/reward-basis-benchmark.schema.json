@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:stash:reward-basis-benchmark:v1",
+  "title": "Reward basis cached-feature benchmark v1",
+  "type": "object",
+  "required": ["schema_version", "dataset_version", "feature_manifest", "comparisons"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "dataset_version": {"type": "string", "minLength": 1},
+    "feature_manifest": {
+      "type": "object",
+      "required": ["basis_dimension", "feature_version", "manifest_digest", "global_weights", "feature_kind", "training_lineage"],
+      "properties": {
+        "basis_dimension": {"type": "integer", "minimum": 1, "maximum": 64},
+        "feature_version": {"type": "string", "minLength": 1},
+        "manifest_digest": {"type": "string", "minLength": 1},
+        "feature_kind": {"enum": ["learned_basis", "synthetic_regression"]},
+        "global_weights": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+        "training_lineage": {
+          "type": "object",
+          "required": ["customer_ids", "workflow_ids", "task_groups", "example_ids"],
+          "properties": {
+            "customer_ids": {"$ref": "#/$defs/stringArray"},
+            "workflow_ids": {"$ref": "#/$defs/stringArray"},
+            "task_groups": {"$ref": "#/$defs/stringArray"},
+            "example_ids": {"$ref": "#/$defs/stringArray"}
+          }
+        }
+      }
+    },
+    "comparisons": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/comparison"}}
+  },
+  "$defs": {
+    "stringArray": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "attempt": {
+      "type": "object",
+      "required": ["attempt_id", "content_sha256", "features", "feature_version", "manifest_digest"],
+      "properties": {
+        "attempt_id": {"type": "string", "minLength": 1},
+        "content_sha256": {"type": "string", "minLength": 1},
+        "features": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+        "feature_version": {"type": "string", "minLength": 1},
+        "manifest_digest": {"type": "string", "minLength": 1}
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["comparison_id", "task_group", "customer_id", "workflow_id", "partition", "a", "b", "label", "label_provenance"],
+      "properties": {
+        "comparison_id": {"type": "string", "minLength": 1},
+        "task_group": {"type": "string", "minLength": 1},
+        "customer_id": {"type": "string", "minLength": 1},
+        "workflow_id": {"type": "string", "minLength": 1},
+        "partition": {"enum": ["train", "dev", "support", "test"]},
+        "a": {"$ref": "#/$defs/attempt"},
+        "b": {"$ref": "#/$defs/attempt"},
+        "label": {"enum": ["a", "b", "tie", "insufficient_evidence"]},
+        "label_provenance": {
+          "type": "object",
+          "required": ["source", "independent", "reference", "synthetic"],
+          "properties": {
+            "source": {"enum": ["human", "executable_oracle"]},
+            "independent": {"const": true},
+            "reference": {"type": "string", "minLength": 1},
+            "synthetic": {"type": "boolean"}
+          }
+        }
+      }
+    }
+  }
+}
