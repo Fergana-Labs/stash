@@ -178,6 +178,14 @@ export const imReview = (id: string, predictionId: string, body: { label?: strin
 
 export const evalAddExamples = (id: string, examples: NewExample[]) => post<Example[]>(`${IM}/${id}/builder/examples`, { examples });
 export const evalAddTrace = (id: string, trace_id: string, label: string, note = "") => post<Example[]>(`${IM}/${id}/builder/trace`, { trace_id, label, note });
+export interface EvalUpdateStatus {
+  revision: number; completed_revision: number; rubric_dirty: boolean;
+  state: "pending" | "queued" | "running" | "idle" | "needs_examples" | "failed";
+  stage: string | null; error: string | null; run_after: string;
+}
+export const evalEnableUpdates = (id: string) => post<EvalUpdateStatus>(`${IM}/${id}/builder/updates`);
+export const evalUpdateStatus = (id: string) => apiFetch<EvalUpdateStatus>(`${IM}/${id}/builder/updates`);
+export const evalRetryUpdate = (id: string) => post<EvalUpdateStatus>(`${IM}/${id}/builder/updates/retry`);
 export const evalPrepare = (id: string) => post<ModelDetail>(`${IM}/${id}/builder/prepare`);
 export function evalReadFile(file: File): Promise<Item> {
   const body = new FormData(); body.set("file", file);

@@ -130,11 +130,11 @@ async def reserve_holdout(owner_id: UUID, model_id: UUID) -> list[dict]:
     return examples
 
 
-async def prepare(owner_id: UUID, model_id: UUID) -> dict:
+async def prepare(owner_id: UUID, model_id: UUID, *, require_holdout: bool = True) -> dict:
     examples = await reserve_holdout(owner_id, model_id)
     train = [e for e in examples if e["split"] == "train" and e["label"] and not e["needs_review"]]
     held = [e for e in examples if e["split"] == "eval" and e["label"] and not e["needs_review"]]
-    if len({e["label"] for e in train}) < 2 or not held:
+    if len({e["label"] for e in train}) < 2 or (require_holdout and not held):
         raise service.Conflict(
             "Add at least three distinct labeled examples, including good and bad outputs. One is reserved to check the eval."
         )

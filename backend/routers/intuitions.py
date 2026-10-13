@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.intuition import builder, demo, providers, service
+from ..services.intuition import builder, demo, providers, service, updates
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -163,6 +163,15 @@ async def read_input(file: UploadFile, user: User):
 
 @router.post("/{model_id}/builder/examples", status_code=201)
 async def builder_examples(model_id: UUID, req: AddExamples, user: User):
+    await checked(
+        updates.request(
+            user["id"],
+            model_id,
+            rubric_dirty=any(
+                e.label is None and e.note == "Reference material" for e in req.examples
+            ),
+        )
+    )
     # The builder owns the split; users do not need to choose this parameter.
     await checked(
         service.add_examples(
@@ -182,6 +191,21 @@ async def builder_examples(model_id: UUID, req: AddExamples, user: User):
     return await checked(builder.reserve_holdout(user["id"], model_id))
 
 
+@router.post("/{model_id}/builder/updates")
+async def enable_updates(model_id: UUID, user: User):
+    return await checked(updates.enable(user["id"], model_id))
+
+
+@router.get("/{model_id}/builder/updates")
+async def update_status(model_id: UUID, user: User):
+    return await checked(updates.status(user["id"], model_id))
+
+
+@router.post("/{model_id}/builder/updates/retry")
+async def retry_updates(model_id: UUID, user: User):
+    return await checked(updates.retry(user["id"], model_id))
+
+
 @router.post("/{model_id}/builder/prepare")
 async def prepare_builder(model_id: UUID, user: User):
     return await checked(builder.prepare(user["id"], model_id))
@@ -195,6 +219,7 @@ class TraceExample(Body):
 
 @router.post("/{model_id}/builder/trace", status_code=201)
 async def trace_example(model_id: UUID, req: TraceExample, user: User):
+    await checked(updates.request(user["id"], model_id))
     await checked(service.get_detail(user["id"], model_id))
     item, notes = await checked(builder.trace_input(user["id"], req.trace_id))
     await checked(
@@ -232,6 +257,11 @@ async def delete(model_id: UUID, user: User):
 
 @router.patch("/{model_id}/draft")
 async def edit_draft(model_id: UUID, req: EditDraft, user: User):
+    await checked(
+        updates.request(
+            user["id"], model_id, rubric_dirty=req.description is not None or req.labels is not None
+        )
+    )
     return await checked(
         service.update_draft(user["id"], model_id, req.model_dump(exclude_none=True))
     )
@@ -297,6 +327,15 @@ async def examples(model_id: UUID, user: User):
 
 @router.post("/{model_id}/examples", status_code=201)
 async def add_examples(model_id: UUID, req: AddExamples, user: User):
+    await checked(
+        updates.request(
+            user["id"],
+            model_id,
+            rubric_dirty=any(
+                e.label is None and e.note == "Reference material" for e in req.examples
+            ),
+        )
+    )
     return await checked(
         service.add_examples(
             user["id"], model_id, [e.model_dump() for e in req.examples], req.source
@@ -311,6 +350,14 @@ async def generate(model_id: UUID, req: Generate, user: User):
 
 @router.patch("/{model_id}/examples/{example_id}")
 async def edit_example(model_id: UUID, example_id: UUID, req: EditExample, user: User):
+    await checked(
+        updates.request(
+            user["id"],
+            model_id,
+            example_id=example_id,
+            rubric_dirty=req.note == "Reference material",
+        )
+    )
     return await checked(
         service.update_example(user["id"], model_id, example_id, req.model_dump(exclude_unset=True))
     )
@@ -318,6 +365,7 @@ async def edit_example(model_id: UUID, example_id: UUID, req: EditExample, user:
 
 @router.delete("/{model_id}/examples/{example_id}", status_code=204)
 async def delete_example(model_id: UUID, example_id: UUID, user: User):
+    await checked(updates.request(user["id"], model_id, example_id=example_id))
     await checked(service.delete_example(user["id"], model_id, example_id))
 
 
@@ -350,6 +398,8 @@ async def predictions(
 
 @router.post("/{model_id}/predictions/{prediction_id}/review")
 async def review(model_id: UUID, prediction_id: UUID, req: Review, user: User):
+    if not req.dismiss:
+        await checked(updates.request(user["id"], model_id))
     return await checked(
         service.review_prediction(
             user["id"],

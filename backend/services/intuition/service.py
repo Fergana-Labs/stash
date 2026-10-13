@@ -113,7 +113,7 @@ def _example(row) -> dict:
 
 
 async def _seeds(version: dict) -> list[dict]:
-    if version.get("seed_snapshot") is not None and version["status"] != "draft":
+    if version.get("seed_snapshot") is not None:
         return version["seed_snapshot"]
     by_id = {e["id"]: e for e in await _examples(version["model_id"], version["seed_example_ids"])}
     return [by_id[i] for i in version["seed_example_ids"] if i in by_id]
@@ -281,7 +281,7 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     await get_pool().execute(
         """UPDATE intuition_versions
               SET description = $2, labels = $3, rubric = $4, seed_example_ids = $5::uuid[],
-                  head = NULL, metrics = NULL, gate = NULL
+                  head = NULL, metrics = NULL, gate = NULL, seed_snapshot = NULL
             WHERE id = $1""",
         draft["id"],
         spec["description"],
@@ -511,7 +511,9 @@ async def _store_answers(
     )
 
 
-async def grade_pending(owner_id: UUID, model_id: UUID, limit: int = GRADE_BATCH) -> dict:
+async def grade_pending(
+    owner_id: UUID, model_id: UUID, limit: int = GRADE_BATCH, *, reviewed_only: bool = False
+) -> dict:
     """Grade up to `limit` items for the draft and the active version; call until remaining is 0."""
     model = await _model(owner_id, model_id)
     versions = [
@@ -522,7 +524,15 @@ async def grade_pending(owner_id: UUID, model_id: UUID, limit: int = GRADE_BATCH
         )
         if v
     ]
-    jobs = await _pending_jobs(model, versions)
+    items = None
+    if reviewed_only:
+        items = [
+            item
+            for example in await _examples(model_id)
+            if example["label"] is not None and not example["needs_review"]
+            for item in _items_of(example)
+        ]
+    jobs = await _pending_jobs(model, versions, items)
     batch = jobs[:limit]
     results = await providers.grade_many(batch)
     errors = []
@@ -579,6 +589,10 @@ async def _rows(model: dict, version: dict) -> tuple[list[dict], int]:
     features = iter(await _features(model["id"], version, items, grade_missing=False))
     rows, missing = [], 0
     seeds = set(version["seed_example_ids"])
+    seed_inputs = {
+        json.dumps(providers.judge_item(_items_of(e)), sort_keys=True)
+        for e in await _seeds(version)
+    }
     for e in examples:
         f = next(features)
         f_b = next(features) if e["kind"] == "pair" else None
@@ -594,7 +608,8 @@ async def _rows(model: dict, version: dict) -> tuple[list[dict], int]:
                 "label": e["label"],
                 "split": e["split"],
                 "source": e["source"],
-                "seed": e["id"] in seeds,
+                "seed": e["id"] in seeds
+                or json.dumps(providers.judge_item(_items_of(e)), sort_keys=True) in seed_inputs,
             }
         )
     return rows, missing
@@ -758,7 +773,13 @@ async def set_head(
     return await _refresh(model, draft, head, (draft["metrics"] or {}).get("fit_options"))
 
 
-async def promote(owner_id: UUID, model_id: UUID, *, force: bool = False) -> dict:
+async def promote(
+    owner_id: UUID,
+    model_id: UUID,
+    *,
+    force: bool = False,
+    expected_update_revision: int | None = None,
+) -> dict:
     model = await _model(owner_id, model_id)
     draft = await _load_version(model["draft_version_id"])
     if draft is None:
@@ -773,6 +794,12 @@ async def promote(owner_id: UUID, model_id: UUID, *, force: bool = False) -> dic
         {k: e[k] for k in ("id", "kind", "item", "item_b", "label")} for e in await _seeds(draft)
     ]
     async with get_pool().acquire() as conn, conn.transaction():
+        if expected_update_revision is not None:
+            current = await conn.fetchval(
+                "SELECT revision FROM intuition_updates WHERE model_id=$1 FOR UPDATE", model_id
+            )
+            if current != expected_update_revision:
+                raise Conflict("Examples changed during calibration; a new update is queued")
         await conn.execute(
             "UPDATE intuition_versions SET status = 'retired' WHERE model_id = $1 AND status = 'active'",
             model_id,

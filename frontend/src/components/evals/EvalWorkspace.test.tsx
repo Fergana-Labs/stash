@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
 
-const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn() }));
+const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalEnableUpdates: vi.fn(), evalUpdateStatus: vi.fn(), evalRetryUpdate: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 vi.mock("./EvalInput", () => ({ default: ({ initialItem, onChange }: { initialItem?: string; onChange: (item: string) => void }) => <textarea aria-label="Example output" defaultValue={initialItem ?? ""} onChange={(event) => onChange(event.target.value)} /> }));
 
@@ -13,9 +13,11 @@ const detail = { model: { id: "eval", name: "Replies", output_type: "choice" }, 
 beforeEach(() => {
   vi.clearAllMocks(); api.imGet.mockResolvedValue(detail); api.imExamples.mockResolvedValue([]);
   api.imGrade.mockResolvedValue({ graded: 5, remaining: 0, failed: 0 });
-  api.imDraftRubric.mockResolvedValue({ rubric: [{ id: "helpful", prompt: "Is it helpful?" }] });
+  api.imDraftRubric.mockResolvedValue({ rubric: [{ id: "helpful", prompt: "Is it helpful?", criteria: { true: "Helpful", false: "Unhelpful" } }] });
   api.imPredictions.mockResolvedValue([]);
   api.imEditDraft.mockResolvedValue(undefined); api.imPromote.mockResolvedValue(detail);
+  api.evalEnableUpdates.mockResolvedValue({ state: "idle", revision: 1, completed_revision: 1 });
+  api.evalUpdateStatus.mockResolvedValue({ state: "idle", revision: 1, completed_revision: 1 });
 });
 
 it("creates an eval from user criteria without trace-training settings", async () => {
@@ -29,27 +31,8 @@ it("creates an eval from user criteria without trace-training settings", async (
   expect(screen.queryByRole("combobox", { name: /Base model|Epochs/ })).not.toBeInTheDocument();
 });
 
-it("prepares the held-out split before drafting criteria and fits only calibration data", async () => {
-  render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  await waitFor(() => expect(api.imFit).toHaveBeenCalledWith("eval", { train_on: "train", calibrate: true }));
-  expect(api.evalPrepare.mock.invocationCallOrder[0]).toBeLessThan(api.imDraftRubric.mock.invocationCallOrder[0]);
-  expect(api.imGrade.mock.invocationCallOrder[0]).toBeLessThan(api.imFit.mock.invocationCallOrder[0]);
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
-  expect(api.imFit.mock.invocationCallOrder[0]).toBeLessThan(api.imPromote.mock.invocationCallOrder[0]);
-  expect(api.imDraftRubric).toHaveBeenCalledWith("eval", {});
-});
-
-it("shows failed grading and does not calibrate or activate partial results", async () => {
-  api.imGrade.mockResolvedValue({ graded: 2, remaining: 1, failed: 1, errors: ["Judge unavailable"] });
-  render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Judge unavailable");
-  expect(api.imFit).not.toHaveBeenCalled(); expect(api.imPromote).not.toHaveBeenCalled();
-});
-
 it("keeps limited-data checks visible without a separate activation step", async () => {
-  api.imGet.mockResolvedValue({ ...detail, draft: null, active: { ...version, id: "active", status: "active", head: {}, head_stale: false, rubric: [{ id: "helpful", prompt: "Is it helpful?" }], metrics: { eval: { n: 1, accuracy: 0, rows: [{ example_id: "held", label: "good", predicted: "bad", p_true: 0.3 }] } }, gate: { passed: false, checks: [{ name: "held_out_size", passed: false, detail: "1 held-out example; need 4" }] } } });
+  api.imGet.mockResolvedValue({ ...detail, draft: null, active: { ...version, id: "active", status: "active", head: {}, head_stale: false, rubric: [{ id: "helpful", prompt: "Is it helpful?", criteria: { true: "Helpful", false: "Unhelpful" } }], metrics: { eval: { n: 1, accuracy: 0, rows: [{ example_id: "held", label: "good", predicted: "bad", p_true: 0.3 }] } }, gate: { passed: false, checks: [{ name: "held_out_size", passed: false, detail: "1 held-out example; need 4" }] } } });
   api.imExamples.mockResolvedValue([{ id: "held", item: "A held-out slide", label: "good", split: "eval", note: "" }]);
   render(<EvalWorkspace id="eval" />);
   expect(await screen.findByText("0 of 1 labels matched")).toBeVisible();
@@ -57,12 +40,14 @@ it("keeps limited-data checks visible without a separate activation step", async
   const checks = screen.getByRole("region", { name: "Held-out checks" });
   expect(within(checks).getByText("Limited data")).toBeVisible();
   expect(within(checks).queryByText("Is it helpful?")).not.toBeInTheDocument();
-  expect(within(screen.getByRole("region", { name: "Evaluation criteria" })).getByText("Is it helpful?")).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Evaluation criteria" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Implementation" }));
+  expect(within(screen.getByRole("region", { name: "Evaluation criteria" })).getByText(/Is it helpful\?/)).toBeVisible();
+  expect(screen.getByText("Helpful", { exact: true })).toBeVisible();
+  expect(screen.getByText("Unhelpful", { exact: true })).toBeVisible();
   expect(screen.queryByRole("button", { name: /Activate/ })).not.toBeInTheDocument();
   expect(screen.queryByText("Draft")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
-  expect(await screen.findByRole("status", { name: "Save status" })).toHaveTextContent("Eval saved");
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 });
 
 it("logs test calls through the prediction API and saves human corrections", async () => {
@@ -77,7 +62,7 @@ it("logs test calls through the prediction API and saves human corrections", asy
   fireEvent.change(screen.getByRole("textbox", { name: "Score correction feedback" }), { target: { value: "Too vague" } });
   fireEvent.click(screen.getByRole("button", { name: "Mark bad" }));
   await waitFor(() => expect(api.imReview).toHaveBeenCalledWith("eval", "call", { label: "bad", note: "Too vague" }));
-  expect(await screen.findByText("Correction added. Save the eval to include it.")).toBeVisible();
+  expect(await screen.findByText("Correction added. The eval will update automatically.")).toBeVisible();
 });
 
 
@@ -172,40 +157,6 @@ it("keeps failed submissions editable and clears canceled input", async () => {
 });
 
 
-it("shows immediate progress beside the build button, hides old results, then offers a test action", async () => {
-  api.imGet.mockResolvedValue({ ...detail, draft: null, active: { ...version, id: "active", status: "active", head: {}, head_stale: false, metrics: { eval: { n: 1, accuracy: 1, rows: [] } } } });
-  let finishDraft!: (value: unknown) => void;
-  api.imDraftRubric.mockReturnValueOnce(new Promise((resolve) => { finishDraft = resolve; }));
-  render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  expect(screen.queryByText("1 of 1 labels matched")).not.toBeInTheDocument();
-  const running = screen.getByRole("button", { name: "Saving…" });
-  expect(running).toBeDisabled();
-  expect(await screen.findByRole("status", { name: "Save status" })).toHaveTextContent("Creating evaluation criteria");
-  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
-  await act(async () => { finishDraft({ rubric: [{ id: "helpful", prompt: "Is it helpful?" }] }); });
-  expect(await screen.findByRole("button", { name: "Open sandbox" })).toBeVisible();
-  expect(screen.getByRole("status", { name: "Save status" })).toHaveTextContent("Eval saved");
-  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "4");
-  fireEvent.click(screen.getByRole("button", { name: "Open sandbox" }));
-  expect(screen.getByRole("button", { name: "Run eval" })).toBeVisible();
-});
-
-it("shows a failed build at the button and makes retry available without fitting partial grades", async () => {
-  api.imGrade.mockResolvedValueOnce({ graded: 1, remaining: 1, failed: 1, errors: ["Judge unavailable"] });
-  render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("button", { name: "Save" })).toBeEnabled();
-  expect(screen.getByRole("status", { name: "Save status" })).toHaveTextContent("Could not save the eval");
-  expect(screen.getByRole("alert")).toHaveTextContent("Judge unavailable");
-  expect(api.imFit).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "Open sandbox" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("button", { name: "Open sandbox" })).toBeVisible();
-  expect(api.imFit).toHaveBeenCalledOnce();
-});
-
-
 it("opens a compact example row for feedback and tests the selected content", async () => {
   api.imGet.mockResolvedValue({ ...detail, draft: null, active: { ...version, id: "active", status: "active", head: {}, head_stale: false } });
   api.imExamples.mockResolvedValue([{ id: "row", item: "A concrete next step", label: "good", note: "Useful", split: "train" }]);
@@ -214,7 +165,7 @@ it("opens a compact example row for feedback and tests the selected content", as
   fireEvent.click(await screen.findByRole("button", { name: "Inspect example 1" }));
   const form = within(await screen.findByRole("region", { name: "Example 1" }));
   fireEvent.change(form.getByRole("textbox", { name: "Feedback for example row" }), { target: { value: "Use a concrete timeline" } });
-  fireEvent.click(form.getByRole("button", { name: "Save feedback" }));
+  fireEvent.blur(form.getByRole("textbox", { name: "Feedback for example row" }));
   await waitFor(() => expect(api.imEditExample).toHaveBeenCalledWith("eval", "row", { note: "Use a concrete timeline" }));
   await waitFor(() => expect(form.getByRole("button", { name: "Open in sandbox" })).toBeEnabled());
   fireEvent.click(form.getByRole("button", { name: "Open in sandbox" }));
@@ -246,51 +197,66 @@ it("expands details directly after a clicked row and collapses on a second click
 });
 
 
-it("saves the latest instructions only when Save is clicked and applies them after successful scoring", async () => {
+it("autosaves instructions without a manual save or training trigger", async () => {
   render(<EvalWorkspace id="eval" />);
   const field = await screen.findByRole("textbox", { name: "Eval instructions" });
   fireEvent.change(field, { target: { value: "Latest instructions" } });
-  fireEvent.blur(field);
   expect(api.imEditDraft).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "Save instructions" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
-  expect(api.imEditDraft).toHaveBeenNthCalledWith(1, "eval", { description: "Latest instructions" });
-  expect(api.imEditDraft.mock.invocationCallOrder[0]).toBeLessThan(api.evalPrepare.mock.invocationCallOrder[0]);
-  expect(api.imFit.mock.invocationCallOrder[0]).toBeLessThan(api.imPromote.mock.invocationCallOrder[0]);
+  await waitFor(() => expect(api.imEditDraft).toHaveBeenCalledWith("eval", { description: "Latest instructions" }));
+  expect(api.evalEnableUpdates).toHaveBeenCalledWith("eval");
+  expect(api.imFit).not.toHaveBeenCalled();
+  expect(api.imPromote).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 });
 
-it("keeps failed saves retryable without reporting success", async () => {
-  api.imPromote.mockRejectedValueOnce(new Error("Could not persist eval"));
+it("shows scheduled progress and a failed update with retry", async () => {
+  api.evalEnableUpdates.mockResolvedValue({ state: "failed", revision: 2, completed_revision: 1, error: "Judge unavailable" });
+  api.evalRetryUpdate.mockResolvedValue({ state: "pending", revision: 3, completed_revision: 1 });
   render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Could not persist eval");
-  expect(screen.getByRole("status", { name: "Save status" })).toHaveTextContent("Could not save the eval");
-  expect(screen.queryByRole("button", { name: "Open sandbox" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("button", { name: "Open sandbox" })).toBeVisible();
-  expect(screen.getByRole("status", { name: "Save status" })).toHaveTextContent("Eval saved");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Judge unavailable");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.getByRole("status", { name: "Eval update status" })).toHaveTextContent("Update scheduled"));
+  expect(api.evalRetryUpdate).toHaveBeenCalledWith("eval");
 });
 
-it("tests the saved evaluator even while edits exist, and uses the updated one after Save", async () => {
-  const active = { ...version, id: "active", status: "active", head: {}, head_stale: false };
-  const edited = { ...version, number: 2, head: {}, head_stale: false };
-  const current = { ...detail, active, draft: edited };
-  api.imGet.mockResolvedValue(current);
-  api.imPromote.mockImplementation(async () => {
-    api.imGet.mockResolvedValue({ ...detail, active: { ...edited, id: "updated", status: "active" }, draft: null });
-  });
-  api.imPredict.mockResolvedValue({ label: "good", confidence: 0.9, probabilities: { good: 0.9, bad: 0.1 }, version: 1, rubric: {} });
+
+it("refreshes implementation after the background update completes", async () => {
+  const first = { ...detail, draft: null, active: { ...version, head: {}, head_stale: false, rubric: [{ id: "help", prompt: "Old criterion", criteria: { true: "Yes", false: "No" } }] } };
+  api.imGet.mockResolvedValue(first);
   render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Sandbox" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Example output" }), { target: { value: "A reply" } });
-  fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
-  expect(await screen.findByText("90% confidence · v1")).toBeVisible();
-  expect(api.imPredict).toHaveBeenLastCalledWith("eval", "A reply", "active");
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("button", { name: "Open sandbox" })).toBeVisible();
-  api.imPredict.mockResolvedValue({ label: "good", confidence: 0.9, probabilities: { good: 0.9, bad: 0.1 }, version: 2, rubric: {} });
-  fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
-  expect(await screen.findByText("90% confidence · v2")).toBeVisible();
-  expect(api.imPredict).toHaveBeenLastCalledWith("eval", "A reply", "active");
+  fireEvent.click(await screen.findByRole("button", { name: "Implementation" }));
+  expect(screen.getByText(/Old criterion/)).toBeVisible();
+  api.imGet.mockResolvedValue({ ...first, active: { ...first.active, rubric: [{ id: "help", prompt: "Updated criterion", criteria: { true: "Yes", false: "No" } }] } });
+  api.evalUpdateStatus.mockResolvedValue({ state: "idle", revision: 2, completed_revision: 2 });
+  expect(await screen.findByText(/Updated criterion/, {}, { timeout: 4500 })).toBeVisible();
+  expect(api.imGet).toHaveBeenCalledTimes(2);
+});
+
+it("retains failed instruction edits and retries the same text", async () => {
+  api.imEditDraft.mockRejectedValueOnce(new Error("Cannot persist changes")).mockResolvedValue(undefined);
+  render(<EvalWorkspace id="eval" />);
+  const field = await screen.findByRole("textbox", { name: "Eval instructions" });
+  fireEvent.change(field, { target: { value: "Keep this text" } });
+  fireEvent.blur(field);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Cannot persist changes");
+  expect(field).toHaveValue("Keep this text");
+  fireEvent.click(screen.getByRole("button", { name: "Retry changes" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(api.imEditDraft).toHaveBeenLastCalledWith("eval", { description: "Keep this text" });
+});
+
+
+it("autosaves example feedback and retains changes on failure", async () => {
+  api.imExamples.mockResolvedValue([{ id: "example", item: "A reply", label: "good", split: "train", note: "Original" }]);
+  api.imEditExample.mockRejectedValueOnce(new Error("Could not save feedback")).mockResolvedValue(undefined);
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Inspect example 1" }));
+  const field = screen.getByRole("textbox", { name: "Feedback for example example" });
+  fireEvent.change(field, { target: { value: "More precise feedback" } });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not save feedback");
+  expect(field).toHaveValue("More precise feedback");
+  fireEvent.click(screen.getByRole("button", { name: "Retry feedback" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(api.imEditExample).toHaveBeenLastCalledWith("eval", "example", { note: "More precise feedback" });
+  expect(screen.queryByRole("button", { name: "Save feedback" })).not.toBeInTheDocument();
 });
