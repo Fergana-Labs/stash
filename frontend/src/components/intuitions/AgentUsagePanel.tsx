@@ -12,7 +12,7 @@ function shellQuote(text: string): string {
   return text.replace(/'/g, "'\\''");
 }
 
-export default function AgentUsagePanel({ modelId, outputType, sample, models, onModelChange, standalone = false }: { modelId: string; outputType: OutputType; sample: Item; models?: { value: string; label: string }[]; onModelChange?: (id: string) => void; standalone?: boolean }) {
+export default function AgentUsagePanel({ modelId, outputType, sample, models, onModelChange, standalone = false, showDescription = true }: { modelId: string; outputType: OutputType; sample: Item; models?: { value: string; label: string }[]; onModelChange?: (id: string) => void; standalone?: boolean; showDescription?: boolean }) {
   const [origin, setOrigin] = useState("https://your-stash-host");
   const [example, setExample] = useState("curl");
   const [copiedText, setCopiedText] = useState("");
@@ -40,7 +40,7 @@ export default function AgentUsagePanel({ modelId, outputType, sample, models, o
   const content = (
       <div className="pb-5">
         {models && onModelChange && <Select aria-label="Connected eval" value={modelId} onChange={onModelChange} options={models} className="mb-3 h-8 max-w-xs px-3 text-xs" />}
-        <p className="mb-3 text-xs text-muted-foreground">Use this eval to grade a completed run, check a proposed action as a guardrail, or verify an output before returning it. Every prediction is logged for review and correction.</p>
+        {showDescription && <p className="mb-3 text-xs text-muted-foreground">Use this eval to grade a completed run, check a proposed action as a guardrail, or verify an output before returning it. Every prediction is logged for review and correction.</p>}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2 text-xs">
             <span className="font-medium text-success">{example === "mcp" ? "TOOL" : "POST"}</span>

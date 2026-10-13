@@ -15,7 +15,7 @@ it("opens the dedicated eval page from the whole row and provides a keyboard-acc
   render(<EvalsPage />);
   const link = await screen.findByRole("link", { name: "Replies" });
   expect(link).toHaveAttribute("href", "/reward-models/evals/reply-eval");
-  fireEvent.click(screen.getByRole("cell", { name: "Ready · v2" }));
+  fireEvent.click(screen.getByRole("cell", { name: "Saved" }));
   expect(api.push).toHaveBeenCalledWith("/reward-models/evals/reply-eval");
   expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   expect(screen.queryByRole("region")).not.toBeInTheDocument();
