@@ -222,6 +222,7 @@ async def test_rejected_grant_is_actionable_and_does_not_page(client, pool, monk
         (429, "mcp.posthog.com", "/mcp", {}, False),
         (503, "mcp.posthog.com", "/mcp", {}, False),
         (400, "oauth2.googleapis.com", "/token", ["invalid_grant"], False),
+        (403, "www.googleapis.com", "/drive/v3/drives", {"error": {"errors": None}}, False),
     ],
 )
 def test_access_error_classification(status, host, path, payload, actionable):

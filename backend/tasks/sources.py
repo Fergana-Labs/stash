@@ -73,12 +73,12 @@ def _setup_error(exc: Exception) -> str | None:
         if exc.request.url.host == "mcp.posthog.com":
             return "PostHog access was denied. Check project permissions and reconnect in Settings."
         if exc.request.url.host in ("www.googleapis.com", "gmail.googleapis.com"):
-            reasons = (
-                {item.get("reason") for item in error.get("errors", []) if isinstance(item, dict)}
-                if isinstance(error, dict)
-                else set()
-            )
-            if reasons & {"insufficientPermissions", "authError", "forbidden"}:
+            errors = error.get("errors") if isinstance(error, dict) else None
+            if isinstance(errors, list) and any(
+                isinstance(item, dict)
+                and item.get("reason") in ("insufficientPermissions", "authError", "forbidden")
+                for item in errors
+            ):
                 return "Google access was denied. Check permissions and reconnect in Settings."
     return None
 
