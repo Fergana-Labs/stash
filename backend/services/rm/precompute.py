@@ -36,11 +36,9 @@ async def schedule() -> None:
                         AND (m.metrics->>'trace_scoring_version'='1' OR coalesce(m.metrics->>'input_version','1')<>'3'
                             OR coalesce(s.metadata->>'thinking','false')<>'true'))
                     AND NOT EXISTS (SELECT 1 FROM rm_scoring_runs r WHERE r.trace_id=t.id AND r.reward_model_id=m.id
-                        AND r.customer_head_id IS NULL
                         AND (r.status IN ('queued','running') OR (r.status='succeeded'
                             AND r.trace_updated_at=t.updated_at AND r.model_finished_at=m.finished_at)))
                     AND (SELECT count(*) FROM rm_scoring_runs r WHERE r.trace_id=t.id AND r.reward_model_id=m.id
-                        AND r.customer_head_id IS NULL
                         AND r.automatic AND r.status='failed' AND r.trace_updated_at=t.updated_at
                         AND r.created_at>=m.finished_at) < $1
                 ), next_model AS (
@@ -68,8 +66,7 @@ async def schedule() -> None:
                     """INSERT INTO rm_scoring_runs(owner_user_id,trace_id,reward_model_id,automatic,trace_updated_at,batch_id,model_finished_at)
                     SELECT $1,t.id,$3,true,t.updated_at,$4,m.finished_at FROM rm_traces t
                     JOIN rm_reward_models m ON m.id=$3 WHERE t.id=$2 AND t.owner_user_id=$1
-                    ON CONFLICT(trace_id,reward_model_id,
-                        (coalesce(customer_head_id,'00000000-0000-0000-0000-000000000000'::uuid)))
+                    ON CONFLICT(trace_id,reward_model_id)
                     WHERE status IN ('queued','running') DO NOTHING RETURNING id""",
                     trace["owner_user_id"],
                     trace["trace_id"],

@@ -39,7 +39,7 @@ async def score(batch_id: str) -> None:
             await precompute.fail(bid, "Reward model is unavailable for background scoring")
             return
         runs = await pool.fetch(
-            """SELECT r.id,r.model_finished_at,r.customer_head_id FROM rm_scoring_runs r JOIN rm_traces t ON t.id=r.trace_id
+            """SELECT r.id,r.model_finished_at FROM rm_scoring_runs r JOIN rm_traces t ON t.id=r.trace_id
             WHERE r.batch_id=$1 AND r.owner_user_id=$2 AND t.owner_user_id=$2
             AND r.reward_model_id=$3 AND r.status='queued' ORDER BY r.created_at,r.id""",
             bid,
@@ -48,8 +48,6 @@ async def score(batch_id: str) -> None:
         )
         if len(runs) > precompute.TRACES_PER_BATCH:
             raise ValueError("Background scoring batch exceeds its trace limit")
-        if any(run["customer_head_id"] is not None for run in runs):
-            raise ValueError("Customer heads cannot use default background scoring batches")
         if any(run["model_finished_at"] != model["finished_at"] for run in runs):
             raise ValueError("Reward model checkpoint changed before background scoring")
         if not runs:
@@ -99,7 +97,7 @@ async def score(batch_id: str) -> None:
                 # served next by the already-warm checkpoint, not last in line.
                 run_id = await pool.fetchval(
                     """SELECT id FROM rm_scoring_runs WHERE batch_id=$1 AND owner_user_id=$2
-                    AND reward_model_id=$3 AND customer_head_id IS NULL AND status='queued'
+                    AND reward_model_id=$3 AND status='queued'
                     ORDER BY requested_at NULLS LAST,created_at,id LIMIT 1""",
                     bid,
                     model["owner_user_id"],
@@ -109,7 +107,7 @@ async def score(batch_id: str) -> None:
                     break
                 claimed = await pool.fetchval(
                     """UPDATE rm_scoring_runs r SET status='running',started_at=now()
-                    WHERE r.id=$1 AND r.customer_head_id IS NULL AND r.status='queued' AND EXISTS
+                    WHERE r.id=$1 AND r.status='queued' AND EXISTS
                     (SELECT 1 FROM rm_scoring_batches b WHERE b.id=r.batch_id AND b.status='running') RETURNING r.id""",
                     run_id,
                 )

@@ -33,22 +33,37 @@ def upgrade():
     op.execute(
         "CREATE INDEX rm_customer_feature_jobs_queue ON rm_customer_feature_jobs(status,created_at)"
     )
-    op.execute("""ALTER TABLE rm_scoring_runs
-        ADD COLUMN customer_head_id uuid REFERENCES rm_customer_heads(id) ON DELETE CASCADE,
-        ADD COLUMN customer_scores jsonb""")
-    op.execute("DROP INDEX rm_scoring_runs_active")
-    op.execute("""CREATE UNIQUE INDEX rm_scoring_runs_active ON rm_scoring_runs
-        (trace_id,reward_model_id,(coalesce(customer_head_id,'00000000-0000-0000-0000-000000000000'::uuid)))
+    # Keep the default table and its two-column conflict target intact. An old
+    # API or worker can remain live during this additive migration without
+    # seeing private jobs or losing its original unique-index inference.
+    op.execute("""CREATE TABLE rm_customer_scoring_runs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        trace_id uuid NOT NULL REFERENCES rm_traces(id) ON DELETE CASCADE,
+        reward_model_id uuid NOT NULL REFERENCES rm_reward_models(id) ON DELETE CASCADE,
+        customer_head_id uuid NOT NULL REFERENCES rm_customer_heads(id) ON DELETE CASCADE,
+        trace_updated_at timestamptz NOT NULL,
+        model_finished_at timestamptz NOT NULL,
+        status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','failed')),
+        error text,
+        progress jsonb,
+        customer_scores jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        started_at timestamptz,
+        dispatched_at timestamptz,
+        finished_at timestamptz
+    )""")
+    op.execute("""CREATE UNIQUE INDEX rm_customer_scoring_runs_active ON rm_customer_scoring_runs
+        (trace_id,reward_model_id,customer_head_id)
         WHERE status IN ('queued','running')""")
+    op.execute(
+        "CREATE INDEX rm_customer_scoring_runs_queue ON rm_customer_scoring_runs(status,created_at)"
+    )
+    op.execute(
+        "CREATE INDEX rm_customer_scoring_runs_trace ON rm_customer_scoring_runs(trace_id,created_at DESC)"
+    )
 
 
 def downgrade():
+    op.execute("DROP TABLE rm_customer_scoring_runs")
     op.execute("DROP TABLE rm_customer_feature_jobs")
-    # The old schema cannot represent personalized runs without colliding with defaults.
-    op.execute("DELETE FROM rm_scoring_runs WHERE customer_head_id IS NOT NULL")
-    op.execute("DROP INDEX rm_scoring_runs_active")
-    op.execute(
-        "ALTER TABLE rm_scoring_runs DROP COLUMN customer_head_id,DROP COLUMN customer_scores"
-    )
-    op.execute("""CREATE UNIQUE INDEX rm_scoring_runs_active ON rm_scoring_runs
-        (trace_id,reward_model_id) WHERE status IN ('queued','running')""")

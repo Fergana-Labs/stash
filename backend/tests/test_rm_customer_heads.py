@@ -351,8 +351,9 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     head = await heads.fit(owner, model_id, "customer", [pair_id], 0.1)
     second = await heads.fit(owner, model_id, "another", [], 1)
     [trace_id] = await _import(client, auth, REFUND_TRACE)
-    dispatched = []
-    monkeypatch.setattr(tasks.score_trace, "delay", dispatched.append)
+    default_dispatched, private_dispatched = [], []
+    monkeypatch.setattr(tasks.score_trace, "delay", default_dispatched.append)
+    monkeypatch.setattr(tasks.compute_customer_score, "delay", private_dispatched.append)
     url = f"/api/v1/rm/traces/{trace_id}/score"
     body = {"reward_model_id": str(model_id), "customer_head_id": str(head["id"])}
     private = await client.post(url, headers=auth, json=body)
@@ -364,7 +365,19 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     )
     default = await client.post(url, headers=auth, json={"reward_model_id": str(model_id)})
     assert len({private.json()["id"], alternative.json()["id"], default.json()["id"]}) == 3
-    assert len(dispatched) == 3
+    assert default_dispatched == [default.json()["id"]]
+    assert private_dispatched == [private.json()["id"], alternative.json()["id"]]
+    assert await get_pool().fetchval("SELECT count(*) FROM rm_scoring_runs") == 1
+    assert await get_pool().fetchval("SELECT count(*) FROM rm_customer_scoring_runs") == 2
+    assert not await get_pool().fetchval(
+        "SELECT 1 FROM rm_scoring_runs WHERE id=$1", UUID(private.json()["id"])
+    )
+    assert not await get_pool().fetchval(
+        "SELECT 1 FROM rm_customer_scoring_runs WHERE id=$1", UUID(default.json()["id"])
+    )
+    assert (
+        await client.get(f"{URL}/scoring-runs/{default.json()['id']}", headers=auth)
+    ).status_code == 404
     await get_pool().execute(
         """INSERT INTO rm_evaluator_registry(singleton,model_id,revision) VALUES(true,$1,1)
         ON CONFLICT(singleton) DO UPDATE SET model_id=$1,revision=1""",
@@ -402,7 +415,7 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     await get_pool().execute(
         "INSERT INTO rm_auto_scores(trace_id) VALUES($1) ON CONFLICT DO NOTHING", UUID(trace_id)
     )
-    await tasks.score_trace_async(UUID(private.json()["id"]))
+    await tasks.compute_customer_score_async(UUID(private.json()["id"]))
     assert (
         await get_pool().fetch("SELECT step_id,score,credit FROM rm_action_scores ORDER BY step_id")
         == shared_before
@@ -439,7 +452,7 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     assert latest_private.json()["id"] != default.json()["id"]
     repeated_default = await client.post(url, headers=auth, json={"reward_model_id": str(model_id)})
     assert repeated_default.json()["id"] == default.json()["id"]
-    assert repeated_default.json()["customer_head_id"] is None
+    assert repeated_default.json().get("customer_head_id") is None
     # The legacy default-score panel must not pick a newer personalized run.
     trace_detail = await _detail(client, auth, trace_id)
     assert [r["id"] for r in trace_detail["scoring_runs"]] == [default.json()["id"]]
@@ -447,6 +460,47 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     assert (
         await client.get(f"{URL}/scoring-runs/{private.json()['id']}", headers=auth)
     ).status_code == 422
+
+
+async def test_default_and_private_workers_cannot_claim_each_others_runs(client, monkeypatch):
+    auth, _, owner, model_id, _ = await setup(client)
+    head = await heads.fit(owner, model_id, "zero", [])
+    [trace_id] = await _import(client, auth, REFUND_TRACE)
+    monkeypatch.setattr(tasks.score_trace, "delay", lambda *a: None)
+    monkeypatch.setattr(tasks.compute_customer_score, "delay", lambda *a: None)
+    url = f"/api/v1/rm/traces/{trace_id}/score"
+    default = await client.post(url, headers=auth, json={"reward_model_id": str(model_id)})
+    private = await client.post(
+        url,
+        headers=auth,
+        json={"reward_model_id": str(model_id), "customer_head_id": str(head["id"])},
+    )
+    assert default.status_code == private.status_code == 202
+
+    async def unexpected_worker(*args):
+        pytest.fail("A worker must not launch inference for a run in the other table")
+
+    monkeypatch.setattr(jobs, "run_worker", unexpected_worker)
+    # A stale/default worker cannot pick up a private row. The new private
+    # handler likewise cannot claim or change a durable default scoring run.
+    await tasks.score_trace_async(UUID(private.json()["id"]))
+    await tasks.compute_customer_score_async(UUID(default.json()["id"]))
+    assert (
+        await get_pool().fetchval(
+            "SELECT status FROM rm_scoring_runs WHERE id=$1", UUID(default.json()["id"])
+        )
+        == "queued"
+    )
+    assert (
+        await get_pool().fetchval(
+            "SELECT status FROM rm_customer_scoring_runs WHERE id=$1", UUID(private.json()["id"])
+        )
+        == "queued"
+    )
+    assert await get_pool().fetchval("SELECT count(*) FROM rm_scoring_runs") == 1
+    assert await get_pool().fetchval("SELECT count(*) FROM rm_customer_scoring_runs") == 1
+    assert not await get_pool().fetchval("SELECT 1 FROM rm_action_scores")
+    assert not await get_pool().fetchval("SELECT 1 FROM rm_trace_scores")
 
 
 @pytest.mark.parametrize("mutation", ["feedback", "trace", "checkpoint", "worker_pin"])
@@ -457,7 +511,7 @@ async def test_customer_trace_scoring_rechecks_sources_at_publication(
     await heads.label_pair(owner, pair_id, "a")
     head = await heads.fit(owner, model_id, "customer", [pair_id], 0.1)
     [trace_id] = await _import(client, auth, REFUND_TRACE)
-    monkeypatch.setattr(tasks.score_trace, "delay", lambda *a: None)
+    monkeypatch.setattr(tasks.compute_customer_score, "delay", lambda *a: None)
     response = await client.post(
         f"/api/v1/rm/traces/{trace_id}/score",
         headers=auth,
@@ -484,9 +538,9 @@ async def test_customer_trace_scoring_rechecks_sources_at_publication(
 
     monkeypatch.setattr(jobs, "run_worker", worker)
     with pytest.raises(ValueError):
-        await tasks.score_trace_async(run_id)
+        await tasks.compute_customer_score_async(run_id)
     row = await get_pool().fetchrow(
-        "SELECT status,customer_scores FROM rm_scoring_runs WHERE id=$1", run_id
+        "SELECT status,customer_scores FROM rm_customer_scoring_runs WHERE id=$1", run_id
     )
     assert row["status"] == "failed" and row["customer_scores"] is None
     assert not await get_pool().fetchval("SELECT 1 FROM rm_action_scores")
@@ -496,7 +550,7 @@ async def test_private_trace_scoring_rejects_other_owners_heads(client, monkeypa
     auth, other, owner, model_id, pair_id = await setup(client)
     head = await heads.fit(owner, model_id, "zero", [])
     [trace_id] = await _import(client, other, REFUND_TRACE)
-    monkeypatch.setattr(tasks.score_trace, "delay", lambda *a: None)
+    monkeypatch.setattr(tasks.compute_customer_score, "delay", lambda *a: None)
     response = await client.post(
         f"/api/v1/rm/traces/{trace_id}/score",
         headers=other,
@@ -504,6 +558,7 @@ async def test_private_trace_scoring_rejects_other_owners_heads(client, monkeypa
     )
     assert response.status_code == 404
     assert not await get_pool().fetchval("SELECT 1 FROM rm_scoring_runs")
+    assert not await get_pool().fetchval("SELECT 1 FROM rm_customer_scoring_runs")
     response = await client.post(
         f"/api/v1/rm/traces/{trace_id}/score",
         headers=other,

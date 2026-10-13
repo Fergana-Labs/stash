@@ -89,6 +89,16 @@ async def score_trace_async(run_id: UUID) -> None:
     await _run_tracked("rm_scoring_runs", run_id, jobs.run_scoring)
 
 
+async def compute_customer_score_async(run_id: UUID) -> None:
+    claimed = await get_pool().fetchval(
+        """UPDATE rm_customer_scoring_runs SET status='running',started_at=now()
+        WHERE id=$1 AND status='queued' RETURNING id""",
+        run_id,
+    )
+    if claimed is not None:
+        await _run_tracked("rm_customer_scoring_runs", run_id, jobs.run_customer_scoring)
+
+
 async def score_batch_async(batch_id: UUID) -> None:
     pool = get_pool()
     claimed = await pool.fetchval(
@@ -140,6 +150,7 @@ def reconcile() -> None:
 
         await evaluator.reconcile()
         await feature_jobs.reconcile()
+        await evaluator.reconcile_customer_scores()
 
     run_async(sweep())
 
@@ -153,6 +164,15 @@ def compute_customer_features(job_id: str) -> None:
     from ..services.rm.feature_jobs import run
 
     run_async(run(UUID(job_id)))
+
+
+@celery.task(
+    name="backend.tasks.reward_models.compute_customer_score",
+    soft_time_limit=1700,
+    time_limit=1800,
+)
+def compute_customer_score(run_id: str) -> None:
+    run_async(compute_customer_score_async(UUID(run_id)))
 
 
 @celery.task(name="backend.tasks.reward_models.score_trace")

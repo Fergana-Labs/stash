@@ -66,8 +66,13 @@ async def run_worker(module: str, directory: Path) -> None:
             if job["kind"] == "train":
                 returncode = await training_progress.watch(process, log_path, UUID(directory.name))
             elif job["kind"] == "score":
+                save_progress = (
+                    scoring_progress.save_customer
+                    if job.get("customer_head") is not None
+                    else scoring_progress.save
+                )
                 returncode = await training_progress.watch(
-                    process, log_path, UUID(directory.name), save_progress=scoring_progress.save
+                    process, log_path, UUID(directory.name), save_progress=save_progress
                 )
             else:
                 returncode = await process.wait()
@@ -353,13 +358,22 @@ async def store_action_scores(
     )
 
 
-async def run_scoring(run_id: UUID, *, worker=None) -> None:
+async def run_customer_scoring(run_id: UUID) -> None:
+    await run_scoring(run_id, customer=True)
+
+
+async def run_scoring(run_id: UUID, *, worker=None, customer=False) -> None:
+    # Private runs live outside the legacy table: older workers and application
+    # rollbacks can only claim/publish default runs, even during a rolling deploy.
+    if customer and worker is not None:
+        raise ValueError("Customer heads cannot use default background scoring batches")
+    table = "rm_customer_scoring_runs" if customer else "rm_scoring_runs"
     pool = get_pool()
-    await scoring_progress.stage(run_id, "preparing")
+    await scoring_progress.stage(run_id, "preparing", customer=customer)
     run = await pool.fetchrow(
-        """
+        f"""
         SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config,
-            m.finished_at AS checkpoint_finished_at,t.updated_at AS current_trace_updated_at FROM rm_scoring_runs r
+            m.finished_at AS checkpoint_finished_at,t.updated_at AS current_trace_updated_at FROM {table} r
         JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
             OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
         JOIN rm_traces t ON t.id=r.trace_id AND t.owner_user_id=r.owner_user_id
@@ -375,11 +389,9 @@ async def run_scoring(run_id: UUID, *, worker=None) -> None:
         raise ValueError("Trace changed while waiting for scoring; score it again")
     customer_head = None
     customer_manifest = None
-    if run.get("customer_head_id") is not None:
+    if customer:
         from . import customer_heads
 
-        if worker is not None:
-            raise ValueError("Customer heads cannot use default background scoring batches")
         async with pool.acquire() as conn, conn.transaction():
             customer_manifest = await customer_heads.basis(conn, run["reward_model_id"])
             head_row = await customer_heads.checked_head(
@@ -427,12 +439,12 @@ async def run_scoring(run_id: UUID, *, worker=None) -> None:
         if run["compute"] == "modal" or customer_head is not None
         else "rm_worker.score_run"
     )
-    await scoring_progress.stage(run_id, "starting")
+    await scoring_progress.stage(run_id, "starting", customer=customer)
     if worker is None:
         await run_worker(module, directory)
     else:
         await worker(directory, run_id)
-    await scoring_progress.stage(run_id, "saving")
+    await scoring_progress.stage(run_id, "saving", customer=customer)
     scores = _read_jsonl(directory / "action_scores.jsonl")
     validate_action_scores(items, scores)
     trace_scores = _read_jsonl(directory / "scores.jsonl") if trace_items else []
@@ -474,10 +486,8 @@ async def run_scoring(run_id: UUID, *, worker=None) -> None:
             run["owner_user_id"],
         )
         if not trace or trace["updated_at"] != run["trace_updated_at"]:
-            raise ValueError("Trace changed while customer scoring; score it again")
-        status = await conn.fetchval(
-            "SELECT status FROM rm_scoring_runs WHERE id=$1 FOR UPDATE", run_id
-        )
+            raise ValueError("Trace changed while scoring; score it again")
+        status = await conn.fetchval(f"SELECT status FROM {table} WHERE id=$1 FOR UPDATE", run_id)
         if status != "running":
             raise ValueError("Scoring run is no longer active")
         current = await conn.fetch(
@@ -490,7 +500,7 @@ async def run_scoring(run_id: UUID, *, worker=None) -> None:
         if customer_head is not None:
             customer_provenance["shared_model_id"] = str(run["reward_model_id"])
             await conn.execute(
-                "UPDATE rm_scoring_runs SET customer_scores=$2 WHERE id=$1",
+                "UPDATE rm_customer_scoring_runs SET customer_scores=$2 WHERE id=$1",
                 run_id,
                 {
                     "actions": scores,
@@ -513,17 +523,17 @@ async def run_scoring(run_id: UUID, *, worker=None) -> None:
                 trace_scores[0]["score"],
             )
         await conn.execute(
-            "UPDATE rm_scoring_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
+            f"UPDATE {table} SET status = 'succeeded', finished_at = now() WHERE id = $1",
             run_id,
         )
-        await conn.execute(
-            """DELETE FROM rm_auto_scores q USING rm_traces t, rm_evaluator_registry er
-            WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3 AND $4::uuid IS NULL""",
-            run["trace_id"],
-            run["trace_updated_at"],
-            run["reward_model_id"],
-            run["customer_head_id"],
-        )
+        if not customer:
+            await conn.execute(
+                """DELETE FROM rm_auto_scores q USING rm_traces t, rm_evaluator_registry er
+                WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3""",
+                run["trace_id"],
+                run["trace_updated_at"],
+                run["reward_model_id"],
+            )
 
 
 async def run_gepa(run_id: UUID) -> None:

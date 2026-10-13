@@ -317,7 +317,12 @@ async def score_trace(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if created:
         try:
-            rm_tasks.score_trace.delay(str(run["id"]))
+            task = (
+                rm_tasks.compute_customer_score
+                if req.customer_head_id is not None
+                else rm_tasks.score_trace
+            )
+            task.delay(str(run["id"]))
         except Exception:
             # The periodic dispatcher retries the durable queued row.
             pass

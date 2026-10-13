@@ -28,12 +28,26 @@ Private personalized scoring runs persist their own results. They do not update
 global trace/action scores, consume the default scoring queue or appear as
 default-model runs in the legacy trace UI.
 
+Private runs use `rm_customer_scoring_runs` and the distinct
+`compute_customer_score` task. Migration `0238` leaves the existing
+`rm_scoring_runs` table and active uniqueness index unchanged, so old API and
+worker versions can still enqueue and process default scores while services roll
+forward or the application code rolls back. An older worker cannot claim a
+private run through its legacy task. A queued private request survives an older
+consumer discarding the unfamiliar task name; new workers reconcile and redeliver
+it with a one-minute dispatch lease. Interrupted private runs become failed after
+35 minutes rather than publishing into default scores.
+
 ## API workflow
 
 Apply migrations `0237` then `0238` to a development deployment. Both the API
 and reward Celery worker must include these modules; the feature task runs through
 Modal and private artifact storage. No model inference or backbone training
 belongs in the API process or on the laptop.
+
+If an earlier, unmerged revision of `0238` was already installed in a development
+database, recreate that isolated database before testing this revision. The
+revised migration is additive from the released `0236` schema.
 
 1. An operator creates a shared candidate using `POST /api/v1/admin/rm/candidates` with
    `evaluator_kind=shared_basis_v1`, an explicit reviewed base-model license,
@@ -69,8 +83,10 @@ not become gold outcome labels or shared-training permission.
 There is no customer-head selector in the existing frontend in this change.
 The experiment is exposed through the API and operator/cloud tools.
 
-Migration rollback from `0238` removes personalized runs: the old schema cannot
-represent them. Preserve those results before a rollback if they are needed.
+Database rollback from `0238` drops the new private scoring and feature-job tables.
+Preserve those results before a database rollback if they are needed. A code-only
+rollback leaves the private tables intact and keeps default scoring compatible;
+queued private requests wait for a version that supports them.
 
 ## Evidence and claim boundaries
 

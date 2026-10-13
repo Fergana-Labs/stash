@@ -407,7 +407,7 @@ async def list_pairs(owner):
 async def scoring_run(owner, run_id):
     async with get_pool().acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
-            "SELECT * FROM rm_scoring_runs WHERE id=$1 AND owner_user_id=$2 AND customer_head_id IS NOT NULL FOR SHARE",
+            "SELECT * FROM rm_customer_scoring_runs WHERE id=$1 AND owner_user_id=$2 FOR SHARE",
             run_id,
             owner,
         )

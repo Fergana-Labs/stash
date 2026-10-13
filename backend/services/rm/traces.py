@@ -345,7 +345,7 @@ async def get_trace(
         """
         SELECT DISTINCT ON (reward_model_id) id, trace_id, reward_model_id, status, error,
                created_at, started_at, finished_at, progress
-        FROM rm_scoring_runs WHERE trace_id = $1 AND owner_user_id = $2 AND customer_head_id IS NULL
+        FROM rm_scoring_runs WHERE trace_id = $1 AND owner_user_id = $2
         ORDER BY reward_model_id, created_at DESC, id DESC
         """,
         trace_id,

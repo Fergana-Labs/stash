@@ -66,6 +66,30 @@ async def enqueue_score(
                 )
             manifest = await customer_heads.basis(conn, model_id)
             await customer_heads.checked_head(conn, owner, customer_head_id, manifest, model_id)
+            run = await conn.fetchrow(
+                """INSERT INTO rm_customer_scoring_runs(owner_user_id,trace_id,reward_model_id,
+                    trace_updated_at,model_finished_at,customer_head_id)
+                SELECT $1,t.id,$3,t.updated_at,m.finished_at,$4 FROM rm_traces t
+                JOIN rm_reward_models m ON m.id=$3 WHERE t.id=$2 AND t.owner_user_id=$1
+                ON CONFLICT (trace_id,reward_model_id,customer_head_id)
+                WHERE status IN ('queued','running') DO NOTHING RETURNING *""",
+                owner,
+                trace_id,
+                model_id,
+                customer_head_id,
+            )
+            created = run is not None
+            if run is None:
+                run = await conn.fetchrow(
+                    """SELECT * FROM rm_customer_scoring_runs WHERE trace_id=$1
+                    AND reward_model_id=$2 AND customer_head_id=$3 ORDER BY created_at DESC LIMIT 1""",
+                    trace_id,
+                    model_id,
+                    customer_head_id,
+                )
+            if run is None:
+                raise EvaluatorInvalid("Trace was deleted")
+            return dict(run), created
         else:
             # A default cache hit cannot satisfy a personalized request.
             cached = await conn.fetchrow(
@@ -73,7 +97,7 @@ async def enqueue_score(
                 JOIN rm_traces t ON t.id=r.trace_id AND t.owner_user_id=$1
                 JOIN rm_reward_models m ON m.id=r.reward_model_id AND m.status='succeeded'
                 WHERE r.owner_user_id=$1 AND r.trace_id=$2 AND r.reward_model_id=$3
-                AND r.customer_head_id IS NULL AND r.status='succeeded'
+                AND r.status='succeeded'
                 AND r.trace_updated_at=t.updated_at AND r.model_finished_at=m.finished_at
                 ORDER BY r.finished_at DESC LIMIT 1""",
                 owner,
@@ -92,26 +116,23 @@ async def enqueue_score(
                 return dict(cached), False
         run = await conn.fetchrow(
             """INSERT INTO rm_scoring_runs(owner_user_id,trace_id,reward_model_id,automatic,
-                trace_updated_at,model_finished_at,customer_head_id)
-            SELECT $1,t.id,$3,$4,t.updated_at,m.finished_at,$5 FROM rm_traces t
+                trace_updated_at,model_finished_at)
+            SELECT $1,t.id,$3,$4,t.updated_at,m.finished_at FROM rm_traces t
             JOIN rm_reward_models m ON m.id=$3 WHERE t.id=$2 AND t.owner_user_id=$1
-            ON CONFLICT (trace_id,reward_model_id,
-                (coalesce(customer_head_id,'00000000-0000-0000-0000-000000000000'::uuid)))
+            ON CONFLICT (trace_id,reward_model_id)
             WHERE status IN ('queued','running') DO NOTHING RETURNING *""",
             owner,
             trace_id,
             model_id,
             automatic,
-            customer_head_id,
         )
         created = run is not None
         if run is None:
             run = await conn.fetchrow(
                 """SELECT * FROM rm_scoring_runs WHERE trace_id=$1 AND reward_model_id=$2
-                AND customer_head_id IS NOT DISTINCT FROM $3 ORDER BY created_at DESC LIMIT 1""",
+                ORDER BY created_at DESC LIMIT 1""",
                 trace_id,
                 model_id,
-                customer_head_id,
             )
     if run is None:
         raise EvaluatorInvalid("Trace was deleted")
@@ -597,6 +618,32 @@ async def promote(model_id: UUID, reason: str, *, rollback=False, automatic=Fals
     return {"model_id": model_id, "revision": revision}
 
 
+async def reconcile_customer_scores() -> int:
+    from ...tasks.reward_models import compute_customer_score
+
+    pool = get_pool()
+    await pool.execute("""UPDATE rm_customer_scoring_runs
+        SET status='failed',error='Customer scoring worker interrupted',finished_at=now()
+        WHERE status='running' AND started_at<now()-interval '35 minutes'""")
+    # During a rolling deployment an older consumer may discard this new task
+    # name. The private row survives, and a new consumer can claim a later delivery.
+    rows = await pool.fetch("""UPDATE rm_customer_scoring_runs SET dispatched_at=now()
+        WHERE id IN (SELECT id FROM rm_customer_scoring_runs WHERE status='queued'
+            AND (dispatched_at IS NULL OR dispatched_at<now()-interval '1 minute')
+            ORDER BY created_at LIMIT 20) AND status='queued'
+            AND (dispatched_at IS NULL OR dispatched_at<now()-interval '1 minute') RETURNING id""")
+    for row in rows:
+        try:
+            compute_customer_score.delay(str(row["id"]))
+        except Exception:
+            await pool.execute(
+                """UPDATE rm_customer_scoring_runs SET dispatched_at=NULL
+                WHERE id=$1 AND status='queued'""",
+                row["id"],
+            )
+    return len(rows)
+
+
 async def reconcile() -> dict:
     """A durable sweep, bounded to 50 traces and 10 contributions per tick."""
     from ...tasks import reward_models as tasks
@@ -631,15 +678,15 @@ async def reconcile() -> dict:
         await pool.execute(
             """UPDATE rm_auto_scores q SET error = r.error
             FROM rm_scoring_runs r, rm_traces t WHERE r.trace_id=q.trace_id AND t.id=q.trace_id
-            AND r.reward_model_id=$1 AND r.customer_head_id IS NULL AND r.trace_updated_at=t.updated_at AND r.status='failed'
-            AND r.id=(SELECT id FROM rm_scoring_runs WHERE trace_id=q.trace_id AND reward_model_id=$1 AND customer_head_id IS NULL ORDER BY created_at DESC LIMIT 1)""",
+            AND r.reward_model_id=$1 AND r.trace_updated_at=t.updated_at AND r.status='failed'
+            AND r.id=(SELECT id FROM rm_scoring_runs WHERE trace_id=q.trace_id AND reward_model_id=$1 ORDER BY created_at DESC LIMIT 1)""",
             default["id"],
         )
         rows = await pool.fetch(
             """SELECT t.* FROM rm_auto_scores q JOIN rm_traces t ON t.id = q.trace_id
             WHERE q.due_at <= now() AND q.attempts < 3
             AND EXISTS (SELECT 1 FROM rm_trace_steps s WHERE s.trace_id = t.id AND s.role = 'assistant' AND (s.tool_name IS NOT NULL OR btrim(s.content) <> ''))
-            AND NOT EXISTS (SELECT 1 FROM rm_scoring_runs r WHERE r.trace_id = t.id AND r.reward_model_id = $1 AND r.customer_head_id IS NULL AND r.status IN ('queued','running'))
+            AND NOT EXISTS (SELECT 1 FROM rm_scoring_runs r WHERE r.trace_id = t.id AND r.reward_model_id = $1 AND r.status IN ('queued','running'))
             ORDER BY q.due_at LIMIT 50""",
             default["id"],
         )
