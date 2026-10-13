@@ -264,7 +264,7 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
         json={"reward_model_id": str(model_id)},
     )
     assert requested.status_code == 202, requested.text
-    await jobs.run_scoring(UUID(requested.json()["id"]))
+    await tasks.score_trace_async(UUID(requested.json()["id"]))
     assert (
         await pool.fetchval(
             "SELECT score FROM rm_trace_scores WHERE trace_id=$1 AND reward_model_id=$2",
@@ -285,17 +285,32 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
                 ("assistant", "All tests pass."),
                 ("user", "Check once more"),
                 ("assistant", "Checked again"),
+                ("user", "Check the edge case too"),
+                ("assistant", "Checked the edge case"),
             ],
         )
 
     monkeypatch.setattr(jobs, "run_worker", changed_during_scoring)
+    # A changed input needs a fresh run; an unchanged request reuses its
+    # succeeded score without sending the checkpoint through inference again.
+    await upload(
+        client,
+        user,
+        session_id="fresh",
+        messages=[
+            ("user", "Fix the count parser. Zero must remain valid."),
+            ("assistant", "All tests pass."),
+            ("user", "Check once more"),
+            ("assistant", "Checked again"),
+        ],
+    )
     requested = await client.post(
         f"/api/v1/rm/traces/{fresh}/score",
         headers=user["headers"],
         json={"reward_model_id": str(model_id)},
     )
     with pytest.raises(ValueError, match="Trace changed"):
-        await jobs.run_scoring(UUID(requested.json()["id"]))
+        await tasks.score_trace_async(UUID(requested.json()["id"]))
     listed = await client.get(
         "/api/v1/rm/traces", headers=user["headers"], params={"reward_model_id": str(model_id)}
     )
