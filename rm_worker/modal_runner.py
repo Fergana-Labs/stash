@@ -12,6 +12,7 @@ WORKER_DIR = Path(__file__).parent
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install_from_requirements(str(WORKER_DIR / "requirements.txt"))
+    .env({"RM_TRAINING_ON_CLOUD_GPU": "1"})
     .add_local_python_source("rm_worker", ignore=[".venv", ".scratch", "**/__pycache__"])
 )
 app = modal.App("stash-reward-models", image=image)
@@ -37,6 +38,7 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
                 "action_score_items.jsonl",
                 "evaluation_pairs.jsonl",
                 "gepa_examples.jsonl",
+                "feature_items.jsonl",
             ):
                 raise ValueError(f"Unexpected job input: {name}")
             (directory / name).write_bytes(data)
@@ -46,6 +48,21 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
 
             train(directory)
             outputs = ["result.json", "scores.jsonl", "action_scores.jsonl"]
+        elif kind == "basis_train":
+            from rm_worker.basis_train import train
+
+            train(directory)
+            outputs = ["result.json", "scores.jsonl", "action_scores.jsonl", "evaluation.json"]
+        elif kind == "basis_features":
+            from rm_worker.basis_features import run
+
+            run(directory)
+            outputs = ["result.json", "features.jsonl"]
+        elif kind == "harness":
+            from rm_worker.harness_run import run
+
+            run(directory)
+            outputs = ["result.json"]
         elif kind == "score":
             from rm_worker.score_run import run
 
@@ -82,12 +99,20 @@ def main() -> None:
         "playground": ["job.json"],
         "evaluate": ["job.json", "evaluation_pairs.jsonl"],
         "gepa": ["job.json", "gepa_examples.jsonl"],
+        "basis_train": ["job.json", "pairs.jsonl", "score_items.jsonl", "action_score_items.jsonl"],
+        "basis_features": ["job.json", "feature_items.jsonl"],
+        "harness": ["job.json"],
     }[job["kind"]]
     inputs = {name: (directory / name).read_bytes() for name in names}
     secret = modal.Secret.from_dict(
         {key: os.environ[key] for key in SECRET_KEYS if key in os.environ}
     )
-    remote = app.function(gpu="A10G", timeout=20 * 60, secrets=[secret])(run_job)
+    remote = app.function(
+        gpu=None if job["kind"] == "harness" and not job.get("reward_model_key") else "A10G",
+        memory=8192,
+        timeout=20 * 60,
+        secrets=[secret],
+    )(run_job)
     with modal.enable_output(), app.run():
         outputs = remote.remote(inputs)
     for name, data in outputs.items():

@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "research_date": "2026-10-12",
+  "experiment_kind": "manual_paired_skill_probe_with_learned_judge",
+  "scope": "synthetic_owned_python_utilities_v1",
+  "task_model": "anthropic/claude-haiku-4-5",
+  "model_identity": {
+    "evaluator_kind": "shared_basis_v1",
+    "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+    "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae"
+  },
+  "source_record_sha256": "3eb2cfa68c00f092fa30b2f2f49a3cf77134b691a4d89b99055339df2d2ac860",
+  "protocol": {
+    "same_task_model": "anthropic/claude-haiku-4-5",
+    "same_completion_budget": 2048,
+    "order": "alternating_paired",
+    "verifier": "parent_compares_observed_outputs_to_registered_hidden_expectations",
+    "task_suite_sha256": "6f4fb91c474587358276449887cd78c2f48a00a330b50329f3096540bbab137d",
+    "runner_sha256": "b26c5b515569f6cb0d674318772eb78129b96bcd715db80695f28d6bc655ceca",
+    "sandbox_image": "debian_slim_python_3.12",
+    "sandbox_network_blocked": true,
+    "sandbox_secrets": false,
+    "optimization_metric": "learned_normalized_reward",
+    "oracle_baseline": false,
+    "reward_input_includes_oracle_results": false
+  },
+  "metrics": {
+    "tasks": 4,
+    "completion_calls": 8,
+    "incumbent_passed": 3,
+    "candidate_passed": 4,
+    "incumbent_success_rate": 0.75,
+    "candidate_success_rate": 1.0,
+    "paired_success_delta": 0.25,
+    "provider_cost_usd_known": 0.008107000000000001,
+    "cost_unknown_calls": 0,
+    "skill_selection_performed": false,
+    "optimization_metric": "learned_normalized_reward",
+    "incumbent_mean_learned_reward": 0.7405816104856685,
+    "candidate_mean_learned_reward": 0.7312317184957837,
+    "repository_tasks": false,
+    "prospective_agent_improvement_validated": false,
+    "adapter_uses_learned_reward": true
+  },
+  "outcomes": [
+    {
+      "task_id": "chunked",
+      "arm": "incumbent",
+      "passed": true,
+      "learned_reward_raw": 5.748396873474121,
+      "learned_reward_normalized": 0.7935114743751033,
+      "source_sha256": "6392b8f3f663d22c3692d5a5bdc73d8b2d04742a8e6c4d52078776aafa64a442",
+      "oracle_cases": {
+        "passed": 5,
+        "total": 5,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.000709,
+      "provider_usage": {
+        "completion_tokens": 102,
+        "prompt_tokens": 199,
+        "total_tokens": 301
+      },
+      "seconds": {
+        "provider": 6.3192,
+        "sandbox": 2.1815,
+        "reward_scoring": 2.5294
+      }
+    },
+    {
+      "task_id": "chunked",
+      "arm": "candidate",
+      "passed": true,
+      "learned_reward_raw": 4.958783149719238,
+      "learned_reward_normalized": 0.7536119249548017,
+      "source_sha256": "087aad13fbbb9edd94ba2ba4c05de9fa8b6b4705705234be9d456d9b53773bc7",
+      "oracle_cases": {
+        "passed": 5,
+        "total": 5,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.0007800000000000001,
+      "provider_usage": {
+        "completion_tokens": 111,
+        "prompt_tokens": 225,
+        "total_tokens": 336
+      },
+      "seconds": {
+        "provider": 1.2033,
+        "sandbox": 3.8914,
+        "reward_scoring": 0.0368
+      }
+    },
+    {
+      "task_id": "stable_unique",
+      "arm": "candidate",
+      "passed": true,
+      "learned_reward_raw": 4.008488655090332,
+      "learned_reward_normalized": 0.6991531153522235,
+      "source_sha256": "6f8c85c84f014ff2a7fdb1c55cf07e9291fd7337f27cb59b11a03df0e467f23e",
+      "oracle_cases": {
+        "passed": 4,
+        "total": 4,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.000884,
+      "provider_usage": {
+        "completion_tokens": 139,
+        "prompt_tokens": 189,
+        "total_tokens": 328
+      },
+      "seconds": {
+        "provider": 1.4906,
+        "sandbox": 2.7233,
+        "reward_scoring": 0.0361
+      }
+    },
+    {
+      "task_id": "stable_unique",
+      "arm": "incumbent",
+      "passed": true,
+      "learned_reward_raw": 4.577982425689697,
+      "learned_reward_normalized": 0.7326073573308306,
+      "source_sha256": "caec92cd40ee3242cd57ee7a7a274d7a30b4e0a697cf1eb0a8fe67071164e744",
+      "oracle_cases": {
+        "passed": 4,
+        "total": 4,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.0006330000000000001,
+      "provider_usage": {
+        "completion_tokens": 94,
+        "prompt_tokens": 163,
+        "total_tokens": 257
+      },
+      "seconds": {
+        "provider": 1.1391,
+        "sandbox": 2.1598,
+        "reward_scoring": 0.0359
+      }
+    },
+    {
+      "task_id": "merge_intervals",
+      "arm": "incumbent",
+      "passed": false,
+      "learned_reward_raw": 5.56636905670166,
+      "learned_reward_normalized": 0.7847566497762075,
+      "source_sha256": "e75511277c149f608dc9df20f5eb7bbe5922f4a6647fcf5f2f825d362dfb09df",
+      "oracle_cases": {
+        "passed": 4,
+        "total": 5,
+        "failed_indices": [
+          0
+        ]
+      },
+      "failed_constraints": [
+        "input_mutation"
+      ],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.0010500000000000002,
+      "provider_usage": {
+        "completion_tokens": 165,
+        "prompt_tokens": 225,
+        "total_tokens": 390
+      },
+      "seconds": {
+        "provider": 1.6091,
+        "sandbox": 2.8065,
+        "reward_scoring": 0.0564
+      }
+    },
+    {
+      "task_id": "merge_intervals",
+      "arm": "candidate",
+      "passed": true,
+      "learned_reward_raw": 6.353607177734375,
+      "learned_reward_normalized": 0.8207108732155775,
+      "source_sha256": "428f807b9e335f97bb963e3b31f6c6426e81b00079c5be1a3b6301db8467c46b",
+      "oracle_cases": {
+        "passed": 5,
+        "total": 5,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.001716,
+      "provider_usage": {
+        "completion_tokens": 293,
+        "prompt_tokens": 251,
+        "total_tokens": 544
+      },
+      "seconds": {
+        "provider": 2.7164,
+        "sandbox": 3.0658,
+        "reward_scoring": 0.037
+      }
+    },
+    {
+      "task_id": "parse_pairs",
+      "arm": "candidate",
+      "passed": true,
+      "learned_reward_raw": 3.2548811435699463,
+      "learned_reward_normalized": 0.6514509604605325,
+      "source_sha256": "84d22a59972607333ddcdb9c7d5b48c1533f0508b7503c5a0d1f747f3b4751c7",
+      "oracle_cases": {
+        "passed": 6,
+        "total": 6,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.0011780000000000002,
+      "provider_usage": {
+        "completion_tokens": 191,
+        "prompt_tokens": 223,
+        "total_tokens": 414
+      },
+      "seconds": {
+        "provider": 1.8756,
+        "sandbox": 2.681,
+        "reward_scoring": 0.037
+      }
+    },
+    {
+      "task_id": "parse_pairs",
+      "arm": "incumbent",
+      "passed": true,
+      "learned_reward_raw": 3.2548811435699463,
+      "learned_reward_normalized": 0.6514509604605325,
+      "source_sha256": "84d22a59972607333ddcdb9c7d5b48c1533f0508b7503c5a0d1f747f3b4751c7",
+      "oracle_cases": {
+        "passed": 6,
+        "total": 6,
+        "failed_indices": []
+      },
+      "failed_constraints": [],
+      "observed_exit_code": 0,
+      "artifact_error": null,
+      "sandbox_error": null,
+      "provider_cost_usd_estimate": 0.001157,
+      "provider_usage": {
+        "completion_tokens": 192,
+        "prompt_tokens": 197,
+        "total_tokens": 389
+      },
+      "seconds": {
+        "provider": 1.7861,
+        "sandbox": 2.4393,
+        "reward_scoring": 0.0369
+      }
+    }
+  ],
+  "within_task_pairs": [
+    {
+      "task_id": "chunked",
+      "strict_success_delta_candidate_minus_incumbent": 0,
+      "learned_preference": "incumbent",
+      "normalized_reward_delta_candidate_minus_incumbent": -0.039899549420301605,
+      "learned_direction_agrees_with_unequal_strict_success": null
+    },
+    {
+      "task_id": "stable_unique",
+      "strict_success_delta_candidate_minus_incumbent": 0,
+      "learned_preference": "incumbent",
+      "normalized_reward_delta_candidate_minus_incumbent": -0.033454241978607135,
+      "learned_direction_agrees_with_unequal_strict_success": null
+    },
+    {
+      "task_id": "merge_intervals",
+      "strict_success_delta_candidate_minus_incumbent": 1,
+      "learned_preference": "candidate",
+      "normalized_reward_delta_candidate_minus_incumbent": 0.03595422343936994,
+      "learned_direction_agrees_with_unequal_strict_success": true
+    },
+    {
+      "task_id": "parse_pairs",
+      "strict_success_delta_candidate_minus_incumbent": 0,
+      "learned_preference": "tie",
+      "normalized_reward_delta_candidate_minus_incumbent": 0.0,
+      "learned_direction_agrees_with_unequal_strict_success": null
+    }
+  ],
+  "finding": {
+    "independent_task_success": {
+      "incumbent": "3/4",
+      "candidate": "4/4"
+    },
+    "mean_normalized_reward": {
+      "incumbent": 0.7405816104856685,
+      "candidate": 0.7312317184957837
+    },
+    "aggregate_rank_agrees_with_strict_task_success": false,
+    "higher_mean_reward_arm": "incumbent",
+    "higher_strict_task_success_arm": "candidate",
+    "only_unequal_success_task": "merge_intervals",
+    "only_unequal_success_task_reward_ranks_correctly": true,
+    "same_task_good_bad_reward_inversion_observed": false,
+    "failure_detail": "The incumbent merge_intervals returned the correct values but modified an input inner list; the valid candidate received higher learned reward on that same task. Passing implementations on chunked and stable_unique received lower candidate reward, reversing the aggregate fitness ranking."
+  },
+  "limitations": [
+    "The candidate skill was authored manually and was not selected or generated by the reward model.",
+    "Four owned synthetic utility tasks with one completion per skill per task do not establish a causal, general or prospective agent improvement claim.",
+    "This is an execution and judge alignment probe, not repository coding-agent evaluation, reward-hacking validation or few-label customer adaptation evidence.",
+    "The only unequal-success task is ranked correctly; the observed disagreement concerns the aggregate learned fitness versus strict task success.",
+    "Costs are provider estimates only; GPU and Sandbox billing are excluded.",
+    "No candidate code ran in the trusted controller or on the laptop. Sandbox controls were requested through the Modal API; this run did not separately probe network isolation."
+  ],
+  "historical_source_metric": {
+    "selection_uses_learned_reward": true,
+    "interpretation": "This historical producer flag indicated a configured learned metric for the adapter. It did not mean a reward model selected either skill; skill_selection_performed was false. The producer field is now named adapter_uses_learned_reward."
+  }
+}

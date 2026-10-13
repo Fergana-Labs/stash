@@ -16,7 +16,7 @@ umap-learn>=0.5.0
 # Small intuition-model heads (also dependencies of UMAP).
 numpy>=1.23
 scipy>=1.9
-python-jose[cryptography]>=3.3.0
+PyJWT[crypto]==2.15.1
 pypdf>=4.0
 anthropic>=1.9.0
 nh3>=0.2

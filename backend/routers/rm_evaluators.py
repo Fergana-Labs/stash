@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..database import get_pool
 from ..services.rm import datasets, evaluator, feedback
@@ -31,6 +31,8 @@ class ExampleRequest(BaseModel):
     source: Literal["human", "verified_outcome"]
     evidence: str = Field(min_length=1)
     permission_reference: str = Field(min_length=1)
+    customer_id: str | None = Field(default=None, min_length=1, max_length=200)
+    workflow_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class CandidateRequest(BaseModel):
@@ -39,6 +41,32 @@ class CandidateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     base_model: str = "Qwen/Qwen3-0.6B"
     epochs: int = Field(default=1, ge=1, le=10)
+    evaluator_kind: Literal["scalar_preference_v1", "shared_basis_v1"] = "scalar_preference_v1"
+    basis_dimension: int = Field(default=4, ge=1, le=64)
+    basis_options: "BasisOptions" = Field(default_factory=lambda: BasisOptions())
+    base_model_license: str | None = Field(default=None, min_length=1, max_length=200)
+    base_model_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+
+    @model_validator(mode="after")
+    def basis_license(self):
+        if self.evaluator_kind == "shared_basis_v1" and not (self.base_model_license or "").strip():
+            raise ValueError("Record the reviewed base model license for a shared basis")
+        if self.evaluator_kind == "shared_basis_v1" and "base_model" not in self.model_fields_set:
+            self.base_model = "Skywork/Skywork-Reward-V2-Qwen3-0.6B"
+            if self.base_model_revision is None:
+                self.base_model_revision = "8c14a4e9e6321deaf572544339b16b8d6bbe8886"
+        return self
+
+
+class BasisOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    l2: float = Field(default=0.05, ge=0.001, le=1000)
+    projection_learning_rate: float = Field(default=0.01, gt=0, le=1)
+    seed: int = Field(default=0, ge=0)
+    batch_size: int = Field(default=4, ge=1, le=32)
+    max_length: int = Field(default=1024, ge=128, le=4096)
+    fit_steps: int = Field(default=200, ge=1, le=10000)
+    fit_global_residual: bool = False
 
 
 class ReleaseRequest(BaseModel):
@@ -89,6 +117,8 @@ async def add_example(req: ExampleRequest) -> dict:
                     "source": req.source,
                     "evidence": req.evidence,
                     "permission": req.permission_reference,
+                    **({"customer_id": req.customer_id} if req.customer_id else {}),
+                    **({"workflow_id": req.workflow_id} if req.workflow_id else {}),
                 },
             )
         )
@@ -119,7 +149,17 @@ async def delete_example(example_id: UUID) -> None:
 @router.post("/candidates", status_code=202)
 async def create_candidate(req: CandidateRequest) -> dict:
     return await checked(
-        evaluator.create_candidate(req.owner_user_id, req.name, req.base_model, req.epochs)
+        evaluator.create_candidate(
+            req.owner_user_id,
+            req.name,
+            req.base_model,
+            req.epochs,
+            evaluator_kind=req.evaluator_kind,
+            basis_dimension=req.basis_dimension,
+            basis_options=req.basis_options.model_dump(),
+            base_model_license=req.base_model_license,
+            base_model_revision=req.base_model_revision,
+        )
     )
 
 
@@ -171,4 +211,21 @@ async def get_automation() -> dict:
 
 @router.put("/automation")
 async def configure_automation(req: AutomationRequest) -> dict:
-    return await checked(evaluator.configure_automation(req.model_dump(exclude={"name"})))
+    if req.evaluator_kind != "scalar_preference_v1":
+        raise HTTPException(
+            status_code=422, detail="Shared basis candidates require explicit operator submission"
+        )
+    return await checked(
+        evaluator.configure_automation(
+            req.model_dump(
+                exclude={
+                    "name",
+                    "evaluator_kind",
+                    "basis_dimension",
+                    "basis_options",
+                    "base_model_license",
+                    "base_model_revision",
+                }
+            )
+        )
+    )

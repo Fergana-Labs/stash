@@ -77,6 +77,8 @@ celery.conf.update(
         "backend.tasks.reward_models.score_batch": {"queue": "reward"},
         "backend.tasks.reward_models.collect_examples": {"queue": "reward"},
         "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
+        "backend.tasks.reward_models.compute_customer_features": {"queue": "reward"},
+        "backend.tasks.reward_models.compute_customer_score": {"queue": "reward"},
         "backend.tasks.optimization.score_run": {"queue": "reward"},
     },
     task_acks_late=True,

@@ -1,0 +1,910 @@
+{
+  "schema_version": 1,
+  "dataset_version": "owned-synthetic-inventory-regression-v1",
+  "description": "Engineered features for code regression only. No model inference, shared checkpoint, enterprise data, adaptation guarantee, or attack certification. Labels reproducible by exact positive-stock item set equality.",
+  "feature_manifest": {
+    "basis_dimension": 2,
+    "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+    "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f",
+    "feature_kind": "synthetic_regression",
+    "global_weights": [
+      -0.5,
+      0.1
+    ],
+    "training_lineage": {
+      "customer_ids": [
+        "source-fixture"
+      ],
+      "workflow_ids": [
+        "arithmetic"
+      ],
+      "task_groups": [
+        "task-train-0",
+        "task-train-1"
+      ],
+      "example_ids": [
+        "train-0",
+        "train-1"
+      ]
+    }
+  },
+  "comparisons": [
+    {
+      "comparison_id": "train-0",
+      "task_group": "task-train-0",
+      "customer_id": "source-fixture",
+      "workflow_id": "arithmetic",
+      "partition": "train",
+      "task": {
+        "request": "Return the sum of the two supplied integers.",
+        "inputs": [
+          3,
+          8
+        ]
+      },
+      "a": {
+        "attempt_id": "train-0-a",
+        "content_sha256": "bc4b5499d10cfcb3ffe0b2cc3cb175452ec431edf28955e9e4c2c9390e6233fd",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "result": 11
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "train-0-b",
+        "content_sha256": "286ed2aea83a017feb5768a4617806776cbdf55f7537b6aac43effed4b4321f2",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "result": 12
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-sum/v1/train-0",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "train-1",
+      "task_group": "task-train-1",
+      "customer_id": "source-fixture",
+      "workflow_id": "arithmetic",
+      "partition": "train",
+      "task": {
+        "request": "Return the sum of the two supplied integers.",
+        "inputs": [
+          4,
+          9
+        ]
+      },
+      "a": {
+        "attempt_id": "train-1-b",
+        "content_sha256": "f0736f347334739ca9bf06eaa74640350d7661e94c50f50f64b7ed70b61153cd",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "result": 14
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "train-1-a",
+        "content_sha256": "740b5f0ab107369b85e5e51caa268431cc20228a447d096c67689e3ca5cb394f",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "result": 13
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-sum/v1/train-1",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "dev-0",
+      "task_group": "task-dev-0",
+      "customer_id": "source-fixture",
+      "workflow_id": "arithmetic",
+      "partition": "dev",
+      "task": {
+        "request": "Return the sum of the two supplied integers.",
+        "inputs": [
+          103,
+          108
+        ]
+      },
+      "a": {
+        "attempt_id": "dev-0-a",
+        "content_sha256": "3c415507a384830194e9e35f19e0167a95b5f69a119a62c65227905e192e0fa4",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "result": 211
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "dev-0-b",
+        "content_sha256": "b9eeb2aff116e335ab5fbcef878168dd9d9516fc19ec810e208084c1ef1afdbc",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "result": 212
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-sum/v1/dev-0",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "dev-1",
+      "task_group": "task-dev-1",
+      "customer_id": "source-fixture",
+      "workflow_id": "arithmetic",
+      "partition": "dev",
+      "task": {
+        "request": "Return the sum of the two supplied integers.",
+        "inputs": [
+          104,
+          109
+        ]
+      },
+      "a": {
+        "attempt_id": "dev-1-b",
+        "content_sha256": "e732e9086f13b87bf4884b30985c7400a27ae7108f47f4589173b00909aed527",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "result": 214
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "dev-1-a",
+        "content_sha256": "bce9a4fc27181573cb5a217c991d974ee730a68e4aee0310b718d8eed2d629ab",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "result": 213
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-sum/v1/dev-1",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-0",
+      "task_group": "task-support-0",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-0": 1,
+          "G-support-0": 2,
+          "Z-support-0": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-0-a",
+        "content_sha256": "59cf71d7d2f3181f3b340040b739e3faace43d090da0b5fe4c1fd51ac568a2bd",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-0",
+            "G-support-0"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-0-b",
+        "content_sha256": "bbf9dd4540686f6269ec2819fc5ca1a7496fc81c4f0aba447f42c7469d5fa3e5",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-0"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-0",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-1",
+      "task_group": "task-support-1",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-1": 2,
+          "G-support-1": 3,
+          "Z-support-1": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-1-b",
+        "content_sha256": "4308524b6c68d61c531220e7479e52abd08a03006dd07ddb3c8dfe55677e6ffd",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-1"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-1-a",
+        "content_sha256": "06d139366e819e15911b8a2d9e7c1b35217cb7fbb1e9ef5f93b25a6215ec3198",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-1",
+            "G-support-1"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-1",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-2",
+      "task_group": "task-support-2",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-2": 3,
+          "G-support-2": 4,
+          "Z-support-2": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-2-a",
+        "content_sha256": "aae06c88bb2561942f2388da96060f4c429f327eed2672ad085278d672f98713",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-2",
+            "G-support-2"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-2-b",
+        "content_sha256": "6783cbbe93a6a645f83143fdbc8cb1856dbabbb2304f43a5e44d1e7e4be0d1eb",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-2"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-2",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-3",
+      "task_group": "task-support-3",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-3": 4,
+          "G-support-3": 5,
+          "Z-support-3": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-3-b",
+        "content_sha256": "e6292ed3d62bb86035b78857a9ffbc5f4d4457e0893a476b947d9d81194d76b2",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-3"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-3-a",
+        "content_sha256": "9268bc13fdca7445f41d965a25f7e5e814c2af9393e6d39c156781f4dbf05f16",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-3",
+            "G-support-3"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-3",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-4",
+      "task_group": "task-support-4",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-4": 5,
+          "G-support-4": 6,
+          "Z-support-4": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-4-a",
+        "content_sha256": "7fd9c3151c2ab953b1d5e3848ce9cfe468a1e50859128d17a50ac30742e73c6a",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-4",
+            "G-support-4"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-4-b",
+        "content_sha256": "f2a0ea5144c51eabd87e717f98f9bb2b8119fe059a04bc10e923ff1a54c3dace",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-4"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-4",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-5",
+      "task_group": "task-support-5",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-5": 6,
+          "G-support-5": 7,
+          "Z-support-5": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-5-b",
+        "content_sha256": "97d4e75d12c19d4d1d61c61f4921f97654b7669f4b9d2cd3b1eb2ba650a5493f",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-5"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-5-a",
+        "content_sha256": "f6237493db63e94fbf39bdf26d7aa63757d7948c4cf07df10fa937c70cb3fbd3",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-5",
+            "G-support-5"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-5",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-6",
+      "task_group": "task-support-6",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-6": 7,
+          "G-support-6": 8,
+          "Z-support-6": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-6-a",
+        "content_sha256": "057470ab0174b13911135a5aca5e37edbee5d48da50a5bc9b531c283f7959dbd",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-6",
+            "G-support-6"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-6-b",
+        "content_sha256": "7ca6286d19a0157c002038344c21a74d7144d590b3879640e1e139e497d96b6a",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-6"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-6",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "support-7",
+      "task_group": "task-support-7",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "support",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-support-7": 8,
+          "G-support-7": 9,
+          "Z-support-7": 0
+        }
+      },
+      "a": {
+        "attempt_id": "support-7-b",
+        "content_sha256": "0092c51367cb61f23052f681581b01ca2c8434915dc14ca17592e4e37a33b92d",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-7"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "support-7-a",
+        "content_sha256": "92bb783a60b2d867cb460c4e8580f65d38f603c4be3a99114f83f3fff9f6df0b",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-support-7",
+            "G-support-7"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/support-7",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "test-0",
+      "task_group": "task-test-0",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "test",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-test-0": 1,
+          "G-test-0": 2,
+          "Z-test-0": 0
+        }
+      },
+      "a": {
+        "attempt_id": "test-0-a",
+        "content_sha256": "b5cce5e87542fba5adc8f2502fad9f207cd812325be92581689f54b955b459b4",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-0",
+            "G-test-0"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "test-0-b",
+        "content_sha256": "b89a1bfdc6184aed4193842212ec6f0ed1509c9c7a7b38d3e80f30871b346826",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-0"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/test-0",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "test-1",
+      "task_group": "task-test-1",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "test",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-test-1": 2,
+          "G-test-1": 3,
+          "Z-test-1": 0
+        }
+      },
+      "a": {
+        "attempt_id": "test-1-b",
+        "content_sha256": "fcde1f2d908143038567561cca7672504246311d6be34554cb1970e63abc608e",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-1"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "test-1-a",
+        "content_sha256": "5d1873baf63a6f19e2f8ae558622e6dc5c46f3ef62efc73339d924ed136c16ca",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-1",
+            "G-test-1"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/test-1",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "test-2",
+      "task_group": "task-test-2",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "test",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-test-2": 3,
+          "G-test-2": 4,
+          "Z-test-2": 0
+        }
+      },
+      "a": {
+        "attempt_id": "test-2-a",
+        "content_sha256": "e9673dbc5e1abef93588dd0ac88a59ddc9089fe99cc7741933706a64903beb98",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-2",
+            "G-test-2"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "test-2-b",
+        "content_sha256": "b10cfa40ff3ec6cb57e0b13213c069d55cfb734d491e558aeaa2445c418a6a0b",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-2"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/test-2",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "test-3",
+      "task_group": "task-test-3",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "test",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-test-3": 4,
+          "G-test-3": 5,
+          "Z-test-3": 0
+        }
+      },
+      "a": {
+        "attempt_id": "test-3-b",
+        "content_sha256": "f39f0b9d68a48cb2941eb3b632b42313e47ce105661e1085b00cb04ff0a2b300",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-3"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "test-3-a",
+        "content_sha256": "94371ed6102002c500498f730aa603421becc7820e00eeba5a1dabbe90cd246a",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-3",
+            "G-test-3"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "b",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/test-3",
+        "synthetic": true
+      }
+    },
+    {
+      "comparison_id": "test-4",
+      "task_group": "task-test-4",
+      "customer_id": "target-fixture",
+      "workflow_id": "inventory",
+      "partition": "test",
+      "task": {
+        "request": "Return every item with positive stock.",
+        "stock": {
+          "P-test-4": 5,
+          "G-test-4": 6,
+          "Z-test-4": 0
+        }
+      },
+      "a": {
+        "attempt_id": "test-4-a",
+        "content_sha256": "dc1d0d360e70f27cc5d641c115a3781d72845b2e8ff0671ab32b6cadb2429c46",
+        "features": [
+          1.0,
+          1.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-4",
+            "G-test-4"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "b": {
+        "attempt_id": "test-4-b",
+        "content_sha256": "70b97a8c2d37535fb0791e68b760e6d0680253308414a17758165c6599f4d4f3",
+        "features": [
+          0.0,
+          0.0
+        ],
+        "artifact": {
+          "items": [
+            "P-test-4"
+          ]
+        },
+        "feature_version": "273bba72c5853ffac601c60b16f60229e24d4bacfa77aeac412a69242eff1b22",
+        "manifest_digest": "3d8f9122ae4bac733cb49455235e09dac9e322a8a58eeb1899a5ef8b38a4058f"
+      },
+      "label": "a",
+      "label_provenance": {
+        "source": "executable_oracle",
+        "independent": true,
+        "reference": "fixture://exact-positive-stock/v1/test-4",
+        "synthetic": true
+      }
+    }
+  ]
+}

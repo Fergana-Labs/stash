@@ -29,6 +29,7 @@ from .routers import (
     bulk_export,
     clips,
     curator_log,
+    customer_heads,
     demo,
     developer,
     discover,
@@ -44,6 +45,7 @@ from .routers import (
     optimization,
     pins,
     publish,
+    reward_features,
     reward_models,
     rm_evaluators,
     security_audit,
@@ -158,6 +160,8 @@ app.include_router(pins.router)
 app.include_router(reward_models.router)
 app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
+app.include_router(customer_heads.router)
+app.include_router(reward_features.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
 app.include_router(mcp_servers.router)

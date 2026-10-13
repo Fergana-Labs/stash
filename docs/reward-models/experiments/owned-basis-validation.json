@@ -1,0 +1,2545 @@
+{
+  "anchor_fidelity": {
+    "bitwise_equivalence_claimed": false,
+    "comparison": "actual_frozen_classifier_logits_vs_exported_anchor",
+    "max_abs_score_delta": 0.0026221275329589844,
+    "max_scale_normalized_delta": 0.0017948252632018716,
+    "numerical_precision": "torch.bfloat16",
+    "samples": 8
+  },
+  "claims": {
+    "actual_agent_improvement": {
+      "reason": "No independent paired agent-execution evidence provided.",
+      "status": "unsupported"
+    },
+    "cached_feature_performance": {
+      "scope": "synthetic_regression_only",
+      "status": "measured"
+    },
+    "reward_hacking_resistance": {
+      "reason": "Product threshold passes remain scoped to declared attack protocol.",
+      "status": "unsupported"
+    },
+    "sample_efficiency": {
+      "reason": "Need preregistered grouped confirmatory improvements versus zero-label and challenger baselines.",
+      "status": "unsupported"
+    },
+    "universal_guarantees": {
+      "reason": "No unrestricted guarantee follows from these experiments.",
+      "status": "unsupported"
+    }
+  },
+  "design": {
+    "feature_inputs": 420,
+    "label_budgets": [
+      0,
+      5,
+      10,
+      20,
+      30,
+      50,
+      100
+    ],
+    "labels": "independent exact arithmetic and positive-stock inventory executable oracles",
+    "seed": 42,
+    "support_comparisons_per_workflow": 40,
+    "support_repeats": 5,
+    "test_comparisons_per_workflow": 40,
+    "workflows": 2
+  },
+  "detail": {
+    "complete_report_sha256": "e643cb59e367d5e4f4f85947806e841e3b21e98f117866efad2bba57e40f2170",
+    "representation": "review summary; complete deterministic reports are emitted by the completion script"
+  },
+  "evidence_scope": "synthetic_regression_only",
+  "experiment_id": "owned-synthetic-arithmetic-inventory-2026-10-12",
+  "learning_curves": {
+    "claims": {
+      "actual_agent_improvement": {
+        "reason": "No real agent execution/outcome comparison.",
+        "status": "unsupported"
+      },
+      "generalization": {
+        "reason": "declared_shared_training; foundation_pretraining_exposure_not_verified",
+        "status": "unsupported"
+      },
+      "reward_hacking_resistance": {
+        "reason": "Cached comparison evaluation does not execute adaptive attacks.",
+        "status": "unsupported"
+      },
+      "sample_efficiency": {
+        "reason": "No confirmatory grouped intervals or multiplicity-adjusted comparison to challenger supplied.",
+        "status": "measured_only"
+      }
+    },
+    "dataset_digest": "be0d5dd586f49d6b1e584eebad9fe1b56516f3623fefb263ebb3838091f7059c",
+    "dataset_version": "owned-synthetic-arithmetic-inventory-v1",
+    "evidence_scope": "synthetic_regression_only",
+    "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+    "kind": "cached_feature_learning_curves",
+    "l2": 1.0,
+    "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+    "non_test_task_groups": [
+      "000c3006bc04a4ef643e6ba98772cdefc20d43f170513ea3ab85a5f331882052",
+      "000d23a877e98312f19b5fa1a3644082efff9ac839dbcf36fb29c5bfe384e79c",
+      "000db26dbcc9608cf793898dc8f821854fbd6f6520e7290ea5e193df3bcf2faf",
+      "00298e046de8dc86547236d3bad8183687a1ad5216c0759007f6e0059cb8d363",
+      "002edae5911ab905068e75d5f920a91259141fa8c2cc044beeb5621a096daa40",
+      "003250120982efbc78a40f167dc31886c73d29be50de5295b48094115a5827f6",
+      "003731f86b0553caf09ae278d5e587b3d552ae2efe0ff535933662de9b4ab3fc",
+      "0038e97fc9d84f59c347fd75022bc2f9b9113a1562cbb296ac1879342bad04be",
+      "003e3460dcfc448a7b770ec301593f755ec5c2f3517074f4da40ae51e8139911",
+      "0047e7b7317c5483f51d77e2ebfe19ef87926d48e7393914384f8aac42d3f1ab",
+      "0054f609d7104aa87282c3ab658db42e942f5cebbea4a7ef5aca3eda7c0d96a6",
+      "0058969b6783ca196a73c18b562801afe00601c34aefcc529c6cbf6017367971",
+      "0066c56b827cbc8943a11e05983c41afb55fbea5d69210339f894d335bf31681",
+      "006c28551889655bbb6585bf2c0cf9341687ab0951992be5c65c81ab8191923e",
+      "006d9ba27ecd9928858ddab50a11a770cf4d9a2787a4acd3438c665b5f95b8d5",
+      "008a31dad826f37ec99907403d9ea3b2962af87ad86f91dc8f16480d7459d03a",
+      "00908fc51085040caaa9231e756f362bd6ff65ccea8ecf9eb35d9c3c49e74b41",
+      "0095addc43eda4a408d7c1860f2af578eed2ed27e6c6de1256cb2a83acf818a4",
+      "009e125fbf4f49cc3a29d0befc96c6e27f58cb49c58b16d6bef48e781932f7a4",
+      "009f464da1185872703accf3041bd4d20f9ecdc3e74b04a21ed447f99d82e262",
+      "00b48233b5ad8137964e454f4f910168e2a9fb58b9d6a4fd12b8605569437ffe",
+      "00ba2f41763be188d09289e16c9aa1b835a793edd1962f8b13d968829c1d9244",
+      "00bc87af867b63f52c2f9de3dacc09aa3b6547f339d97cc0bd3853a122b38ce7",
+      "00c5d117af711b9ef57151198384b62cf616ac02652131847a5511e159008a8d",
+      "00d23ab42225d51d9a4119f75b1fa035d4fbb87a793daa1fc3ac1be8c7d633cf",
+      "00dbcf3864166eb010eda28ba420ea017adb554e9b3568735ac939a121f0b8f9",
+      "00dd8bc4788155f11d64f726232bef6a096510692a66b13562298022626d7dbd",
+      "00e3cc550cf290ac2efad4e4f9c99c5722eb53025533a231a2603675344fda6a",
+      "00f24a33843f0a2c364b4e8d13cd50212c53d92d5b8d3d8229ad54aa75698942",
+      "00f57571b20e47d4cf96bfdc24f5ae0f95d4077feac7d1bebfc78b8b45f805e3",
+      "00fd9a50deb0af5655d58d4f52fc811965d9f895c06af7a68604bc49b42129f1",
+      "0104eb3343d9e921bf393adaeb705db7d75335216cef1379a3fb36102c6034d7",
+      "0109edc5030c5632777326618d9ae3c00880c4a9a6494661c8bd4860d5bc6f59",
+      "01149f9f7c5ddd9128801ce58540a745a891fcae5f18f702d073b8118ab11bf7",
+      "01153052c13abc2f69af15c6475c941c96b02f3ae418fda134c650b05af4f7b8",
+      "012188030fd7842541d58762523ef67a57740c8d5950e0a31dfaadc9af38613a",
+      "0122e5059d15222599d2fa95a2d5899791a2c114d2a53af68478ca186687e808",
+      "0129bd2e2963e43dc820baa41fee7016959f634cc3aef8409d9d0e6189c11e16",
+      "0130ef9ddf660a6c5b562e48d4297ec238b6dd0ec488b8e13aef172e885fef7a",
+      "013b7a29cdbe32d0503526ddc1ce974a781ec9b689d31a06bfb2bd01ff3e8f14",
+      "0140a9ec86ff9d45fb32b9ab8fd9f5ce00d0f15de4d916f957c48b990f331e2c",
+      "014eabf316fd51cd358865a70cdfff3d84ad96104e1948a5f49e02fc6350808a",
+      "0155ff8ec3eacbc1634c4ec412d827d34196461803a9cf7f9b538841b74ad1f6",
+      "01569c73a60391e3778e8d1de9cf40c0d9250db1cec4745b1cbdc44359414f20",
+      "015e0e3e749d89e9510c5eec5ee019743a74da5c4d5d5453b8618820562c8bce",
+      "016224d131f9147979f499f959874b97be18036364ed23f5c00e28338a356411",
+      "01743c125c59bc729ccf16edc917bb8e772090a070b616754cbbdb42cc331e1f",
+      "0180f21007b71cb1fb0649a98dda62c74bf3e6fd882055970eb5ce4f262ad59c",
+      "0184a7d1c875ed5a7045e68152f547938c66a9e55942dc4b2cd81ba18e0c73f5",
+      "0185ddca73569255ab228e60893bfc1d5c4cb1c4f11b133180f80477cdc949c3",
+      "019268e5ae498e199b8f882e610d35853be8be084c3f49d659b06269213a7b11",
+      "019589cfad3e5298fa8cf6daf38a02fc3429a974a4b82a6ecf94659a3b3b72e0",
+      "01a4c166decec059623ec9021a6b4fd4541bfcc38c98a28485639275ce5dfa70",
+      "01acdb9fb35a30cc12700571736a84363108ddd42c5fe50766e666076610dd85",
+      "01ae9ae245113f9339922c8b9f36dd6691b013d2e6c3b866bd9bf75903064e14",
+      "01b765d2fc52baf5ac74f48bb452f7e6b754212aeb7c20f18cdbd66fea72e9e9",
+      "01bacb211e09953e573d6003aa2cc21c7c70069a1766294ad4f9ff54bf8beb67",
+      "01bd82aa0096b52ae1b19cef28e73a1fc5e5a80519c6d71a55e44244e4bfb9fb",
+      "01c02b58fab4cc69857cb151d0a1bf32b29f48a85d97dd4fb7bbb4158d4f0701",
+      "01d6adef40b56f11c3ac48f8b160de2be1f6de91317b298dea133fb7c4cb8ed9",
+      "01f07b5b79f9e919c38fa1527ca4ac0f478dce92fb6f17cbc798e952b65fc337",
+      "01f136168fe899650f7c3e2b746ddfbaa274c3a49225bb63f8f219bacf287669",
+      "021d6ff99d6de42bfbc65d9b7cda59ca1ed87d096119a741940e986bfe904940",
+      "021e3099f35066c296b81b901ea8cd70db4b05b0a4ce29a11e4e11e6acdad7e2",
+      "021e3969019074f2b22d1767a6a3666e83716b3dccd7626c7984fe2e99cb7237",
+      "022f44bbfb5670356dd4be9352e4d382dd244bff979f9314796fcafdf16988ce",
+      "023c5fa3dd427b27f71467a820276f314d70fc1c614b39088347de2c38fdeee3",
+      "023cf9d4c0f5f80fe741220a855b8de7277748d935ac16bc7264e38bdaf50cf4",
+      "02476bab7a4d9e35cd7f32ae6526b0b55ba8071b5751e013e45f60dbe62fdd1e",
+      "024abc0434d1ee812b7141af690ff40e9d599f4e99cfb96a13118994019dafc3",
+      "024d5fcba962fd373f8313b4699c56593b5b5d5077b8aff5aea9bc2bb03960a7",
+      "025315cadb2ddf1a9738431199d234c16cbcffa732b1a3af477b8e777b813e24",
+      "02631d567e314dfb6aa6189773de89e2419a37a69ce20a6510ce68b498183b10",
+      "026ac9cec48a8bcfeac278df668476ac555941afb154212e2f5ead1465ca4909",
+      "026c32b9695803f177dbb74aa5ab4be39623294737954a88c9cdc94e11fd7d3e",
+      "02701bd86612204b5311902051942d886a51b33468229311b80ab4700abb236f",
+      "02761312fdb95e7d15edb269c91c0896532d08078f7c330bc8ee707f6c69c2d4",
+      "027c434b4db44361f1830509ecd4b600c44c2e3949b49f6a51a20ae570b1e1ca",
+      "027d8f71465f69ba38fd44b27afaecf0c9da6eee8a7584630e29aae3cea00722",
+      "02862ecead597da2e9889ca758d4d46738b8181655412b40921ac58e18cd1b0f",
+      "02942625b75a5584dc0b0aa67ac71fa42e2bfc55e51325db00a463672cbbf4ea",
+      "029919ffc11e713020037c14c4176bb4c9a7091cbdf9486abe9e7f6186991d0e",
+      "029973e4375b2c46a833c345fdb4c314f27194ac86db24ee222be6a58056a38f",
+      "029e10598a4f6b038b80b89e92f4312529abff46be6abcabe5f38748ad22c5e6",
+      "02a71bbbb562a9197156e4b38e4cf9b8586152c55f270257bfa8eef398f9d595",
+      "02b1f0d212512728914bd11f75e1ac83a2c449d9808cc4fd51ccec2940341866",
+      "02b25d58310408df8c7db375b54d4affb44839ae06ba22f14f7727d34ba5f4a6",
+      "02bc610716d62baa355eada61fbc79d3bd80e6c133caa47e81af4b1b716f7440",
+      "02bcf63d752ec7d71847c88f4769aa8316d04fadf33f33a4c888e318323eeae0",
+      "02c0210644b040531dc14cb95b1d9765d9f44c137bd9a78c242ad7980d0347b8",
+      "02d2bd5688913f37e168abb0c14ca361f14e7425962291832761aabd052a5d7c",
+      "02d5cc36b790b5f857c178eca018b02768c0abde3f2f6ae7b77e1f71921e8a00",
+      "02d88b182b2664b4bc638ada584c60d98d2e23f63f3673bdf9a6acd6dc524594",
+      "02d88c79190f4d012001f5c7b5977c0d1e58d6478b9a26922117d20d8448bd78",
+      "02d8e8018eb23ebef91d7f3915bec7e43780d38321b306fa5cb8a9457a447947",
+      "02da976f3a307e9f22a4ffc89d157bd84c6630a8eea3ecea33cf5e994a46e86a",
+      "02dcb6ad80a860d73c3abe9d3f0c153f7ab99f618784523d9fb7518abec25e6e",
+      "02debeabb4e0b9f5cb1aff554947abb5877ba7b20b2e8f8626b8f5e20f515487",
+      "02e9e8cc52217efecd754377f9cece4a99aee8fa6a5317d236a9716d12562692",
+      "02eaaea4438965e0e34adf22f639c1ea9f271d79ab719f0eb2a3634c37686217",
+      "02f57abdb9016db8c55771852de24d243a9b9378b85560cdb1450b9f3af06219",
+      "03001465fa2b0873fd2dd37491dd7df7a22e87306067a023e7746cc55160909c",
+      "03028da9aec83d775e0c5fdd92ee5b1a2faa766f54278147f45d4b0c896c1410",
+      "030636304eba38a865738f721fd72bcc4d863e36184ba31a9f9adb44b8700f8b",
+      "031351c043ac63457da7e03c63cf6b23547222dcc2d5d38075b481db4e8030e5",
+      "0314cafce4389f3d0282914936e05384b15b6ee4a3e3b0613d11e19d1fda6fde",
+      "0317f9f0b4ae2090a1b9f546a3269308559ad7c2e13491552b95966256a00b25",
+      "0331c22769f2e3565e90643c8b16b01f5d172860d7a9a93841425ec0aa0f7746",
+      "0338b006a415fbf6f3c0beaee398cef8fa3cfb7c0e5303454e2d3f8588025695",
+      "0340f1c38cefcd84120bae223fbc9951030fb7f87104114224dc520c75629b23",
+      "0344c236f6ebcf8be9a629c09da2a466902c5ac08fa23f31fc044ba58c3647c7",
+      "034d42645dd3b79d199a8f00ef0e210f0f658935abc297607622cc8e73432bf4",
+      "035d952ed9f8e1affe82abac928798b277b6927f7b8d6a610ff0e9560c36ee28",
+      "0361d311ea6fba7774f4e209505cfdd1de4abdc837bbfcb2b38546d3b802b906",
+      "036fd36f84473048cec0125932b21c60f8c7c7b5d700b26cebaea2a35803dd15",
+      "03832539adcbba70cd7655452a2433ff4657bc1659e90423e05b6a52ad7d5c47",
+      "039be7a516c91fe6e5098fe3f99f33c6d6cf1554e61d006886e0093b0b33559d",
+      "039ceda675b668cb0c3bdc936e22b37c6c5cfb990ceeafbf11aab63b29af5936",
+      "03af4bda002031c966d818e262a40fb21be7d157c8274f8575072a91567f9bd6",
+      "03b40ebc56b1f05b147884f6c692154691a0a4b1bd4d91165021eee5582c9ece",
+      "03b708821d34142ed3b1ee83a5a8f083a68aaa0abbb25c034e35b27fcd5b7d80",
+      "03c65ef7e253b2a4e657aed2cb559343754c10c4e7ee9c9c2dff50a7a26b5150",
+      "03cb1e67c204b85940bbd3352c1655508c5b905fa314680f493dacec7b318da6",
+      "03cf465355bb644e238efb8ed86098a59249597c5106e5b3ac4ce94bc8bb1d9c",
+      "03d30b49f8fe799a82901ea6e2b8823d48f684a582a452a71c98a8aeb06276ba",
+      "03d42eb39389b24ceaf881bd3ae08fdea0cc82057fc8be2513eb7fc2db739f97",
+      "03d68fc53b5c3ee9cd4d9437e868107d87a5e4e66cfe9234cf249c4c1347dffd",
+      "03df9d402c8760d31b174f65db9641bca24d80451e83cb7f97eeef7bab0ddc43",
+      "03e0a43c72028dfe6b7476ba5392f3e49b1599397ebdb01dfff54b97c7fa3d0d",
+      "03e50e186e8f9b50783af9684c7927972613aaaa3f6ad438bc46c0daae48fcc1",
+      "03e69c8eee86c9eb264fcf8afcd9f2ae67fbd69e58bafd2730a8ba937ea03124",
+      "03e896a18fbbc1aa27d5ea5d1bbdd4cf1a8e1e188cf5a55d854fd30cce0fdbc2",
+      "03ee17a54859a323a8b3a0898e3139ca4a06ff7267ba30d890dbceea79f07db4",
+      "03f176bd519759a3c471c5863e45aa44e5b41d70e1b8d7d32766c033c107989d",
+      "03fa52334a8f49f28c5404b05ba9e0ac935cec86ee032d489f0b088a77624244",
+      "04018d65125e810766e408afbdb223b88b165a44c70375e74d0338f0176a807d",
+      "0402c80b7f227bd400b53b80253cff12b168f26237122b38a2e1d4a911900572",
+      "040907e56627d3f3752ff5dc1f1cd99b8799a9488954e46254389264c92c1f9e",
+      "0427879a72ee1594e535c62c8dab566873141315a45d832c76b2ca7d5d7cc93a",
+      "042b76027eab5328ea028faf5eb9ff4ef34f24a6b3e3a15146a0ada11e61896c",
+      "043320b4bca1b7e403ceef81db68f466362ca614d51db056e13abfe39d0f4e78",
+      "0437d11995c14c72016a47fef46d132374fb00096b99bf957abb6f6e29915e3e",
+      "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+      "04414db2010d72605dc6d188386486cc72a9fb97762994611d03006f46cf25a3",
+      "044e9397079b07d15098cc8cde4ed6b8aecb5e6adff1b3e30375cb7e2c0f6266",
+      "0464b844f2e1c91d79570780a266f6fd46b65353283f96b0002631343b58510d",
+      "0468a4d360b93608a2e66549d4739bc7d111dbf82e1a95c65de9cf7834bb3006",
+      "046d32530d5917cc1df37c9bfc6704f3ac2836c4deaeff313c7ed3c3652d36e9",
+      "047163ae32646044fe56b3025c9cee5a4b41baa5e17f9cd55d55124b9c0f39ce",
+      "047206ce5a2de4be03b70bbb396107a62cd24b0c1654a494d45f11d22eb3c279",
+      "049149c35dcf213d0b6658a2ca0a7890272e107d9368911a42caa149cb235b00",
+      "0496a3b4478fef3bef4d46173bf76c0613434ac31d2d5597fa3c4952a46d0aa0",
+      "049f3bbd14e28a8416e2bc7317e1c91a53b39abc869ad1c44e5f2e8908c70dac",
+      "049f76c78508846b8fb87d832cece28857b5209de7d061db28b028803191bcf2",
+      "04a49317969034272f67e8586294a54b53be542d1ebfca3225257f6cd8df788e",
+      "04aaaa38a558fcb1bd7d3573b36bfa8bb0a5559a363610b85b0317915b3f5368",
+      "04b0d0c674bf9ca98afa328f88d910583507cd6f661816a438935e2147c71d6c",
+      "04b1c9e1af4cfa18d5bba5fcb8ef2139e9ee5c8f55ad0937fa8e0e858cc13877",
+      "04c23a633bf025d8f5898eba8db76733dfac747ceaeadb59bf3bd39f64d59242",
+      "04c302f87d409a2042cfd0029e945a53b3680e9a6ca709af52d55107ed8cdd7b",
+      "04c498405634dacd101e43b6ed995798dd9e6b4bb64db1a8707571daaabd8e3b",
+      "04c9a9826795b3ad6234988d2cb4d6d8523580798720bbe5d3a93d3a96535083",
+      "04df159a8c7d46d64e1c8c15861da6e5a670feea71b06bd3bc89d0224accba6d",
+      "04e526966d73526b888ac2212b47c48702621d349cab4bf74f21fbaaf8424a6d",
+      "04e86d106b113e7f0a05d819ffdd1c75ae4796cb5d277c72981c41ac8109805f",
+      "04fdf0615f890070cbc0e171330b9cbc73f5d068ce85508e543e72e3a97f820e",
+      "0510b3097e313dc097ae01277ed4c4476f24963fab5420e318d729125344cbcf",
+      "051146eec8ae6874b0b52aec1997a0db63aa99f649526b28f8db6b5386d40c31",
+      "0513a749011517ba50a27757b9db0ba62552c001e31f548fd6f183eee0498ee5",
+      "0528afd9efe7a48aeb9d98418fb17cee38a25d41a2bb6ccd858053c0adb02d2f",
+      "055860eb7446638c3aee225e035dc6154b45f7dcee93074c280753498a13de3d",
+      "055bb1e34442ea5493446271cf9d5e3a73f0c7f331f7a5dc106b0b0112b25028",
+      "05659231c80797f5beccb7f79dbcd62d71fbd0e50f8cf4a6f3c30e4e0369ea72",
+      "0565cd454ab3c1ecca44dd943516600543bfc22122d4d42deef3ea06809f29f8",
+      "057674478347a96eedfa9517d61c553afabf66d746836a2a8adc37a7b6206a4c",
+      "0577bcd3db6a1787b5f5a10136346e02c71f95d37e9a94c90992b38296e101e1",
+      "058aeae7c756e1499686bae7eccc1ca881f588ce61883610ea12291ecc21e166",
+      "059583bfcdfecdc55cf7556f77251dd0498dbfe13fd4a7f93985782708de9460",
+      "059b76f61c4e447ea2b0b88b06c3ccbc8d7234e7018eb15883dcc7164966e132",
+      "059c5b71700477d75028af061edbab8bb52ca16844a87d39036119f40936bcf6",
+      "05aa4cdc1dd55d1a6600fac010418c4a76719d371fbdaeba9808421b638a81a2",
+      "05afa95fba85ef4c8a90b30ceda703615ba982e10838af5c7f61d3dcb6996a6d",
+      "05b3920c8a035372b73df6787130020371b077582726be7ca304bb82f657d2dd",
+      "05b6d0e66ac38cf0a5b723e879e2d21328a3ae5a5828bc260275a52364243858",
+      "05b840ab8d82e35ad792f2ca53ad811e33b51760589f64d3c25651106f5483d8",
+      "05bd3d3ab1559118aa9e1ef0d791b4f84c4225f46ee35490ae69a27241389fc4",
+      "05bebfec88f4949854a75a8d5ac0c99f820b075a37da9852524e5a52fe84f445",
+      "05d609b9e109dd275a6ae04c132f1bc95c981c2bd8ec538bc6085d829b3ca92a",
+      "05da98ba346453aea4484106942354115043df2725387b1878ba11776d47f5f3",
+      "05e052c44ce2ff4e51ee96f1568d75e793544992cc79c47bc7d5cd96d6eef4d8",
+      "05e0e7d57354e4b441478495d26fa9e789d7248519645fb14f4ec60cc474be04",
+      "05f2f38da93ee62c6bb64bbffb72b6c483b5076a05d0ea60dc2151eeaad50f9e",
+      "05f363946706d2eec7880d9b4c3ca76aa8309d279a091914ffb3b59fcc8dabc1",
+      "05fcc9aaacd0c6cb53f63bd3b18b7097410a98084bf5c5302e053e5a9cc111ba",
+      "05fe50c6b52dc2e11eb4c8562203405d8cfa190e89e0328cccd6a9ff66d42e73",
+      "05ffc6de07beb57587274f484306627326183ea209bdcfb1e1bb88b7e8dd68ec",
+      "0601f5fe858127b283f378440e2a8d78339719aa362a55397ede5e92753b202a",
+      "0605e28a8d10608199572dfe414b0b7f13a58d522a0e356e826faabe0ea34ba2",
+      "060a9a1fd7daa2c87b4a63579c801c93e104dbdd9c8dd61b0e1f390578a933f4",
+      "06120ecbab0ee4bde9681db3bcbcb2393edb682f2afce8f642f25bce94854a3f",
+      "06240aa201de7405407e9deb3e44c766f8407b94203d3fda55e0db97a99e3038",
+      "0624e1add7c0e48efb53cde50cf7366b07206c59fabbf557944d5fc2ee6f1a29",
+      "06253b14d2e5d44e4fcd775a628035f2256f5ee7ce32748d966e0cfeb97ef5b0",
+      "06298aa06f67f994e173d4d6e439dfaf199553bbd591913694897347d92ae198",
+      "06349073815e60666fedfd9af8202fa81ce1efea7ef7ca09d7efff96faf78bb0",
+      "06375508e2af8d129e20e0a980ed709cb5402720c3c60ee43e32f188a425a0bc",
+      "0642c848e581c00ee91452a61a5d425b7550a8fa13d8fb8e20d004e15c1d456f",
+      "0661e7b94225d4fda8e45d3b5b62d4b0792a1eb221ceac8da9effb5d5581d8c0",
+      "0667835ae02bba748bc165ee32c11ba0a0a1e9e8afccd2955531291f1ea4d997",
+      "06687c76d49b4f123986e37474ea159263a818f90b3314913ce7238254e13b31",
+      "066da2a54650c744e4cd46ab888456722395c3fca099a3d730e563cf88e50d19",
+      "067520c5e72850b8eab08bac89598dc08cd0908493b2e07d93fa78b2828c54a0",
+      "0684b8a9844f35d90601d8b9f950e44453aab64baecee659ab868c342d47e361",
+      "068820945bc9ff1ec3b199f24fce750f2a6f84e711c26071e09825b71adea28b",
+      "068c4610937daec5c1c9afb6f4e8a5b7230f264e3b30d9adcfe28bb11d0bf9af",
+      "0690c2863f55498f7c0ca00a2dfcf516e2b5010a6094801857ee60fed840f7ef",
+      "06913fa7a8ce6328fe691bd23662e5b42bc4576922c1db38030951575bf65963",
+      "069b2d67203c1d853c04b93ebd521198d654d3acb25d6e5d870df41afb550363",
+      "06aa34a4e98f4a1f9d3509632398ffa515fa23dfcf35331f12e73559c301420f",
+      "06ac53903e5f2fb9cf5db94127dbf47479413c0bedbaad575988bcfea1432dd2",
+      "06ad8147bf5855f32236107a46b01d88e1c98baaf2ede11fa5ceb55843a97fae",
+      "06c0ba334773fbcd1e26ed208d9b6f80ae273d5b280270ff5f751a3ff7e9871b",
+      "06c9f252ebca88cf516a6ee839f25c040d1fdcf5e13ade4d5446300a5e8f1801",
+      "06d48ba0599ec6201c213f613dbcb30695e155e6a20a77e71df8a0d25e57bf0d",
+      "06dc2cbeb2e4117c148c704ed812a38b5a2c0bb59bfbb8405ee008ff4b6904ac",
+      "06de25dad02abff9a011a6fe7a0d34306ff0096aeb17c48d5fb7694fd1cef193",
+      "0701e66fc6172df3c3f8b1a6b0a5ecf5a48fa6f205eba8c5892add05316dad28",
+      "08035c8f173d9174563b4fc44289d5a03caa701595264c9ec67170594d1b8235",
+      "0e35ae9926f97213ae03e6dc58d5b188b48afc4a1f84f84cb27e504fbad254c5",
+      "1139ca66a48971e9179997484cca4c979380ba5c96714804d768aabf07b07245",
+      "11ed2c83f923d1cfffa7dd869f26be3618ba81e4a5de1fd570a6ee26a062c0d5",
+      "17dbfae17f49732a476fe6636c7a7556cdd8859c062acc51d7439fca483a690d",
+      "1908a57fd6cff01c86ddf80c6add4aecbebb0a1204d16513a03aef8a437d8c49",
+      "1c7149ae5eadfc62dc22925fdb3d58645ca64f2372286201b2184538e8fbc8ea",
+      "2080fc5a821e337e09ea3a2c53459c3e0aea4958485d90b5cd53ce54c048f3dd",
+      "22dca4fcb30b092a29eaa3377012702e18241a56e794c58f2fe5f3b9f7d72410",
+      "295b556292d3a9a292dba9a4c6a8c2fbcb7d96e6c2161a47fb7f98b795895b0d",
+      "2b4b19447a2bd917514b5e1cdf10d8c2df778eafdd9d40c2d99bc8016a3931bd",
+      "2f3e9830573a2d7e236cfa604659ab2e48f6fa1cf50cbf64a1f9e5777d851cd0",
+      "2fe8d1f22477772fa033c2423d4df95052b5105592b1db33fa745d939afd9bfd",
+      "30a4cb8c0d04fc50dc585f090fc89ea6711294925f37c8abb08132870048fa89",
+      "3317e15f2c301c14805bba25b0285a070ecbd7696ecd9e5b2094e4a4399c49f6",
+      "357a3545e280d03f175ac7928a401d86ea8a8eaccc6d68dc67c63a29119c942b",
+      "39126e28275ac25b26262c02d469c78d46cc4a433f057994e280a3a0e2f9cffd",
+      "3d093fbf54fbd966bb8c5bb2a48191e020c1e2b03ee1e38251144198dcaba21f",
+      "3fb2e28dd550c2b2c0cadf8a9420a526b21a42ff8588ec93d9ee824487ce9c03",
+      "4253d2d0fb8174e45756fa3e6238a4b73ef45e8207cd52d920601914827d8f64",
+      "48db70676c5819974a1e57b8ead7c563089a2b3b92b9bb1ee56696ade629caff",
+      "4a25d4cf0c2ba62fd162ac9b36208b9948cf63359c7f04518c1c6a34dc5fb502",
+      "4fca86b4e91f003de9882907897a827fbed2791ff23f7193cfbefd72af923063",
+      "529df5a41977ac77a0e0fae0916e3ab9748aead464a8f7eb2d0df1989548abae",
+      "555bd3ef6df957ddd9c033c91fa35121fd73bf61a6db07b4707ae3a430e6b8e2",
+      "5f5b25664ca37c79f7e829f35424aacf92aaaeeb260b8f0d23675a7d1cdaa215",
+      "625c0bb50d9c2a8d1db2ea238291ba9d2e81e8836e51865950837c025ed8e466",
+      "6762cfa2a18d6d105c7f2293662bbd0eb3a0908fe03575f263f06d6c403dc6ca",
+      "67ff6fa96c15d1991dec137383e5ad0f521b71132f61c284457d2c44d5958ae1",
+      "6a8bd96af15550a51c88239842f1fdc2d20f6709e4f4c49a92114f1eb504c7de",
+      "6cf1284eab9beac1d13af43b9cec7d8ec1cc9d2f55737672f1392f32aefdf842",
+      "6d9d560213d3b9029a6ef0404523dd77e3f625bfc77bf95aa2c400a696207d48",
+      "6e670a8d009bd9f406d7683e8979dd9025f672855fc696d7f14455b848a66c21",
+      "70f55d85a2b12fb224686b6ad5129145bfbc845c61ecc69205dc4459a6cb8710",
+      "7604286d8e01c98115751ae14605561ec021b026d4e3a65c3939f728620d39eb",
+      "772e10a0d0cb6fce9b859cada60fbfe94775dd58c7ba5edd4eab8046c2e55622",
+      "7937b6c5934c183f6a4544337e91a4f29fae3b011d54c1e4815a84c6c26174b7",
+      "8265ce5c04b4eeadc2d2a3afae7be8b8b67b732efc11ad532751d877673005ad",
+      "84262bd9c54b405f63a84b80479c058079d21ae3b404092a2f03b6ab98b73ed0",
+      "88bb4b6ccb2c50777714ce6d3415a8eaf395af013dcf150c80338613153908a8",
+      "9284ffc66e5921a5834ceede6dd5579c996ae496379013ac1df8e6414e803a00",
+      "9333e783426601b40e0f7222649d98038254b0689830f081c8195f1d6d646ef3",
+      "95ebb920176016696edff57318f26d70f5ef19af490358dcac621c84874e8eba",
+      "9d145d7143f6dc555aced0b72a0b31e0a0019690f3f0ce36ad6bd6219bfa3b5d",
+      "ab20129f98e559ef0a0e7261edabf68da4a60597c53fdf1c9d6ad66cb6dcb123",
+      "ac04823067ec594129fbb745b34baf257a3e741ea50436a27a6ac1e7ada5690d",
+      "aefc1c36cd0e259ff67b7f5c25d2a2eda9d7cfeca15a567a1f3e10011ee95f37",
+      "b2684e42b59b4164ad94f7b42044380e6dcabd073cd7a2d106d3be6dbb8dd606",
+      "b398d13bc45bb5983b313a2f9fd86047c5410709f97fcc03457c192b97d6f601",
+      "b67672f366e8288c6f1faf91b026422fedfa2ead1e0a127109446681e1b5818d",
+      "b9594c397e1d9a89f56312ef7a6895528b4b2f76d0c9ae326cf0e36266c98d0e",
+      "bd01842029e148ef26202eaca5e8756bc58c0872c99f30f33cd6f719f310d979",
+      "bedb964f627c74f0a637381dfbfcf2a626122ee7c9cf2ef8977a7b2a183a60df",
+      "c567326ba69ec436af1056bf8c0e262bd5397d6039589ba9fbe4ac2a12487629",
+      "c7244715709d808d6e37b1a1cb160deb8b452c61c93734f3a163e50662eaa24b",
+      "c824624c0d46ab2788b872695db256923e393517a90a7ad9368e20afc4dda541",
+      "c9addb33ba07b6f47fde094d9513bdf6a83dfe5cca4d5386b10bf35409a0a02c",
+      "d0cb45ff5d7bae045411990572b22899fa829d20603c94bb4af45b87956a8326",
+      "d266932df2086579bca968711e2b4965f93ffc3d251e40b4359e9ca54942c7e3",
+      "d414bf3a24c45945167835aec0dbc80a0754d0c0eed1827b69a04fe01b63b6e5",
+      "d554f6b2aefe29514ed4baeb44e1f2ab2b1ff2d2de552f38b707cfe2c0d37dc4",
+      "dbf0fec67bbaf973f2d8729cb1a773dee45001f3b408e4b7016d717f1c40d68d",
+      "df7be6cbe07be342bb8b7bb6eaf932608d490bfea4556e17082d05a1dcf28afc",
+      "e1d1fb83a0d002a6e8e8cd33a506dcccb86bd7b1e3461ced4366a4b0e57097d0",
+      "e2b4cfcd1b999b91b4fe9687127089f208de0741b3362710ae72fd611cb50922",
+      "e2d6ea1110d05cf0e4439f0db0bfd2d94f6fe803aae741a1e6b8844a858feb75",
+      "e51fab508004b0b830570cc5d9f0bd9f46a6b8ae9e5a7c03d6304de6e9d06545",
+      "e79bc01ecd4923342c83dd455d0057e395d340248dc79f7af01fc789dbac05be",
+      "eae810fa3423c913398e213a0590731b6751451aec9829718284d113e91a3bc0",
+      "eb15e6cb34db014b89910157981c632b25133a207b74930433e5f036448eb66d",
+      "ee9a811faaa87cdf653033fc5613051e91a13917629600b0ab101ff4b2c06110",
+      "f14b70a1cdb11302f03612924ac0f33db6058a916bd23bc7a0708dc2df4c5918",
+      "f86b975fc5322c110c2760cba34cd8d9f8e93cd2a95fe5dd4bf2f75fd01a4fbc",
+      "f8b7470da0526a8be6ae4d085a6da8cde9874bc20deef0c0f3a902f4d1e1ee77",
+      "f8ce119caabe44fa9dce8669a1b8dc1c172605560af393672e46d0b9d8653708",
+      "f9db5bed1d1a74144ee5002cc6d9542d2084e9e81b90f7c5510a7d15c90f1936"
+    ],
+    "repeats": 5,
+    "schema_version": 1,
+    "seed": 42,
+    "targets": [
+      {
+        "budgets": [
+          {
+            "labels": 0,
+            "mean_accuracy": 1.0,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.1094496433781224,
+                  "calibrated": false,
+                  "ece": 0.32250104349819886,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3953772498597137,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.1094496433781224,
+                  "calibrated": false,
+                  "ece": 0.32250104349819886,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3953772498597137,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.1094496433781224,
+                  "calibrated": false,
+                  "ece": 0.32250104349819886,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3953772498597137,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.1094496433781224,
+                  "calibrated": false,
+                  "ece": 0.32250104349819886,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3953772498597137,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.1094496433781224,
+                  "calibrated": false,
+                  "ece": 0.32250104349819886,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3953772498597137,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 5,
+            "mean_accuracy": 1.0,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.13898335086280028,
+                    0.06357450684454759,
+                    -0.03968202614410725,
+                    0.007009018657409083
+                  ]
+                },
+                "head_digest": "4c5b5a5d265fe212cee34201819aa26a2136ed0c271aa4a049eb4a92c2c1d03f",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.09311424648103674,
+                  "calibrated": false,
+                  "ece": 0.29313268082242455,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.35438821183336333,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 5,
+                "support_ids_sha256": "d1a70d50957203df715aecca580d432bd8b1dc4f55ce2290d8003ceaa055b433"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.18072547805358447,
+                    0.13862091780737198,
+                    -0.04793158044860955,
+                    0.10508011985797115
+                  ]
+                },
+                "head_digest": "b2e5e56b9f8b865f7d206e4b35cee8819686906980fbb5908d5ffb227bfe574f",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08293367833653752,
+                  "calibrated": false,
+                  "ece": 0.27306554708652153,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.32727879221409845,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 5,
+                "support_ids_sha256": "ce04c2de3e8e5caca47878d16866584eb7621b762095db7fbad5152d76fed3c9"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.18143950433065514,
+                    0.1509767339639313,
+                    -0.04487851897776684,
+                    0.12095509273422757
+                  ]
+                },
+                "head_digest": "6f163dba30609979b11d5d68bb4b9d03c79d21cb75c920adbf22aad117d88547",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.0819215686088731,
+                  "calibrated": false,
+                  "ece": 0.27095400369662076,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.32448027567185467,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 5,
+                "support_ids_sha256": "77131d52bf535fb79bf2f5297364fc22ba26f5c7a5c1f19f1b75c28e392c1bcc"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.18240284338035967,
+                    0.0432260433598391,
+                    -0.0695808882566793,
+                    -0.024982273731522515
+                  ]
+                },
+                "head_digest": "ceba4d793844d4483e0000c2afd84e69cb9ff11ecc7532013fd17572c4fcd056",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.09134186428676136,
+                  "calibrated": false,
+                  "ece": 0.2897345959116304,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3497530105749774,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 5,
+                "support_ids_sha256": "ef7c1209ffc55a7d1b986741f150a44c0abd7145dd6178a3f84df4658b4b3b23"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14708272470238287,
+                    0.12292560021862431,
+                    -0.07126363279056568,
+                    0.08706505196164512
+                  ]
+                },
+                "head_digest": "2e3a9daeed9361532bcdd77d2a60a73c83e4642b3e2176b2e2088e1425044daa",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08590896583305985,
+                  "calibrated": false,
+                  "ece": 0.2789582678790082,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3352497244556031,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 5,
+                "support_ids_sha256": "3ac3a754a402caa5d0126c169dca65b83980683131eda09c4ed65c1a418db9c3"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 10,
+            "mean_accuracy": 1.0,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.1563410853297081,
+                    0.055167390395499866,
+                    -0.06340442430521039,
+                    0.00031165636452360986
+                  ]
+                },
+                "head_digest": "3ac6d00eb52c3c475773f67bbe8dd92529bb3667da4fac210cd5bfb2e9385ac3",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.09182182629355093,
+                  "calibrated": false,
+                  "ece": 0.2906611933007484,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.35101588868033234,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 10,
+                "support_ids_sha256": "dc0fd6f07ed4fa43d994ba7827d51a70b4707fb4922a351185e496ef6fa96ba8"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 4,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14089034937611833,
+                    0.13856828760391532,
+                    -0.0280532737666154,
+                    0.10354197039256513
+                  ]
+                },
+                "head_digest": "705fab901bfd087e8797ccbb9a24698d2505b641940b66dd03b3c91c22c5748f",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08616336934737773,
+                  "calibrated": false,
+                  "ece": 0.2795293163613694,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33597771353399825,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 10,
+                "support_ids_sha256": "70de583a7c93e8b5425405f8ec06410a8b0f24c1f98b417e125db0fffe331fa4"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.18231569767941552,
+                    0.15639866005397732,
+                    -0.033229164918573605,
+                    0.12988424384136701
+                  ]
+                },
+                "head_digest": "34f4bce26d14d4bec77d6ee04740f34bc082be5b819c02f3dda686ea1f57b852",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08161551183841818,
+                  "calibrated": false,
+                  "ece": 0.27034906961616556,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3236584188308099,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 10,
+                "support_ids_sha256": "9489c0884c4202ddc5da46796bc8c9157c96bead70783d2b380eccba4fb212b5"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15479307022352323,
+                    0.11089456005909383,
+                    -0.03829993566427484,
+                    0.06893879416676114
+                  ]
+                },
+                "head_digest": "6c2683b4876656f51ff7e4ac80e385a4382794c567461dbdb1d4665182a6dd52",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08739905616512031,
+                  "calibrated": false,
+                  "ece": 0.28207278938512315,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33935463332952076,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 10,
+                "support_ids_sha256": "1d2504cf1d2778cdb449b60efd4b7a00505fdf66b7115a39fc30ebdbd28eeaa2"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14601742578534652,
+                    0.08951433193996206,
+                    -0.020701474348656334,
+                    0.10473090728640568
+                  ]
+                },
+                "head_digest": "9f6b3ff3ebc768224ecce8d7d40ed6c4929a359e90cbadc640067750d1f642dc",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08785908502053916,
+                  "calibrated": false,
+                  "ece": 0.28334011128577724,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.34085725564936953,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 10,
+                "support_ids_sha256": "249b5099e8688acda823bc55fd7a0f43d363afcdfb86c4cdb8c799084f237cc7"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 20,
+            "mean_accuracy": 1.0,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15691393830179945,
+                    0.09192792989855565,
+                    -0.035646783947930714,
+                    0.04984039430172202
+                  ]
+                },
+                "head_digest": "e57f84bc4552a5fe1a2cc3e121e54035774347bc9d88b03e8ece07cad6fb8917",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08886238083181877,
+                  "calibrated": false,
+                  "ece": 0.28502366428526893,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.34330075698953416,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 20,
+                "support_ids_sha256": "cafb4e143ebdb454a6e67f6e1320069fda54edbbd2a9c593b9f149f0c10b8887"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 4,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15558532818739146,
+                    0.14081567959391006,
+                    -0.03582673888776923,
+                    0.09307452776989202
+                  ]
+                },
+                "head_digest": "9ad59c5fb4335e243340ae8febc8be9e1d47b263de291d3006cacf03e0f5ef7b",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08529295670234113,
+                  "calibrated": false,
+                  "ece": 0.2777392636169343,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33359780224748303,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 20,
+                "support_ids_sha256": "4fbd3207087c23a7e525ea41d2b4aaffe5cd63d1bd5bad57b34c371a7948ce9c"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15654137382629219,
+                    0.1254037461510585,
+                    -0.03022158490250188,
+                    0.08726734265836267
+                  ]
+                },
+                "head_digest": "95c2be6e13ba5ed6c5e962c5b4a18d5b045392c8c2dbfd624b2d578eae9aea9e",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08618058805319674,
+                  "calibrated": false,
+                  "ece": 0.2796465137114632,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.3360874487676757,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 20,
+                "support_ids_sha256": "20aed3498f7393153a9ea35d73756bbdbc33fbce61616cb652586b2560890e7d"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15331988699268673,
+                    0.11473374808060491,
+                    -0.033390869048031874,
+                    0.07620263439734683
+                  ]
+                },
+                "head_digest": "b5081b4e9cedae3fc04ac41912d6c1f94576438fa10617b57b8c7541cbc691a9",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08718192165268093,
+                  "calibrated": false,
+                  "ece": 0.28165669762793427,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.338785069501281,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 20,
+                "support_ids_sha256": "d8e1908eca67d0675a5e5d05cc0dd093b80ed36b35693ddc3443d6944d5b27b5"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.13910000239076387,
+                    0.11196968726499408,
+                    -0.011574939706604262,
+                    0.11106402747462557
+                  ]
+                },
+                "head_digest": "25b1f49f40404286db7978633a4fcda7dc66977595dfa13ba1dc54bc8bee7e4d",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08743812716311752,
+                  "calibrated": false,
+                  "ece": 0.2823610632143208,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33962079830722247,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 20,
+                "support_ids_sha256": "9a8f1f2e6504a00424cb51559eca5ddbebab461709c9c1cfe080ede83f639718"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 30,
+            "mean_accuracy": 1.0,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.15824986174340588,
+                    0.11998573688863641,
+                    -0.027042208243709377,
+                    0.0768291887302972
+                  ]
+                },
+                "head_digest": "fe146dc440baed9a429c3d1ac18dabe41d9f91d32e8fe7e652b6b38f898a1cb8",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08677039339672511,
+                  "calibrated": false,
+                  "ece": 0.2808341052652696,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33767864502065736,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 30,
+                "support_ids_sha256": "7de8f74c122e05256d5db235831ffad6aadda88f69f94d07f22a8ee7055f08f7"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14722205948623732,
+                    0.09820389812994378,
+                    -0.022760932537680502,
+                    0.08474476625602932
+                  ]
+                },
+                "head_digest": "5d442fb6af357e64fbf97b2fd1cc277070f3da6e334545b0049a1904a00b5b1b",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08819206267351211,
+                  "calibrated": false,
+                  "ece": 0.2838352913347132,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.34161928043061285,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 30,
+                "support_ids_sha256": "664ceb9e3a6dae73f0fbe52abab82d589e028f3c87d7abe686f88d6ef4c09593"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14709314668402046,
+                    0.10883407850319352,
+                    -0.016218669976192455,
+                    0.09785053244112131
+                  ]
+                },
+                "head_digest": "5a8ee434579114ade8b3548a3b29537049d7af6f7c1c31799ce48b7f88a9d689",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08741392319989763,
+                  "calibrated": false,
+                  "ece": 0.28229380538012216,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.339541018398631,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 30,
+                "support_ids_sha256": "ba137145b27fd9474e8d471bbefbfb4fbc31b4d82d576d9ead675c5368f46473"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.14812349033348773,
+                    0.11291550978856867,
+                    -0.02766305622260042,
+                    0.08774186928373608
+                  ]
+                },
+                "head_digest": "123ab692cd580102742416086fedb56e8c6473591a37e22a0215c89f22f55748",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08729561236994474,
+                  "calibrated": false,
+                  "ece": 0.2819514615252642,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33914247244036605,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 30,
+                "support_ids_sha256": "1b77b402ec3800c717f0eec756755638ec4ebe9f6a964b8e09698199b773702a"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.1405790905947773,
+                    0.12111272935147721,
+                    -0.016686043068166588,
+                    0.11410571204875393
+                  ]
+                },
+                "head_digest": "a27e66cf570346943499ab5651dc6a3e651ab4499f41eac68aea5c3dc68861da",
+                "metrics": {
+                  "accuracy": 1.0,
+                  "brier": 0.08672262209834357,
+                  "calibrated": false,
+                  "ece": 0.2808711713965686,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.33765333860951885,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 30,
+                "support_ids_sha256": "e6c8ed28e074bfee18f5f16d9e6bb4ec67a6e9416ef3479edabaf3cecaf2e7f2"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "available": 40,
+            "labels": 50,
+            "repeats": [],
+            "required": 50,
+            "status": "insufficient_support"
+          },
+          {
+            "available": 40,
+            "labels": 100,
+            "repeats": [],
+            "required": 100,
+            "status": "insufficient_support"
+          }
+        ],
+        "customer_id": "owned-synthetic-arithmetic",
+        "support_comparisons": 40,
+        "test_comparisons": 40,
+        "workflow_id": "owned-arithmetic-exact-json-v1"
+      },
+      {
+        "budgets": [
+          {
+            "labels": 0,
+            "mean_accuracy": 0.225,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 0.225,
+                  "brier": 0.30894659347391956,
+                  "calibrated": false,
+                  "ece": 0.3400935778870545,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.8145358140849963,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 0.225,
+                  "brier": 0.30894659347391956,
+                  "calibrated": false,
+                  "ece": 0.3400935778870545,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.8145358140849963,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 0.225,
+                  "brier": 0.30894659347391956,
+                  "calibrated": false,
+                  "ece": 0.3400935778870545,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.8145358140849963,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 0.225,
+                  "brier": 0.30894659347391956,
+                  "calibrated": false,
+                  "ece": 0.3400935778870545,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.8145358140849963,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 0,
+                    "l2": 1.0,
+                    "pairs": 0
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "head_digest": "f85cf2ce52b0595b7c5f7adb52ad7036580ea6613c43af951d10f63856389fb9",
+                "metrics": {
+                  "accuracy": 0.225,
+                  "brier": 0.30894659347391956,
+                  "calibrated": false,
+                  "ece": 0.3400935778870545,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.8145358140849963,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 0,
+                "support_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 5,
+            "mean_accuracy": 0.8,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 4,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.2980647208662293,
+                    0.18863114453863766,
+                    -0.33814475668798466,
+                    -0.2592616607916201
+                  ]
+                },
+                "head_digest": "2f7fc9cb6ec9beabade9a26583f2327aeb2e40f35a76cad3c5e4f8ef34d68082",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.19969747343433586,
+                  "calibrated": false,
+                  "ece": 0.27545843428723543,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.5908608693854046,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 5,
+                "support_ids_sha256": "fc98a0af291d8b4111033128a694dc46196489ffb286833e32678d1315eb9cf1"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.023990159964194856,
+                    0.21742242565663011,
+                    -0.2843400060427828,
+                    -0.08861948711805359
+                  ]
+                },
+                "head_digest": "5395033660c65dd8e3b341ccdaf6601de54931af45384e75503a60836ed26d06",
+                "metrics": {
+                  "accuracy": 0.675,
+                  "brier": 0.22391438784002698,
+                  "calibrated": false,
+                  "ece": 0.10581008253539709,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6405796493716405,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 5,
+                "support_ids_sha256": "ff96c929da03a972c92a92ec5a622793db3876b30d7fd735389360b1ebda49cc"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.3321184406520269,
+                    0.20242630201083808,
+                    -0.2701270494570481,
+                    -0.16931757553924298
+                  ]
+                },
+                "head_digest": "a77962950899be3c402570ebc48c154f24ba0acda0f2812666a322da8dda7f21",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.20864354281874267,
+                  "calibrated": false,
+                  "ece": 0.28576361034302306,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6093880364534895,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 5,
+                "support_ids_sha256": "69991d49f6a99cbb84506607c8de8ba7fe366825bbc06af8c7a06c21a6a65635"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.3343406092945129,
+                    0.1781146460199927,
+                    -0.2326673007601046,
+                    -0.21584996244301524
+                  ]
+                },
+                "head_digest": "b02e89cfcf1e459d09dd185caca04ccba46b0395747ee5c2733ddba9d6062b0d",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.2165293537844067,
+                  "calibrated": false,
+                  "ece": 0.30659615543322766,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.62547369888825,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 5,
+                "support_ids_sha256": "b4715828ba581d682961c5a9c3718a3872673a639d62552337a8d376bf125d53"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 5
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.1668365806284262,
+                    0.24063978518013254,
+                    -0.23974455740816408,
+                    -0.119587545143781
+                  ]
+                },
+                "head_digest": "beb7721ce5fd14ba93967a371283c9b65921057397009940e0101d6a564387b2",
+                "metrics": {
+                  "accuracy": 0.775,
+                  "brier": 0.21913778162972303,
+                  "calibrated": false,
+                  "ece": 0.23778656407999996,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6307535430590161,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 5,
+                "support_ids_sha256": "99ae511f2c59f1d7205e6ee771134d7b9293b69bf0cac1e3fb4786a1c84b69ce"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 10,
+            "mean_accuracy": 0.8099999999999999,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.20764013640838336,
+                    0.196052573919949,
+                    -0.30439799754456937,
+                    -0.20674199998942824
+                  ]
+                },
+                "head_digest": "a58941280f07a1cb2c138e4d9dc18f65d5de9120da33ec5cc55d118d261aff0e",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.21017801469924194,
+                  "calibrated": false,
+                  "ece": 0.281068059648653,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6123175306631607,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 10,
+                "support_ids_sha256": "82628c744c89b9f1fb77e07b72af7e812244d7859ea7be252d62fbe2e40a0f80"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.12822072409525684,
+                    0.21684030051524097,
+                    -0.26276220344624,
+                    -0.1474491163022308
+                  ]
+                },
+                "head_digest": "dedcb745133e87f1038f3bc8632b8f015435a279322c5ed7385fb70905c8dca7",
+                "metrics": {
+                  "accuracy": 0.775,
+                  "brier": 0.22004087230749741,
+                  "calibrated": false,
+                  "ece": 0.2100481250408351,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6325609686546041,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 10,
+                "support_ids_sha256": "285e32fc96de967b5531ac7f43bddf87f2553636e8d65a0e13d5519241bd6500"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.23442173810007938,
+                    0.19872157363294746,
+                    -0.24980413481290809,
+                    -0.15972125012740282
+                  ]
+                },
+                "head_digest": "d99aec9881a5475b1a0fc65c3514d73787cd3fe2895ce4a9189bf8de0ad7d85f",
+                "metrics": {
+                  "accuracy": 0.8,
+                  "brier": 0.21806685067289217,
+                  "calibrated": false,
+                  "ece": 0.2543879903514201,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6285608083162885,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 10,
+                "support_ids_sha256": "92ce59825d49935ef2eb5da3c6acf9a3d1a692b729d861b3dd0438a3c5bb18af"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.3163629063441343,
+                    0.1457016265476792,
+                    -0.25687789593343435,
+                    -0.18129634389284938
+                  ]
+                },
+                "head_digest": "3fc0e65981c3e4cfdbf3eebdc2bffe26ca27651d9749a4d8b805db68fedb71d5",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.21857267922249166,
+                  "calibrated": false,
+                  "ece": 0.32012194692011364,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6296315149952372,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 10,
+                "support_ids_sha256": "aa1313750de29bb315f8e7279dbbe7b11170603862234574706b5c16fa375aab"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 10
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.19216469645238815,
+                    0.21135667795942123,
+                    -0.24991878102828058,
+                    -0.17327320530995338
+                  ]
+                },
+                "head_digest": "77b34d8458a6cdfb8991aa5bb63f364de1c1ced71c39d6c89f0973b7ba86131c",
+                "metrics": {
+                  "accuracy": 0.775,
+                  "brier": 0.21853712826444155,
+                  "calibrated": false,
+                  "ece": 0.2385295114353138,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.629487956724746,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 10,
+                "support_ids_sha256": "c4b903a705326637db51eb5d2094153f553d70c97e272b87f5ce10adf4c4c6b6"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 20,
+            "mean_accuracy": 0.8150000000000001,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.17527264908379872,
+                    0.20132750925019102,
+                    -0.2578641975549296,
+                    -0.15145374979113504
+                  ]
+                },
+                "head_digest": "bfceb432a4f92ccb3e84164f7a7cf60151c4ddcbc5195ca9f83f82cfc301eef3",
+                "metrics": {
+                  "accuracy": 0.775,
+                  "brier": 0.22000757107568386,
+                  "calibrated": false,
+                  "ece": 0.23903190271040572,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6325026095477462,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 20,
+                "support_ids_sha256": "80e47007152c2fbadc4ca1c2ba6e9cb9a55dfcedec019c72aa897ce16e961639"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.23682262067248747,
+                    0.20584267155001942,
+                    -0.2963023136584062,
+                    -0.16085856441240487
+                  ]
+                },
+                "head_digest": "cc92f7ff4933a44d40c965452bdb08712b6720d423d561dd87f8c444ab2fdc4f",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.20961085399065285,
+                  "calibrated": false,
+                  "ece": 0.2820530683148293,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6112302556235573,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 20,
+                "support_ids_sha256": "2dda4d0b697422b7c3b205274a0bcff20ba58c6bf7760212784406b93baa3da7"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.18958414676600358,
+                    0.2100352257551672,
+                    -0.243644415292582,
+                    -0.13895413195466863
+                  ]
+                },
+                "head_digest": "07c2dc4484723aecff6bb0dcddd5bc000f0bf72398c9b1a2d22c965f15de40f2",
+                "metrics": {
+                  "accuracy": 0.775,
+                  "brier": 0.22066004713073567,
+                  "calibrated": false,
+                  "ece": 0.259667534920394,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6338568125428006,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 20,
+                "support_ids_sha256": "e88b05378d01b97de506bbf2d9d1b45a70eef995a242fb0abab9b0331bc0ed93"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.23106469189947598,
+                    0.18243935093747388,
+                    -0.2804500415423959,
+                    -0.1645039864474986
+                  ]
+                },
+                "head_digest": "e63473e20c5ad3d0f994d6a804e3f016d32e97b32e65231cdfba7f5297fe3b89",
+                "metrics": {
+                  "accuracy": 0.825,
+                  "brier": 0.21530062954850981,
+                  "calibrated": false,
+                  "ece": 0.2617046196015485,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6228849754506967,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 20,
+                "support_ids_sha256": "7e2ee72149dbb468fc6c1f0f04a25a6f8b3cb64801e9de755233807100f00d1b"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 20
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.23758711214518982,
+                    0.2014603443255651,
+                    -0.2904499854294514,
+                    -0.1906871909554279
+                  ]
+                },
+                "head_digest": "302d50506faa6e3a579f70e850d0265bce72f2f9ff78e8c3c2891c2717c8cddb",
+                "metrics": {
+                  "accuracy": 0.85,
+                  "brier": 0.21036368404724537,
+                  "calibrated": false,
+                  "ece": 0.2827708782877681,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6127567547314389,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 20,
+                "support_ids_sha256": "9ed8f6463d874acbaf377bc67eebc064d4aa75abc6b08225645df236d9f9601c"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "labels": 30,
+            "mean_accuracy": 0.8099999999999999,
+            "repeats": [
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.19737614367598974,
+                    0.20366030589840325,
+                    -0.27118454461083635,
+                    -0.15124584367037003
+                  ]
+                },
+                "head_digest": "666789a39823d3c593c6cf018f6659295f5b990c236f4beb92dd2d5ab1390d3d",
+                "metrics": {
+                  "accuracy": 0.8,
+                  "brier": 0.21631229591763979,
+                  "calibrated": false,
+                  "ece": 0.23582294355997419,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6249455848299641,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 0,
+                "support_count": 30,
+                "support_ids_sha256": "fdd393963d367a22aeb561491d4be0895542f804e340564c09c4f7ce3fa0d232"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.22574955127094135,
+                    0.21524926693896484,
+                    -0.28866998684305595,
+                    -0.1571096479399541
+                  ]
+                },
+                "head_digest": "798ecbd14e23f73c0078ff9b56d75d247c704208e75bc293b7d7ead0731293dd",
+                "metrics": {
+                  "accuracy": 0.825,
+                  "brier": 0.21034497809462627,
+                  "calibrated": false,
+                  "ece": 0.25728935798185515,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6127302895438038,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 1,
+                "support_count": 30,
+                "support_ids_sha256": "4775cadedb0626b124ed2bb47992e85ba454dae74d3354d837f8b07f0fd2a3bc"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.18297916808255388,
+                    0.2114058627593083,
+                    -0.2710806663177931,
+                    -0.1428698629081753
+                  ]
+                },
+                "head_digest": "dd059c3434c3aa826a9e81cac473e56a618f15ffa5e750a93174810304d34725",
+                "metrics": {
+                  "accuracy": 0.8,
+                  "brier": 0.21636196511314315,
+                  "calibrated": false,
+                  "ece": 0.2351008093583348,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.625044888469057,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 2,
+                "support_count": 30,
+                "support_ids_sha256": "42b930bb7465913460d471beca6f052fd000563bbeeb941898195b27455e8572"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.22740240157680358,
+                    0.2040442747080079,
+                    -0.2770889191507596,
+                    -0.1590010043717728
+                  ]
+                },
+                "head_digest": "64aa2156481d5ebd98ca9618d4526842817b486455a6e57973711cd4bd9b5ab7",
+                "metrics": {
+                  "accuracy": 0.825,
+                  "brier": 0.2134409003886748,
+                  "calibrated": false,
+                  "ece": 0.26000998414573445,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6190818005951442,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 3,
+                "support_count": 30,
+                "support_ids_sha256": "69f7b8edc71e9f5dcb23c5530a8137ea9a7fc0e4e9c5db6a6860e9aa16213afd"
+              },
+              {
+                "head": {
+                  "calibrated": false,
+                  "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+                  "fit": {
+                    "iterations": 3,
+                    "l2": 1.0,
+                    "pairs": 30
+                  },
+                  "global_weights": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+                  "residual_weights": [
+                    -0.201628546949895,
+                    0.19751219493274366,
+                    -0.2856699070613198,
+                    -0.15756800878468513
+                  ]
+                },
+                "head_digest": "aef5a2d4e3a0178433757aa81bed7bf4222bf422543780d2020f64bdbce2c821",
+                "metrics": {
+                  "accuracy": 0.8,
+                  "brier": 0.21439548511345835,
+                  "calibrated": false,
+                  "ece": 0.23446933321840943,
+                  "excluded_nonbinary": 0,
+                  "labeled_pairs": 40,
+                  "log_loss": 0.6210103819105923,
+                  "risk_population": "binary_labeled_test_pairs_only; ties/insufficient_evidence_not_assessed",
+                  "task_groups": 40,
+                  "uncertainty_note": "Descriptive pair metrics; task/customer dependence needs grouped inference, not pair-binomial intervals."
+                },
+                "repeat": 4,
+                "support_count": 30,
+                "support_ids_sha256": "be1be443d20a7604574b7129d636d4f7347794e83e75e49f4b8755397e964f27"
+              }
+            ],
+            "status": "measured"
+          },
+          {
+            "available": 40,
+            "labels": 50,
+            "repeats": [],
+            "required": 50,
+            "status": "insufficient_support"
+          },
+          {
+            "available": 40,
+            "labels": 100,
+            "repeats": [],
+            "required": 100,
+            "status": "insufficient_support"
+          }
+        ],
+        "customer_id": "owned-synthetic-inventory",
+        "support_comparisons": 40,
+        "test_comparisons": 40,
+        "workflow_id": "owned-inventory-exact-json-v1"
+      }
+    ]
+  },
+  "limitations": [
+    "Synthetic arithmetic/inventory templates, not real customer workflows or human customer preferences.",
+    "Foundation-model exposure to comparable tasks is unknown.",
+    "Head learning uses cached features from a cloud-trained source-profile basis; no agent was optimized or executed by this experiment.",
+    "Repeated support sets reuse one fixed test population and do not multiply independent test evidence.",
+    "No production release or unrestricted robustness guarantee is established."
+  ],
+  "model": {
+    "base_model": "Skywork/Skywork-Reward-V2-Qwen3-0.6B",
+    "basis_dimension": 4,
+    "default_head_strategy": "pretrained_anchor_only",
+    "feature_version": "51f8d0c435296907fea2f2c52ae7f827b29dad6b293cb7bf1c381ed102c61658",
+    "manifest_digest": "5329eeebf7d3eeba74255fcbe4fd9e1fa8c3b6ed21f89885b6c77682bcc0c3ae",
+    "revision": "8c14a4e9e6321deaf572544339b16b8d6bbe8886"
+  },
+  "product_gate": {
+    "policy": null,
+    "reasons": [
+      "No preregistered product policy supplied"
+    ],
+    "status": "not_assessed"
+  },
+  "reproduction": {
+    "cloud_features": "rm_worker.basis_features; 420 version-pinned inputs; private artifact required",
+    "complete_command": "python -m backend.scripts.prepare_owned_basis_benchmark --output-dir OWNED_BENCHMARK_DIRECTORY --complete",
+    "prepare_command": "python -m backend.scripts.prepare_owned_basis_benchmark --source-job-dir SOURCE_PILOT_DIRECTORY --output-dir OWNED_BENCHMARK_DIRECTORY",
+    "script": "backend/scripts/prepare_owned_basis_benchmark.py"
+  },
+  "schema_version": 1,
+  "source_development_pilot": {
+    "default_is_pretrained_anchor": true,
+    "eval_accuracy": 0.765625,
+    "eval_pairs": 128,
+    "paired_losses_to_pretrained": 0,
+    "paired_wins_over_pretrained": 0,
+    "pretrained_eval_accuracy": 0.765625,
+    "train_pairs": 512
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-10-12",
+  "scope": "public_development_population_residual_candidate",
+  "artifact_persisted": true,
+  "artifact_storage": "private; not promoted",
+  "model": {
+    "evaluator_kind": "shared_basis_v1",
+    "basis_dimension": 4,
+    "feature_version": "26c5ada6f820cca340033623a4f04aaaa8f55045a5bf09cb070466cc8867933d",
+    "manifest_digest": "e35700d2187ac87039156944cf1a183312dcb0462e614e63154b9df207f6ab39",
+    "encoder": {
+      "base_model": "Skywork/Skywork-Reward-V2-Qwen3-0.6B",
+      "requested_revision": "8c14a4e9e6321deaf572544339b16b8d6bbe8886",
+      "resolved_revision": "8c14a4e9e6321deaf572544339b16b8d6bbe8886",
+      "license": "Apache-2.0",
+      "artifact_sha256": "afcc52cc47df211581883de5632ba57a4abd6efc56486079208f74a34c1fba47",
+      "frozen": true
+    },
+    "input_contract": {
+      "input_version": 2,
+      "rubric": [],
+      "max_length": 1024,
+      "context_policy": "left_truncation",
+      "feature_extractor": "classifier_last_nonpadding_hidden_v2",
+      "input_serialization": "skywork_official_chat_template"
+    },
+    "fitting_audit": {
+      "fit_pairs": 512,
+      "source_profiles": 3,
+      "heterogeneous_profile_training": true,
+      "source_profile_counts": {
+        "human_rating_criterion:helpfulness": 205,
+        "human_rating_criterion:correctness": 189,
+        "human_rating_criterion:coherence": 118
+      },
+      "source_profiles_balanced": true,
+      "trainable_basis_parameters": 3072,
+      "trainable_default_parameters": 4,
+      "trainable_source_profile_parameters": 12,
+      "projection_changed": true,
+      "fit_steps": 200,
+      "learning_rate": 0.01,
+      "l2": 0.05,
+      "seed": 0,
+      "final_loss": 0.16173037886619568,
+      "semantic_dimensions_validated": false,
+      "pretrained_anchor_preserved": true,
+      "default_is_pretrained_anchor": false,
+      "global_residual_fitted": true,
+      "learned_residual_dimensions": 3,
+      "encoder_parameters": 596050944,
+      "optimized_encoder_parameters": 0,
+      "encoder_frozen": true,
+      "encoder_tensor_versions_unchanged": true,
+      "normalizer_partition": "train",
+      "basis_fit_partition": "train",
+      "evaluation_used_for_fitting": false,
+      "profile_field": "profile_id_or_domain",
+      "customer_field": "explicit_customer_id_only",
+      "workflow_field": "workflow_id_or_domain"
+    },
+    "basis_components": {
+      "pretrained_anchor": {
+        "enabled": true,
+        "feature_index": 0,
+        "head_name": "score",
+        "model_type": "qwen3",
+        "score_mapping": "normalizer_scaled_linear_head_plus_mean_and_bias_offset",
+        "frozen": true
+      },
+      "learned_residual_feature_indices": [
+        1,
+        2,
+        3
+      ],
+      "default_uses_learned_residual": true
+    }
+  },
+  "metrics": {
+    "evaluator_kind": "shared_basis_v1",
+    "train_pairs": 512,
+    "eval_pairs": 128,
+    "eval_accuracy": 0.7421875,
+    "pretrained_eval_accuracy": 0.765625,
+    "paired_wins_over_pretrained": 11,
+    "paired_losses_to_pretrained": 14,
+    "default_is_pretrained_anchor": false,
+    "evaluation_claim_scope": "development_pilot; foundation_training_exposure_unknown",
+    "eval_split": "curated_task_groups",
+    "input_version": 2,
+    "max_length": 1024,
+    "context_policy": "left_truncation",
+    "action_scoring_version": 1,
+    "action_train_pairs": 512,
+    "initial_scored_actions": 0,
+    "final_loss": 0.16173037886619568,
+    "fit_steps": 200,
+    "epochs": null,
+    "device": "cuda",
+    "seconds": 154.3
+  },
+  "data": {
+    "name": "nvidia/HelpSteer2",
+    "revision": "990b2711a36180dd19d9c94b8627844866f8982a",
+    "license": "CC-BY-4.0",
+    "foundation_training_exposure": "unknown"
+  },
+  "claims": {
+    "confirmatory_default_improvement": false,
+    "20_30_labels_on_real_customers": false,
+    "reward_hacking_immunity": false,
+    "actual_repository_agent_improvement": false
+  }
+}
