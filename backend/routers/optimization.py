@@ -47,7 +47,7 @@ class Create(Body):
     agent: str = Field(min_length=1, max_length=160)
     scope: str = Field(min_length=1, max_length=2000)
     initial_prompt: str = Field(default="", max_length=12000)
-    metric: Metric
+    metric: Metric | None = None
     runs_per_arm: int = Field(default=20, ge=5, le=500)
     max_rounds: int = Field(default=10, ge=1, le=100)
 

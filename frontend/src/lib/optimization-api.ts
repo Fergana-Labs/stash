@@ -4,7 +4,7 @@ const BASE = "/api/v1/rm/optimizations";
 export interface BusinessMetric { name: string; unit: string; direction: "higher" | "lower"; minimum: number; maximum: number; regression_tolerance: number }
 export interface Optimization {
   id: string; name: string; agent: string; scope: string; reward_model_id: string;
-  reward_model_name?: string; metric: BusinessMetric; status: string; active_revision_id: string;
+  reward_model_name?: string; metric: BusinessMetric | null; status: string; active_revision_id: string;
   runs_per_arm: number; max_rounds: number; run_count?: number; error: string | null; created_at: string;
 }
 export interface PromptRevision { id: string; version: number; content: string; rationale: string; created_at: string }
@@ -27,7 +27,7 @@ export interface OptimizationDetail extends Optimization {
   revisions: PromptRevision[]; rounds: OptimizationRound[]; runs: OptimizationRun[]; trends: Trend[];
   events: { kind: string; detail: Record<string, unknown>; created_at: string }[];
 }
-export interface CreateOptimization { name: string; reward_model_id: string; agent: string; scope: string; initial_prompt: string; metric: BusinessMetric; runs_per_arm: number; max_rounds: number }
+export interface CreateOptimization { name: string; reward_model_id: string; agent: string; scope: string; initial_prompt: string; metric?: BusinessMetric | null; runs_per_arm: number; max_rounds: number }
 export function listOptimizations(): Promise<Optimization[]> { return apiFetch(BASE); }
 export function getOptimization(id: string): Promise<OptimizationDetail> { return apiFetch(`${BASE}/${id}`); }
 export function createOptimization(body: CreateOptimization): Promise<OptimizationDetail> { return apiFetch(BASE, { method: "POST", body: JSON.stringify(body) }); }

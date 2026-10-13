@@ -17,7 +17,7 @@ async def owned(owner, optimization_id, conn=None, *, lock=False):
     )
     if not row:
         raise LookupError("Optimization not found")
-    return dict(row)
+    return {**dict(row), "metric": row["metric"] or None}
 
 
 async def event(conn, program, kind, detail):
@@ -43,7 +43,7 @@ async def create(owner, body):
         ):
             raise ValueError("An optimization is already active for this agent and scope")
         model = await conn.fetchrow(
-            "SELECT * FROM rm_reward_models WHERE id=$1 AND owner_user_id=$2 AND scope='personal'",
+            "SELECT id,status,artifact_key,metrics FROM rm_reward_models WHERE id=$1 AND owner_user_id=$2 AND scope='personal'",
             body["reward_model_id"],
             owner,
         )
@@ -62,7 +62,8 @@ async def create(owner, body):
             body["name"],
             body["agent"],
             body["scope"],
-            body["metric"],
+            # Empty JSON means reward-only; keep explicit legacy guardrails intact.
+            body.get("metric") or {},
             "active" if model["status"] == "succeeded" else "waiting_model",
             body["runs_per_arm"],
             body["max_rounds"],
@@ -83,7 +84,7 @@ async def create(owner, body):
             {
                 "policy": policy.POLICY_VERSION,
                 "reward_model_id": str(model["id"]),
-                "metric": body["metric"],
+                "metric": body.get("metric"),
                 "runs_per_arm": body["runs_per_arm"],
                 "max_rounds": body["max_rounds"],
             },
@@ -98,7 +99,7 @@ def validate_model(model):
 
 async def list_programs(owner):
     return [
-        dict(r)
+        {**dict(r), "metric": r["metric"] or None}
         for r in await get_pool().fetch(
             """SELECT o.*,m.name AS reward_model_name,
         (SELECT count(*) FROM rm_optimization_runs r WHERE r.optimization_id=o.id)::int AS run_count
@@ -443,6 +444,10 @@ async def record_outcome(owner, run_id, value, source):
     async with get_pool().acquire() as conn, conn.transaction():
         program, run = await run_access(owner, run_id, conn, lock=True)
         metric = program["metric"]
+        if not metric:
+            raise ValueError(
+                "This optimization uses reward model scores and does not require business outcomes"
+            )
         if not metric["minimum"] <= value <= metric["maximum"]:
             raise ValueError("Outcome is outside the configured metric range")
         if run["outcome"] is not None:
