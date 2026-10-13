@@ -53,6 +53,9 @@ jobs:
         working-directory: www
       - run: npm test
         working-directory: www
+      - name: Build marketing site after dependency updates
+        run: npm run build
+        working-directory: www
 
   frontend-lint:
     needs: changes
