@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.intuition import builder, demo, providers, service
+from ..services.intuition import builder, demo, feedback, monitoring, providers, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -100,6 +100,9 @@ class Predict(Body):
     item: Item
     version: Which = "active"
     caller: str = Field(default="api", max_length=100)
+    # Your own id for this call (ticket, message, run step); feedback can use it later.
+    ref: str | None = Field(default=None, min_length=1, max_length=200)
+    metadata: dict = Field(default_factory=dict)
 
 
 class Compare(Body):
@@ -107,6 +110,18 @@ class Compare(Body):
     item_b: Item
     version: Which = "active"
     caller: str = Field(default="api", max_length=100)
+    ref: str | None = Field(default=None, min_length=1, max_length=200)
+    metadata: dict = Field(default_factory=dict)
+
+
+class Feedback(Body):
+    prediction_id: UUID | None = None
+    ref: str | None = Field(default=None, min_length=1, max_length=200)
+    label: str | None = None
+    value: float | None = None
+    source: Literal["human", "outcome", "downstream"] = "human"
+    note: str = Field(default="", max_length=2000)
+    learn: bool = False
 
 
 class Review(Body):
@@ -324,7 +339,15 @@ async def delete_example(model_id: UUID, example_id: UUID, user: User):
 @router.post("/{model_id}/predict")
 async def predict(model_id: UUID, req: Predict, user: User):
     return await checked(
-        service.predict(user["id"], model_id, req.item, which=req.version, caller=req.caller)
+        service.predict(
+            user["id"],
+            model_id,
+            req.item,
+            which=req.version,
+            caller=req.caller,
+            ref=req.ref,
+            metadata=req.metadata,
+        )
     )
 
 
@@ -332,7 +355,14 @@ async def predict(model_id: UUID, req: Predict, user: User):
 async def compare(model_id: UUID, req: Compare, user: User):
     return await checked(
         service.compare_items(
-            user["id"], model_id, req.item_a, req.item_b, which=req.version, caller=req.caller
+            user["id"],
+            model_id,
+            req.item_a,
+            req.item_b,
+            which=req.version,
+            caller=req.caller,
+            ref=req.ref,
+            metadata=req.metadata,
         )
     )
 
@@ -361,3 +391,14 @@ async def review(model_id: UUID, prediction_id: UUID, req: Review, user: User):
             source=req.source,
         )
     )
+
+
+@router.post("/{model_id}/feedback", status_code=201)
+async def give_feedback(model_id: UUID, req: Feedback, user: User):
+    """Attach a correction, outcome or downstream verdict to a served call, now or later."""
+    return await checked(feedback.record(user["id"], model_id, **req.model_dump()))
+
+
+@router.get("/{model_id}/monitoring")
+async def monitor(model_id: UUID, user: User, days: int = Query(default=30, ge=1, le=365)):
+    return await checked(monitoring.overview(user["id"], model_id, days))

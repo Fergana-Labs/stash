@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
 
-const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn() }));
+const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn(), imFeedback: vi.fn(), imMonitoring: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 vi.mock("./EvalInput", () => ({ default: ({ initialItem, onChange }: { initialItem?: string; onChange: (item: string) => void }) => <textarea aria-label="Example output" defaultValue={initialItem ?? ""} onChange={(event) => onChange(event.target.value)} /> }));
 
@@ -119,6 +119,28 @@ it("shows calls from external agents in usage and saves corrections against thos
   await waitFor(() => expect(api.imReview).toHaveBeenCalledWith("eval", "external-call", { label: "bad", note: "Missing context" }));
 });
 
+
+it("shows a call's feedback history and relabels an already reviewed call through feedback", async () => {
+  api.imPredictions.mockResolvedValue([{ id: "reviewed-call", kind: "predict", caller: "api", ref: "ticket-9", version: 1, created_at: "2026-10-12T12:00:00Z", status: "labeled", input: { item: "Refund sent" }, output: { label: "good", probabilities: { good: 0.7, bad: 0.3 } }, feedback: [{ id: "f1", prediction_id: "reviewed-call", label: "bad", value: 0, source: "outcome", note: "Customer escalated", created_at: "2026-10-13T12:00:00Z" }] }]);
+  api.imFeedback.mockResolvedValue({});
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Usage & corrections" }));
+  fireEvent.click(await screen.findByText("ref ticket-9"));
+  expect(screen.getByText("Customer escalated")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Mark bad" }));
+  await waitFor(() => expect(api.imFeedback).toHaveBeenCalledWith("eval", { prediction_id: "reviewed-call", label: "bad", note: "", learn: true }));
+  expect(api.imReview).not.toHaveBeenCalled();
+});
+
+it("opens a disagreement from Monitoring as the matching call in Usage", async () => {
+  api.imMonitoring.mockResolvedValue({ days: 30, truncated: false, summary: { calls: 1, errors: 0, with_feedback: 1, accuracy: 0, ece: 0.7, mean_confidence: 0.7, mean_value: null, reliability: [{ bin: 7, n: 1, confidence: 0.7, accuracy: 0 }] }, daily: [{ date: "2026-10-12", calls: 1, errors: 0, with_feedback: 1, accuracy: 0, ece: 0.7, mean_confidence: 0.7, mean_value: null, labels: { good: 1 } }], versions: [{ version: 1, calls: 1, errors: 0, with_feedback: 1, accuracy: 0, ece: 0.7, mean_confidence: 0.7, mean_value: null }], drift: null, disagreements: [{ prediction_id: "missed-call", created_at: "2026-10-12T12:00:00Z", ref: null, version: 1, predicted: "good", truth: "bad", truth_source: "human", confidence: 0.7, preview: "Refund sent", top_feature: { feature: "polite", contribution: 1.2 } }] });
+  api.imPredictions.mockResolvedValue([{ id: "missed-call", kind: "predict", caller: "api", version: 1, created_at: "2026-10-12T12:00:00Z", status: "labeled", input: { item: "Refund sent" }, output: { label: "good", probabilities: { good: 0.7, bad: 0.3 } }, feedback: [] }]);
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Monitoring" }));
+  expect(await screen.findByText("Driven by polite")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /Refund sent/ }));
+  await waitFor(() => expect(document.getElementById("call-missed-call")).toHaveAttribute("open"));
+});
 
 it("downloads saved definitions, fitted heads, frozen seeds, and examples for this eval", async () => {
   const active = { ...version, id: "active", status: "active", head: { weights: [[1, 2]] }, seed_snapshot: [{ item: "Frozen seed", label: "good" }] };

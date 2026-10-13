@@ -842,11 +842,12 @@ async def _serving_version(model: dict, which: str) -> dict:
     return version
 
 
-async def _log(model_id, version, kind, payload, output, caller) -> str:
+async def _log(model_id, version, kind, payload, output, caller, ref=None, metadata=None) -> str:
     return str(
         await get_pool().fetchval(
-            """INSERT INTO intuition_predictions (model_id, version_id, kind, input, output, confidence, caller)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
+            """INSERT INTO intuition_predictions
+                 (model_id, version_id, kind, input, output, confidence, caller, ref, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id""",
             model_id,
             version["id"],
             kind,
@@ -854,6 +855,8 @@ async def _log(model_id, version, kind, payload, output, caller) -> str:
             output,
             output.get("confidence"),
             caller,
+            ref,
+            metadata or {},
         )
     )
 
@@ -866,6 +869,8 @@ async def predict(
     which: str = "active",
     caller: str = "api",
     log: bool = True,
+    ref: str | None = None,
+    metadata: dict | None = None,
 ) -> dict:
     model = await _model(owner_id, model_id)
     version = await _serving_version(model, which)
@@ -880,6 +885,8 @@ async def predict(
                 {"item": item},
                 {"error": str(exc), "version": version["number"]},
                 caller,
+                ref,
+                metadata,
             )
         raise
     if model["output_type"] == "choice":
@@ -889,7 +896,9 @@ async def predict(
     output["rubric"] = await _answers(model_id, version, item)
     output["version"] = version["number"]
     prediction_id = (
-        await _log(model_id, version, "predict", {"item": item}, output, caller) if log else None
+        await _log(model_id, version, "predict", {"item": item}, output, caller, ref, metadata)
+        if log
+        else None
     )
     return {"prediction_id": prediction_id, **output}
 
@@ -903,6 +912,8 @@ async def compare_items(
     which: str = "active",
     caller: str = "api",
     log: bool = True,
+    ref: str | None = None,
+    metadata: dict | None = None,
 ) -> dict:
     model = await _model(owner_id, model_id)
     if model["output_type"] != "preference":
@@ -919,6 +930,8 @@ async def compare_items(
                 {"item": item_a, "item_b": item_b},
                 {"error": str(exc), "version": version["number"]},
                 caller,
+                ref,
+                metadata,
             )
         raise
     output = heads.compare(version["head"], f_a, f_b)
@@ -926,7 +939,16 @@ async def compare_items(
     output["rubric_b"] = await _answers(model_id, version, item_b)
     output["version"] = version["number"]
     prediction_id = (
-        await _log(model_id, version, "compare", {"item": item_a, "item_b": item_b}, output, caller)
+        await _log(
+            model_id,
+            version,
+            "compare",
+            {"item": item_a, "item_b": item_b},
+            output,
+            caller,
+            ref,
+            metadata,
+        )
         if log
         else None
     )
@@ -942,7 +964,7 @@ async def list_predictions(
     await _model(owner_id, model_id)
     rows = await get_pool().fetch(
         """SELECT p.id, p.kind, p.input, p.output, p.confidence, p.caller, p.status, p.example_id,
-                  p.created_at, v.number AS version
+                  p.ref, p.metadata, p.created_at, v.number AS version
              FROM intuition_predictions p JOIN intuition_versions v ON v.id = p.version_id
             WHERE p.model_id = $1 AND ($2 = 'all' OR p.status = $2)
             ORDER BY CASE WHEN $2 = 'unreviewed' AND p.status = 'unreviewed' THEN p.confidence END ASC NULLS LAST,
@@ -953,7 +975,10 @@ async def list_predictions(
         limit,
         offset,
     )
-    return [dict(r) for r in rows]
+    from . import feedback
+
+    history = await feedback.history([r["id"] for r in rows])
+    return [{**dict(r), "feedback": history.get(str(r["id"]), [])} for r in rows]
 
 
 async def review_prediction(
@@ -967,44 +992,34 @@ async def review_prediction(
     source: str,
 ) -> dict:
     """Turn a served prediction into a labeled example (or dismiss it)."""
+    from . import feedback
+
     await _model(owner_id, model_id)
-    row = await get_pool().fetchrow(
-        "SELECT * FROM intuition_predictions WHERE id = $1 AND model_id = $2",
+    status = await get_pool().fetchval(
+        "SELECT status FROM intuition_predictions WHERE id = $1 AND model_id = $2",
         prediction_id,
         model_id,
     )
-    if row is None:
+    if status is None:
         raise NotFound("Prediction not found")
-    if row["status"] != "unreviewed":
+    if status != "unreviewed":
         raise Conflict("This prediction was already reviewed")
     if dismiss:
         await get_pool().execute(
             "UPDATE intuition_predictions SET status = 'dismissed' WHERE id = $1", prediction_id
         )
         return {"status": "dismissed", "example": None}
-    payload = row["input"]
-    note = note or f"From prediction {prediction_id} by {row['caller']}"
-    (example,) = await add_examples(
+    result = await feedback.record(
         owner_id,
         model_id,
-        [
-            {
-                "item": payload["item"],
-                "item_b": payload.get("item_b"),
-                "label": label,
-                "note": note,
-                "split": "train",
-                "source": "production" if source == "human" else source,
-            }
-        ],
-        source,
+        prediction_id=prediction_id,
+        label=label,
+        source="human",
+        note=note,
+        learn=True,
+        example_source="production" if source == "human" else source,
     )
-    await get_pool().execute(
-        "UPDATE intuition_predictions SET status = 'labeled', example_id = $2 WHERE id = $1",
-        prediction_id,
-        UUID(example["id"]),
-    )
-    return {"status": "labeled", "example": example}
+    return {"status": "labeled", "example": result["example"]}
 
 
 # ── Assisted improvement (Claude) ────────────────────────────────────────

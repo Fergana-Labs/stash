@@ -455,3 +455,66 @@ class Stash:
             "DELETE",
             f"/api/v1/me/tables/{table_id}/columns/{column_id}",
         ).json()
+
+    # =========================================================================
+    # Evals (classifiers learned from your labels and feedback)
+    # =========================================================================
+
+    def list_evals(self) -> list:
+        return self._list("/api/v1/intuitions", "models")
+
+    def get_eval(self, eval_id: str) -> dict:
+        return self._get(f"/api/v1/intuitions/{eval_id}")
+
+    def eval_predict(
+        self,
+        eval_id: str,
+        item: str | dict,
+        *,
+        ref: str | None = None,
+        metadata: dict | None = None,
+        caller: str = "sdk",
+    ) -> dict:
+        """Judge one item with the eval's saved version. Pass ``ref`` (your own id for
+        what was judged) so feedback can find this call later."""
+        return self._post(
+            f"/api/v1/intuitions/{eval_id}/predict",
+            json={"item": item, "ref": ref, "metadata": metadata or {}, "caller": caller},
+        )
+
+    def eval_compare(
+        self, eval_id: str, item_a: str | dict, item_b: str | dict, *, ref: str | None = None
+    ) -> dict:
+        return self._post(
+            f"/api/v1/intuitions/{eval_id}/compare",
+            json={"item_a": item_a, "item_b": item_b, "ref": ref, "caller": "sdk"},
+        )
+
+    def eval_feedback(
+        self,
+        eval_id: str,
+        *,
+        prediction_id: str | None = None,
+        ref: str | None = None,
+        label: str | None = None,
+        value: float | None = None,
+        source: str = "outcome",
+        note: str = "",
+        learn: bool = False,
+    ) -> dict:
+        """Attach feedback to an earlier call, found by ``prediction_id`` or ``ref``.
+
+        ``source`` is ``human`` (a correction), ``outcome`` (what happened later) or
+        ``downstream`` (another system's verdict). ``learn=True`` also makes a labeled
+        call a training example for the next Save.
+        """
+        body: dict = {"source": source, "note": note, "learn": learn}
+        body.update({"prediction_id": prediction_id} if prediction_id else {"ref": ref})
+        if label is not None:
+            body["label"] = label
+        if value is not None:
+            body["value"] = value
+        return self._post(f"/api/v1/intuitions/{eval_id}/feedback", json=body)
+
+    def eval_monitoring(self, eval_id: str, days: int = 30) -> dict:
+        return self._get(f"/api/v1/intuitions/{eval_id}/monitoring", days=days)

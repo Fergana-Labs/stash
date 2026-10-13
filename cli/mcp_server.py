@@ -1081,18 +1081,19 @@ def stash_intuition_get(model_id: str) -> str:
 
 
 @mcp.tool()
-def stash_intuition_predict(model_id: str, item: str, caller: str = "agent") -> str:
+def stash_intuition_predict(model_id: str, item: str, caller: str = "agent", ref: str = "") -> str:
     """Judge one item with the user's active intuition model. `item` is text or a
     JSON object string shaped like the model's examples. Returns the label,
     per-label probabilities, confidence, the rubric answers and each answer's
     contribution. Low-confidence results deserve a human check. The call is
-    logged; if the user corrects it, send the correction with
-    stash_intuition_review so the model learns."""
+    logged; pass `ref` (your own id for the thing judged, e.g. a ticket id) so
+    later feedback can find it. If the user corrects it, send the correction with
+    stash_intuition_review; for outcomes learned later use stash_intuition_feedback."""
     with _client() as client:
         return _json(
             client._post(
                 f"/api/v1/intuitions/{model_id}/predict",
-                json={"item": _item(item), "caller": caller},
+                json={"item": _item(item), "caller": caller, "ref": ref or None},
             )
         )
 
@@ -1108,6 +1109,42 @@ def stash_intuition_compare(model_id: str, item_a: str, item_b: str, caller: str
                 json={"item_a": _item(item_a), "item_b": _item(item_b), "caller": caller},
             )
         )
+
+
+@mcp.tool()
+def stash_intuition_feedback(
+    model_id: str,
+    prediction_id: str = "",
+    ref: str = "",
+    label: str = "",
+    value: float | None = None,
+    source: str = "outcome",
+    note: str = "",
+    learn: bool = False,
+) -> str:
+    """Attach feedback to a served call, now or days later. Identify the call by
+    prediction_id or by the `ref` passed to predict. `source` is 'human' (a person's
+    correction), 'outcome' (what actually happened, e.g. the customer escalated) or
+    'downstream' (another system's verdict). Give the label it should have had
+    and/or a numeric outcome `value`. Monitoring measures accuracy against this
+    feedback; learn=True also turns a labeled one into a training example."""
+    body = {"source": source, "note": note, "learn": learn}
+    body |= {"prediction_id": prediction_id} if prediction_id else {"ref": ref}
+    if label:
+        body["label"] = label
+    if value is not None:
+        body["value"] = value
+    with _client() as client:
+        return _json(client._post(f"/api/v1/intuitions/{model_id}/feedback", json=body))
+
+
+@mcp.tool()
+def stash_intuition_monitoring(model_id: str, days: int = 30) -> str:
+    """How an intuition model is doing in use: calls and failures per day, accuracy
+    and calibration against feedback, per-version results, drift of recent calls
+    versus its training examples, and the calls where it disagreed with feedback."""
+    with _client() as client:
+        return _json(client._get(f"/api/v1/intuitions/{model_id}/monitoring?days={days}"))
 
 
 @mcp.tool()

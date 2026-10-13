@@ -127,6 +127,33 @@ export interface LoggedPrediction {
   output: (Prediction | Comparison) & Record<string, unknown>;
   confidence: number | null; caller: string; status: "unreviewed" | "labeled" | "dismissed";
   example_id: string | null; created_at: string; version: number;
+  ref?: string | null; metadata?: Record<string, unknown>; feedback?: FeedbackRow[];
+}
+
+export type FeedbackSource = "human" | "outcome" | "downstream";
+export interface FeedbackRow { id: string; prediction_id: string; label: string | null; value: number | null; source: FeedbackSource; note: string; created_at: string }
+export interface FeedbackBody { prediction_id?: string; ref?: string; label?: string; value?: number; source?: FeedbackSource; note?: string; learn?: boolean }
+
+export interface MonitoringSummary {
+  calls: number; errors: number; with_feedback: number;
+  accuracy: number | null; ece: number | null; mean_confidence: number | null; mean_value: number | null;
+}
+export interface Monitoring {
+  days: number;
+  truncated: boolean;
+  summary: MonitoringSummary & { reliability: { bin: number; n: number; confidence: number; accuracy: number }[] };
+  daily: (MonitoringSummary & { date: string; labels: Record<string, number> })[];
+  versions: (MonitoringSummary & { version: number })[];
+  drift: {
+    window_days: number; version?: number; recent_calls: number; train_examples?: number;
+    labels: { label: string; train_share: number; recent_share: number }[];
+    features: { feature: string; train_mean: number; recent_mean: number; shift: number }[];
+  } | null;
+  disagreements: {
+    prediction_id: string; created_at: string; ref: string | null; version: number;
+    predicted: string; truth: string; truth_source: FeedbackSource; confidence: number; preview: string;
+    top_feature: { feature: string; contribution: number } | null;
+  }[];
 }
 
 export interface GradeResult { graded: number; failed: number; remaining: number; errors: string[] }
@@ -173,6 +200,9 @@ export const imCompare = (id: string, item_a: Item, item_b: Item, version: "acti
   post<Comparison>(`${IM}/${id}/compare`, { item_a, item_b, version, caller: "playground" });
 export const imPredictions = (id: string, status: "unreviewed" | "labeled" | "dismissed" | "all" = "unreviewed", offset = 0) =>
   apiFetch<LoggedPrediction[]>(`${IM}/${id}/predictions?status=${status}&limit=50&offset=${offset}`);
+export const imFeedback = (id: string, body: FeedbackBody) =>
+  post<{ feedback: FeedbackRow; prediction_id: string; example: Example | null }>(`${IM}/${id}/feedback`, body);
+export const imMonitoring = (id: string, days = 30) => apiFetch<Monitoring>(`${IM}/${id}/monitoring?days=${days}`);
 export const imReview = (id: string, predictionId: string, body: { label?: string | null; dismiss?: boolean; note?: string }) =>
   post<{ status: string; example: Example | null }>(`${IM}/${id}/predictions/${predictionId}/review`, body);
 

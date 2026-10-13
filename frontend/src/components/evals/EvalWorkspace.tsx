@@ -10,14 +10,16 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import ItemView from "@/components/intuitions/ItemView";
 import { ProbabilityBars, RubricAnswersView } from "@/components/intuitions/ProbabilityBars";
 import {
-  evalAddExamples, evalAddTrace, evalPrepare, imDraftRubric, imEditDraft, imEditExample, imExamples, imFit, imGet, imGrade, imPredict, imPredictions, imPromote, imReview,
+  evalAddExamples, evalAddTrace, evalPrepare, imDraftRubric, imEditDraft, imEditExample, imExamples, imFeedback, imFit, imGet, imGrade, imPredict, imPredictions, imPromote, imReview,
   type Example, type Item, type LoggedPrediction, type ModelDetail, type Prediction,
 } from "@/lib/intuition-api";
 import EvalInput from "./EvalInput";
 import EvalEndpoint from "./EvalEndpoint";
+import EvalMonitoring from "./EvalMonitoring";
 import ModelTraceConversation from "@/components/reward-models/ModelTraceConversation";
 import type { RmTraceDetail } from "@/lib/types";
 
+const TABS: Record<string, string> = { build: "Build eval", test: "Sandbox", usage: "Usage & corrections", monitoring: "Monitoring" };
 const SAVE_STEPS = ["Prepare examples", "Generate criteria", "Score examples", "Save eval"];
 type SaveProgress = { status: "running" | "complete" | "failed"; step: number; message: string; startedAt: number; finishedAt?: number };
 
@@ -40,6 +42,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
   const [saveProgress, setSaveProgress] = useState<SaveProgress | null>(null);
   const [saveError, setSaveError] = useState("");
   const [selectedExample, setSelectedExample] = useState<string | null>(null);
+  const [focusCall, setFocusCall] = useState<string | null>(null);
   const load = useCallback(async () => {
     const [next, rows] = await Promise.all([imGet(id), imExamples(id)]);
     setDetail(next); setExamples(rows);
@@ -131,7 +134,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </DropdownMenu></div>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
-      <div className="flex gap-1" role="group" aria-label="Eval workspace">{["build", "test", "usage"].map((tab) => <Button key={tab} size="sm" variant="ghost" data-eval-tab className={`h-9 rounded-none border-0 border-b-2 px-3 text-xs ${view === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setSelectedExample(null); closeAdd(); if (tab === "test") setTestItem(null); }}>{tab === "build" ? "Build eval" : tab === "test" ? "Sandbox" : "Usage & corrections"}</Button>)}</div>
+      <div className="flex gap-1" role="group" aria-label="Eval workspace">{Object.keys(TABS).map((tab) => <Button key={tab} size="sm" variant="ghost" data-eval-tab className={`h-9 rounded-none border-0 border-b-2 px-3 text-xs ${view === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setSelectedExample(null); setFocusCall(null); closeAdd(); if (tab === "test") setTestItem(null); }}>{TABS[tab]}</Button>)}</div>
     </div>
     {view === "build" && <EvalEndpoint id={id} outputType={detail.model.output_type} />}
     {error && !addOpen && !selectedExample && !(saveProgress?.status === "failed" && error === saveError) && <p role="alert" className="text-xs text-destructive">{error}</p>}
@@ -187,7 +190,9 @@ export default function EvalWorkspace({ id }: { id: string }) {
         {showBuildResults && !!savedVersion?.rubric.length && <section aria-label="Evaluation criteria" className="space-y-3 rounded border border-border p-4"><h2 className="text-sm font-semibold">Evaluation criteria <span className="font-normal text-muted-foreground">({savedVersion.rubric.length})</span></h2><ul className="list-disc space-y-2 pl-5 text-xs">{savedVersion.rubric.map((q) => <li key={q.id}>{q.prompt}</li>)}</ul></section>}
         </div>
       </div>
-    </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
+    </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} />
+      : view === "monitoring" ? <EvalMonitoring id={id} onOpenCall={(callId) => { setFocusCall(callId); setView("usage"); }} />
+      : <EvalUsage id={id} labels={labels} focus={focusCall} onCorrected={() => { void load(); }} />}
   </section>;
 }
 
@@ -238,7 +243,7 @@ function EvalTest({ id, detail, initialItem }: { id: string; detail: ModelDetail
     </> : !busy && <p className="text-xs text-muted-foreground">Run an eval to see its decision and criteria scores. Every result is saved in Usage & corrections.</p>}{trace && <ModelTraceConversation trace={trace} scores={[]} modelName={detail.model.name} />}</section></div>;
 }
 
-function EvalUsage({ id, labels, onCorrected }: { id: string; labels: string[]; onCorrected: () => void }) {
+function EvalUsage({ id, labels, focus, onCorrected }: { id: string; labels: string[]; focus: string | null; onCorrected: () => void }) {
   const [rows, setRows] = useState<LoggedPrediction[]>([]);
   const [more, setMore] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -246,13 +251,22 @@ function EvalUsage({ id, labels, onCorrected }: { id: string; labels: string[]; 
   const [notes, setNotes] = useState<Record<string, string>>({});
   const reload = useCallback(async () => { const data = await imPredictions(id, "all"); setRows(data); setMore(data.length === 50); }, [id]);
   useEffect(() => { void reload().catch((e) => setError(errorMessage(e))); }, [reload]);
+  useEffect(() => { if (focus) document.getElementById(`call-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus, rows]);
+  async function correct(row: LoggedPrediction, label: string) {
+    setBusy(true); setError("");
+    try {
+      // First review marks the call reviewed; later corrections relabel the example it taught.
+      if (row.status === "unreviewed") await imReview(id, row.id, { label, note: notes[row.id] ?? "" });
+      else await imFeedback(id, { prediction_id: row.id, label, note: notes[row.id] ?? "", learn: true });
+      await reload(); onCorrected();
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  }
   return <section className="space-y-3"><h2 className="text-sm font-semibold">Usage & corrections</h2><p className="text-xs text-muted-foreground">Inputs, outputs, and eval versions from the UI and API. Corrections become examples for the next update.</p>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {rows.map((row) => <details key={row.id} className="rounded border border-border"><summary className="flex cursor-pointer flex-wrap items-center gap-3 bg-surface/40 px-3 py-2.5 text-xs"><span>{new Date(row.created_at).toLocaleString()}</span><span>{row.caller}</span><strong>{String(row.output.error ? "Evaluation failed" : row.output.label ?? row.output.winner ?? "Comparison")}</strong><span>v{row.version}</span><span className="ml-auto text-muted-foreground">{row.status}</span></summary><div className="space-y-3 border-t border-border p-4"><ItemView item={row.input.item} />{row.input.item_b && <ItemView item={row.input.item_b} />}{row.output.error ? <p className="text-xs text-destructive">{String(row.output.error)}</p> : row.kind === "predict" && <ProbabilityBars probabilities={(row.output as Prediction).probabilities} order={Object.keys((row.output as Prediction).probabilities)} highlight={(row.output as Prediction).label} />}<details className="text-xs"><summary className="cursor-pointer text-muted-foreground">View raw result</summary><pre className="max-h-48 overflow-auto rounded bg-surface p-3 text-xs">{JSON.stringify(row.output, null, 2)}</pre></details>{row.status === "unreviewed" && <>
+    {rows.map((row) => <details key={row.id} id={`call-${row.id}`} open={row.id === focus || undefined} className={`rounded border ${row.id === focus ? "border-primary" : "border-border"}`}><summary className="flex cursor-pointer flex-wrap items-center gap-3 bg-surface/40 px-3 py-2.5 text-xs"><span>{new Date(row.created_at).toLocaleString()}</span><span>{row.caller}</span>{row.ref && <span className="text-muted-foreground">ref {row.ref}</span>}<strong>{String(row.output.error ? "Evaluation failed" : row.output.label ?? row.output.winner ?? "Comparison")}</strong><span>v{row.version}</span><span className="ml-auto text-muted-foreground">{row.status}</span></summary><div className="space-y-3 border-t border-border p-4"><ItemView item={row.input.item} />{row.input.item_b && <ItemView item={row.input.item_b} />}{row.output.error ? <p className="text-xs text-destructive">{String(row.output.error)}</p> : row.kind === "predict" && <ProbabilityBars probabilities={(row.output as Prediction).probabilities} order={Object.keys((row.output as Prediction).probabilities)} highlight={(row.output as Prediction).label} />}<details className="text-xs"><summary className="cursor-pointer text-muted-foreground">View raw result</summary><pre className="max-h-48 overflow-auto rounded bg-surface p-3 text-xs">{JSON.stringify(row.output, null, 2)}</pre></details>
+      {!!row.feedback?.length && <div className="space-y-1"><div className="text-[11px] font-medium text-muted-foreground">Feedback</div><ul className="space-y-1 text-xs">{row.feedback.map((f) => <li key={f.id} className="flex flex-wrap gap-2"><span className="rounded border border-border bg-surface px-1.5 text-[10px] text-muted-foreground">{f.source}</span>{f.label && <strong>{f.label}</strong>}{f.value != null && <span className="tabular-nums">value {f.value}</span>}{f.note && <span className="text-muted-foreground">{f.note}</span>}<span className="ml-auto text-muted-foreground">{new Date(f.created_at).toLocaleString()}</span></li>)}</ul></div>}
+      {!row.output.error && row.status !== "dismissed" && <>
       <textarea aria-label={`Feedback for usage ${row.id}`} rows={2} maxLength={2000} className={inputClass} value={notes[row.id] ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Explain your correction…" />
-      <div className="flex flex-wrap gap-2">{(row.kind === "compare" ? ["a", "b"] : labels).map((label) => <Button key={label} size="xs" variant="outline" disabled={busy} onClick={async () => {
-        setBusy(true); setError(""); try { await imReview(id, row.id, { label, note: notes[row.id] ?? "" }); await reload(); onCorrected(); }
-        catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-      }}>Mark {label}</Button>)}</div>
+      <div className="flex flex-wrap gap-2">{(row.kind === "compare" ? ["a", "b"] : labels).map((label) => <Button key={label} size="xs" variant="outline" disabled={busy} onClick={() => void correct(row, label)}>Mark {label}</Button>)}</div>
     </>}</div></details>)}{!rows.length && <p className="py-6 text-xs text-muted-foreground">No eval calls recorded yet.</p>}
     {more && rows.length > 0 && <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
       setBusy(true); try { const next = await imPredictions(id, "all", rows.length); setRows([...rows, ...next]); setMore(next.length === 50); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }

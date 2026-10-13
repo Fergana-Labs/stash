@@ -230,6 +230,27 @@ def fit_temperature(head: dict, output_type: str, rows: list[dict]) -> float:
 # ── Evaluation ───────────────────────────────────────────────────────────
 
 
+def calibration(confidences: list[float], correct: list[bool]) -> tuple[float, list[dict]]:
+    """Expected calibration error over the confidence of the predicted label, and its bins."""
+    bins: dict[int, list[tuple[float, bool]]] = {}
+    for conf, ok in zip(confidences, correct):
+        bins.setdefault(min(int(conf * 10), 9), []).append((conf, ok))
+    ece = sum(
+        len(v) / len(confidences) * abs(np.mean([c for c, _ in v]) - np.mean([o for _, o in v]))
+        for v in bins.values()
+    )
+    reliability = [
+        {
+            "bin": k,
+            "n": len(v),
+            "confidence": float(np.mean([c for c, _ in v])),
+            "accuracy": float(np.mean([o for _, o in v])),
+        }
+        for k, v in sorted(bins.items())
+    ]
+    return float(ece), reliability
+
+
 def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
     if not rows:
         return {
@@ -245,29 +266,13 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
         p_true, predicted = row_probability(head, output_type, r)
         scored.append((r, p_true, predicted))
     correct = [predicted == r["label"] for r, _, predicted in scored]
-    # Expected calibration error over the confidence of the predicted label.
     confidences = []
     for r, p_true, predicted in scored:
         if output_type == "choice":
             confidences.append(predict_choice(head, r["f"])["confidence"])
         else:
             confidences.append(max(p_true, 1 - p_true))
-    bins: dict[int, list[tuple[float, bool]]] = {}
-    for conf, ok in zip(confidences, correct):
-        bins.setdefault(min(int(conf * 10), 9), []).append((conf, ok))
-    ece = sum(
-        len(v) / len(scored) * abs(np.mean([c for c, _ in v]) - np.mean([o for _, o in v]))
-        for v in bins.values()
-    )
-    reliability = [
-        {
-            "bin": k,
-            "n": len(v),
-            "confidence": float(np.mean([c for c, _ in v])),
-            "accuracy": float(np.mean([o for _, o in v])),
-        }
-        for k, v in sorted(bins.items())
-    ]
+    ece, reliability = calibration(confidences, correct)
     confusion = None
     if output_type == "choice":
         confusion = {c: dict.fromkeys(head["classes"], 0) for c in head["classes"]}
