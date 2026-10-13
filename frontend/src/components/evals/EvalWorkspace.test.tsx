@@ -50,10 +50,10 @@ it("shows a held-out scorecard and requires review before overriding limited val
   api.imGet.mockResolvedValue({ ...detail, draft: { ...version, head: {}, head_stale: false, metrics: { eval: { n: 1, accuracy: 0, rows: [{ example_id: "held", label: "good", predicted: "bad", p_true: 0.3 }] } }, gate: { passed: false, checks: [{ name: "held_out_size", passed: false, detail: "1 held-out example; need 4" }] } } });
   api.imExamples.mockResolvedValue([{ id: "held", item: "A held-out slide", label: "good", split: "eval", note: "" }]);
   render(<EvalWorkspace id="eval" />);
-  expect(await screen.findByText("0% agreement")).toBeVisible();
+  expect(await screen.findByText("0 of 1 labels matched")).toBeVisible();
   expect(screen.getByText("Probability of your label: 30%")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Use this eval" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent("1 held-out example; need 4");
+  expect(await screen.findByRole("region", { name: "Use this eval with limited validation?" })).toHaveTextContent("1 held-out example; need 4");
   expect(api.imPromote).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Activate anyway" }));
   await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
@@ -80,11 +80,11 @@ it("opens eval-specific connection examples from the menu and closes with Escape
   const trigger = await screen.findByRole("button", { name: "Eval options" });
   fireEvent.keyDown(trigger, { key: "ArrowDown" });
   fireEvent.click(await screen.findByRole("menuitem", { name: "Connect" }));
-  const dialog = await screen.findByRole("dialog", { name: "Connect Replies" });
+  const dialog = await screen.findByRole("region", { name: "Connect Replies" });
   expect(dialog).toHaveTextContent("/api/v1/intuitions/eval/predict");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Connect Replies" })).not.toBeInTheDocument());
 });
 
 it("downloads saved definitions, fitted heads, frozen seeds, and examples for this eval", async () => {
@@ -111,7 +111,7 @@ it("downloads saved definitions, fitted heads, frozen seeds, and examples for th
 it("adds a labeled example into the single Examples collection", async () => {
   render(<EvalWorkspace id="eval" />);
   fireEvent.click(await screen.findByRole("button", { name: "Add example" }));
-  const dialog = await screen.findByRole("dialog", { name: "Add example" });
+  const dialog = await screen.findByRole("region", { name: "Add example" });
   const form = within(dialog);
   expect(form.getByRole("button", { name: "Add example" })).toBeDisabled();
   fireEvent.change(form.getByRole("textbox", { name: "Example output" }), { target: { value: "A concrete next step" } });
@@ -119,7 +119,7 @@ it("adds a labeled example into the single Examples collection", async () => {
   api.imExamples.mockResolvedValue([{ id: "new", item: "A concrete next step", label: "good", note: "Useful and concise", split: "train" }]);
   fireEvent.click(form.getByRole("button", { name: "Add example" }));
   await waitFor(() => expect(api.evalAddExamples).toHaveBeenCalledWith("eval", [{ item: "A concrete next step", label: "good", note: "Useful and concise" }]));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Add example" })).not.toBeInTheDocument());
   expect(within(screen.getByRole("region", { name: "Examples (1)" })).getByText("A concrete next step")).toBeVisible();
 });
 
@@ -127,14 +127,14 @@ it("keeps failed submissions editable and clears canceled input", async () => {
   api.evalAddExamples.mockRejectedValueOnce(new Error("Could not save"));
   render(<EvalWorkspace id="eval" />);
   fireEvent.click(await screen.findByRole("button", { name: "Add example" }));
-  const form = within(await screen.findByRole("dialog", { name: "Add example" }));
+  const form = within(await screen.findByRole("region", { name: "Add example" }));
   fireEvent.change(form.getByRole("textbox", { name: "Example output" }), { target: { value: "Keep this draft" } });
   fireEvent.click(form.getByRole("button", { name: "Add example" }));
   expect(await form.findByRole("alert")).toHaveTextContent("Could not save");
   expect(form.getByRole("textbox", { name: "Example output" })).toHaveValue("Keep this draft");
   fireEvent.click(form.getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: "Add example" }));
-  expect(within(await screen.findByRole("dialog")).getByRole("button", { name: "Add example" })).toBeDisabled();
+  expect(within(await screen.findByRole("region", { name: "Add example" })).getByRole("button", { name: "Add example" })).toBeDisabled();
   expect(screen.getByRole("textbox", { name: "Example output" })).toHaveValue("");
 });
 
@@ -145,7 +145,7 @@ it("shows immediate progress beside the build button, hides old results, then of
   api.imDraftRubric.mockReturnValueOnce(new Promise((resolve) => { finishDraft = resolve; }));
   render(<EvalWorkspace id="eval" />);
   fireEvent.click(await screen.findByRole("button", { name: "Update eval" }));
-  expect(screen.queryByText("100% agreement")).not.toBeInTheDocument();
+  expect(screen.queryByText("100 of 1 labels matched")).not.toBeInTheDocument();
   const running = screen.getByRole("button", { name: "Building eval…" });
   expect(running).toBeDisabled();
   expect(await screen.findByRole("status")).toHaveTextContent("Creating evaluation criteria");
@@ -179,7 +179,7 @@ it("opens a compact example row for feedback and tests the selected content", as
   api.imPredict.mockResolvedValue({ label: "good", confidence: 0.9, probabilities: { good: 0.9, bad: 0.1 }, version: 1, rubric: {} });
   render(<EvalWorkspace id="eval" />);
   fireEvent.click(await screen.findByRole("button", { name: "Inspect example 1" }));
-  const form = within(await screen.findByRole("dialog", { name: "Example 1" }));
+  const form = within(await screen.findByRole("region", { name: "Example 1" }));
   fireEvent.change(form.getByRole("textbox", { name: "Feedback for example row" }), { target: { value: "Use a concrete timeline" } });
   fireEvent.click(form.getByRole("button", { name: "Save feedback" }));
   await waitFor(() => expect(api.imEditExample).toHaveBeenCalledWith("eval", "row", { note: "Use a concrete timeline" }));
@@ -188,4 +188,21 @@ it("opens a compact example row for feedback and tests the selected content", as
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
   await waitFor(() => expect(api.imPredict).toHaveBeenCalledWith("eval", "A concrete next step", "draft"));
+});
+
+
+it("expands details directly after a clicked row and collapses on a second click", async () => {
+  api.imExamples.mockResolvedValue([{ id: "first", item: "First reply", label: "good", note: "Clear", split: "train" }, { id: "second", item: "Second reply", label: "bad", note: "Vague", split: "train" }]);
+  render(<EvalWorkspace id="eval" />);
+  const trigger = await screen.findByRole("button", { name: "Inspect example 1" });
+  fireEvent.click(trigger);
+  const panel = screen.getByRole("region", { name: "Example 1" });
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  expect(trigger.closest("tr")?.nextElementSibling).toContainElement(panel);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(trigger);
+  expect(screen.queryByRole("region", { name: "Example 1" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("cell", { name: "Vague" }));
+  expect(screen.getByRole("region", { name: "Example 2" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Example 1" })).not.toBeInTheDocument();
 });
