@@ -16,29 +16,29 @@ import { getOptimization } from "@/lib/optimization-api";
 import { getMonitoring, getRewardHistory, type MonitoredAgent, type MonitoringOverview } from "@/lib/monitoring-api";
 import { cn } from "@/lib/utils";
 
+const REWARD_WINDOW = 20;
+
 function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: MonitoringOverview }) {
   const programs = overview.programs.filter((p) => p.agent === agent.agent);
   const [selectedProgram, setProgram] = useState(programs.find((p) => p.status === "active")?.id ?? programs[0]?.id ?? "recorded");
   const program = programs.find((p) => p.id === selectedProgram);
   const [selectedModel, setModel] = useState(overview.models[0]?.id ?? "");
   const modelId = program?.reward_model_id ?? selectedModel;
-  const [window, setWindow] = useState(20);
   const [creating, setCreating] = useState(false);
-  const selection = `${agent.agent}:${modelId}:${program?.id ?? "recorded"}:${window}`;
-  const loader = useCallback(async () => ({ selection, history: modelId ? await getRewardHistory(agent.agent, modelId, window, program?.id) : null }), [selection, agent.agent, modelId, window, program?.id]);
+  const selection = `${agent.agent}:${modelId}:${program?.id ?? "recorded"}`;
+  const loader = useCallback(async () => ({ selection, history: modelId ? await getRewardHistory(agent.agent, modelId, REWARD_WINDOW, program?.id) : null }), [selection, agent.agent, modelId, program?.id]);
   const { data, error, reload } = useWorkbenchLoad(loader, 10000);
   const programId = program?.id;
   const detailLoader = useCallback(async () => programId ? getOptimization(programId) : null, [programId]);
   const { data: detail, error: detailError, reload: reloadDetail } = useWorkbenchLoad(detailLoader, 10000);
   const history = data?.selection === selection ? data.history : null;
   const matchingDetail = detail?.id === program?.id ? detail : null;
-  const fullWindows = history && history.current_n === window && history.previous_n === window;
+  const fullWindows = history && history.current_n === history.window && history.previous_n === history.window;
   const change = fullWindows && history.current_mean != null && history.previous_mean != null ? history.current_mean - history.previous_mean : null;
   return <section aria-label={`${agent.display_name} monitoring`} className="px-6 py-4">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-3">
       {!!programs.length && <Select aria-label="Workload" value={selectedProgram} onChange={setProgram} options={[{ value: "recorded", label: "All recorded runs" }, ...programs.map((p) => ({ value: p.id, label: `${p.name} · ${p.scope}` }))]} className="h-9 max-w-lg px-3 text-xs" />}
       <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && !overview.models.some((m) => m.id === program.reward_model_id) ? [{ value: program.reward_model_id, label: program.reward_model_name }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
-      <Select aria-label="Rolling window" value={String(window)} onChange={(s) => setWindow(Number(s))} options={[20, 50, 100].map((n) => ({ value: String(n), label: `Last ${n} scored runs` }))} className="h-9 px-3 text-xs" />
       {program && <RecordBadge value={program.status === "active" ? "optimizing" : program.status} />}
     </div><Button size="sm" variant="outline" disabled={!overview.models.length} onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "Optimize prompt"}</Button></div>
     {creating && <div className="mb-5"><CreateOptimization initialModelId={modelId} initialAgent={agent.agent} /></div>}
@@ -46,7 +46,7 @@ function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: Mon
     {!overview.models.length && !program ? <p className="text-sm text-muted-foreground">Choose a <Link className="underline" href="/reward-models/models">reward model</Link> once it is ready to monitor agent performance.</p> : !history ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading agent rewards…</p> : <>
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
         <Metric label="Average reward" content={value(history.current_mean)} hint={`${history.current_n} recent scored runs${program ? ` · current prompt v${program.active_version}` : ""}`} />
-        <Metric label="Change from previous window" content={change == null ? "—" : signed(change)} hint={change == null ? `Needs ${window * 2} scored runs${program ? " on the current prompt" : ""}` : "Observed change in reward units"} />
+        <Metric label="Change from previous average" content={change == null ? "—" : signed(change)} hint={change == null ? `Needs ${history.window * 2} scored runs${program ? " on the current prompt" : ""}` : "Observed change in reward units"} />
         <Metric label="Accepted prompt changes" content={program ? String(program.accepted_count) : programs.length ? "—" : "0"} hint={program ? `${program.run_count} runs assigned to this workload` : "No workload selected"} />
         <Metric label="Current prompt" content={program ? `v${program.active_version}` : "Not tracked"} hint={program ? "Current supplementary instructions" : "Connect a prompt experiment to track revisions"} />
       </div>
