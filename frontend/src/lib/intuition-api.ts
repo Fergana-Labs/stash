@@ -171,7 +171,15 @@ export const imPredict = (id: string, item: Item, version: "active" | "draft" = 
   post<Prediction>(`${IM}/${id}/predict`, { item, version, caller: "playground" });
 export const imCompare = (id: string, item_a: Item, item_b: Item, version: "active" | "draft" = "active") =>
   post<Comparison>(`${IM}/${id}/compare`, { item_a, item_b, version, caller: "playground" });
-export const imPredictions = (id: string, status: "unreviewed" | "labeled" | "dismissed" | "all" = "unreviewed") =>
-  apiFetch<LoggedPrediction[]>(`${IM}/${id}/predictions?status=${status}`);
+export const imPredictions = (id: string, status: "unreviewed" | "labeled" | "dismissed" | "all" = "unreviewed", offset = 0) =>
+  apiFetch<LoggedPrediction[]>(`${IM}/${id}/predictions?status=${status}&limit=50&offset=${offset}`);
 export const imReview = (id: string, predictionId: string, body: { label?: string | null; dismiss?: boolean; note?: string }) =>
   post<{ status: string; example: Example | null }>(`${IM}/${id}/predictions/${predictionId}/review`, body);
+
+export const evalAddExamples = (id: string, examples: NewExample[]) => post<Example[]>(`${IM}/${id}/builder/examples`, { examples });
+export const evalAddTrace = (id: string, trace_id: string, label: string, note = "") => post<Example[]>(`${IM}/${id}/builder/trace`, { trace_id, label, note });
+export const evalPrepare = (id: string) => post<ModelDetail>(`${IM}/${id}/builder/prepare`);
+export function evalReadFile(file: File): Promise<Item> {
+  const body = new FormData(); body.set("file", file);
+  return apiFetch<Item>(`${IM}/inputs`, { method: "POST", body });
+}

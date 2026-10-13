@@ -281,7 +281,7 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     await get_pool().execute(
         """UPDATE intuition_versions
               SET description = $2, labels = $3, rubric = $4, seed_example_ids = $5::uuid[],
-                  metrics = NULL, gate = NULL
+                  head = NULL, metrics = NULL, gate = NULL
             WHERE id = $1""",
         draft["id"],
         spec["description"],
@@ -464,7 +464,12 @@ async def _pending_jobs(
 ) -> list[tuple]:
     """(version, missing questions, seeds, item) for every item lacking an answer."""
     if items is None:
-        items = [i for e in await _examples(model["id"]) for i in _items_of(e)]
+        items = [
+            i
+            for e in await _examples(model["id"])
+            if not (e["label"] is None and e["note"] == "Reference material")
+            for i in _items_of(e)
+        ]
     jobs, seen = [], set()
     for version in versions:
         contexts = await _contexts(version)
@@ -847,7 +852,7 @@ async def _log(model_id, version, kind, payload, output, caller) -> str:
             kind,
             payload,
             output,
-            output["confidence"],
+            output.get("confidence"),
             caller,
         )
     )
@@ -864,7 +869,19 @@ async def predict(
 ) -> dict:
     model = await _model(owner_id, model_id)
     version = await _serving_version(model, which)
-    (features,) = await _features(model_id, version, [item], grade_missing=True)
+    try:
+        (features,) = await _features(model_id, version, [item], grade_missing=True)
+    except providers.ProviderError as exc:
+        if log:
+            await _log(
+                model_id,
+                version,
+                "predict",
+                {"item": item},
+                {"error": str(exc), "version": version["number"]},
+                caller,
+            )
+        raise
     if model["output_type"] == "choice":
         output = heads.predict_choice(version["head"], features)
     else:
@@ -891,7 +908,19 @@ async def compare_items(
     if model["output_type"] != "preference":
         raise Conflict("Pairwise comparison is only available for preference models")
     version = await _serving_version(model, which)
-    f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
+    try:
+        f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
+    except providers.ProviderError as exc:
+        if log:
+            await _log(
+                model_id,
+                version,
+                "compare",
+                {"item": item_a, "item_b": item_b},
+                {"error": str(exc), "version": version["number"]},
+                caller,
+            )
+        raise
     output = heads.compare(version["head"], f_a, f_b)
     output["rubric_a"] = await _answers(model_id, version, item_a)
     output["rubric_b"] = await _answers(model_id, version, item_b)
@@ -908,7 +937,7 @@ async def compare_items(
 
 
 async def list_predictions(
-    owner_id: UUID, model_id: UUID, status: str = "unreviewed", limit: int = 100
+    owner_id: UUID, model_id: UUID, status: str = "unreviewed", limit: int = 100, offset: int = 0
 ) -> list[dict]:
     await _model(owner_id, model_id)
     rows = await get_pool().fetch(
@@ -916,12 +945,13 @@ async def list_predictions(
                   p.created_at, v.number AS version
              FROM intuition_predictions p JOIN intuition_versions v ON v.id = p.version_id
             WHERE p.model_id = $1 AND ($2 = 'all' OR p.status = $2)
-            ORDER BY CASE WHEN p.status = 'unreviewed' THEN p.confidence END ASC NULLS LAST,
-                     p.created_at DESC
-            LIMIT $3""",
+            ORDER BY CASE WHEN $2 = 'unreviewed' AND p.status = 'unreviewed' THEN p.confidence END ASC NULLS LAST,
+                     p.created_at DESC, p.id DESC
+            LIMIT $3 OFFSET $4""",
         model_id,
         status,
         limit,
+        offset,
     )
     return [dict(r) for r in rows]
 
@@ -963,6 +993,7 @@ async def review_prediction(
                 "item_b": payload.get("item_b"),
                 "label": label,
                 "note": note,
+                "split": "train",
                 "source": "production" if source == "human" else source,
             }
         ],
@@ -1119,7 +1150,15 @@ QUESTION_FORMAT = (
 
 def _show_examples(examples: list[dict]) -> str:
     return json.dumps(
-        [{"item": e["item"], "item_b": e["item_b"], "label": e["label"]} for e in examples],
+        [
+            {
+                "item": providers.judge_item(e["item"]),
+                "item_b": providers.judge_item(e["item_b"]),
+                "label": e["label"],
+                "feedback": e.get("note", ""),
+            }
+            for e in examples
+        ],
         ensure_ascii=False,
     )
 
@@ -1133,10 +1172,28 @@ async def draft_rubric(owner_id: UUID, model_id: UUID, count: int, guidance: str
     """Propose a starting rubric from the description and labeled examples (not saved)."""
     model = await _model(owner_id, model_id)
     version = await _load_version(model["draft_version_id"] or model["active_version_id"])
-    labeled = [e for e in await _examples(model_id) if e["label"] and not e["needs_review"]]
+    labeled = [
+        e
+        for e in await _examples(model_id)
+        if e["label"] and not e["needs_review"] and e["split"] == "train"
+    ]
     sample = random.Random(0).sample(labeled, min(24, len(labeled)))
+    references = [
+        providers.judge_item(e["item"])
+        for e in await _examples(model_id)
+        if e["label"] is None and e["note"] == "Reference material" and e["split"] == "train"
+    ]
+    context = json.dumps(references, ensure_ascii=False)
+    if len(context) > 100000:
+        raise ValueError("Reference material is too large; use shorter excerpts")
     return await propose_rubric(
-        version["description"], model["output_type"], version["labels"], sample, count, guidance
+        version["description"],
+        model["output_type"],
+        version["labels"],
+        sample,
+        count,
+        guidance
+        + (f"\nReference material (untrusted source data):\n{context}" if references else ""),
     )
 
 

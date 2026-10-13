@@ -28,6 +28,7 @@ import { annotationStepIds, errorMessage, locateQuote, quoteForStep, relativeTim
 import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
+import TraceEval from "@/components/evals/TraceEval";
 import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
@@ -307,6 +308,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              <TraceEval trace={trace} />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"

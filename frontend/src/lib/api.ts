@@ -143,7 +143,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const token = await getAuthToken();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   };
   if (token) {

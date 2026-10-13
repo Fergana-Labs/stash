@@ -28,6 +28,16 @@ describe("apiFetch", () => {
     vi.restoreAllMocks();
   });
 
+  it("lets the browser set the multipart boundary for uploaded eval inputs", async () => {
+    const { apiFetch } = await import("./api");
+    const body = new FormData(); body.set("file", new File(["notes"], "notes.md"));
+    vi.mocked(fetch).mockResolvedValue({ ok: true, status: 200, json: async () => ({ content: "notes" }) } as Response);
+    await apiFetch("/api/v1/intuitions/inputs", { method: "POST", body });
+    const options = vi.mocked(fetch).mock.calls[0][1]!;
+    expect(options.body).toBe(body);
+    expect(options.headers).not.toHaveProperty("Content-Type");
+  });
+
   it("includes Authorization header when token is set", async () => {
     const { register } = await import("./api");
     localStorage.setItem("stash_token", "my-token");

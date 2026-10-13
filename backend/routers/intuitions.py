@@ -8,11 +8,11 @@ serving routes use the active version unless `version="draft"` is requested.
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.intuition import demo, providers, service
+from ..services.intuition import builder, demo, providers, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -148,6 +148,73 @@ async def load_example(user: User):
     return await checked(demo.load(user["id"]))
 
 
+@router.post("/inputs")
+async def read_input(file: UploadFile, user: User):
+    data = await file.read(builder.MAX_BYTES + 1)
+    try:
+        return await checked(
+            builder.read_input(
+                data, file.filename or "input.txt", file.content_type or "text/plain"
+            )
+        )
+    except TimeoutError as exc:
+        raise HTTPException(422, "Document took too long to read; use a smaller file") from exc
+
+
+@router.post("/{model_id}/builder/examples", status_code=201)
+async def builder_examples(model_id: UUID, req: AddExamples, user: User):
+    # The builder owns the split; users do not need to choose this parameter.
+    await checked(
+        service.add_examples(
+            user["id"],
+            model_id,
+            [
+                {
+                    **e.model_dump(),
+                    "split": "train",
+                    "needs_review": e.needs_review or e.label is None,
+                }
+                for e in req.examples
+            ],
+            req.source,
+        )
+    )
+    return await checked(builder.reserve_holdout(user["id"], model_id))
+
+
+@router.post("/{model_id}/builder/prepare")
+async def prepare_builder(model_id: UUID, user: User):
+    return await checked(builder.prepare(user["id"], model_id))
+
+
+class TraceExample(Body):
+    trace_id: UUID
+    label: str
+    note: str = Field(default="", max_length=2000)
+
+
+@router.post("/{model_id}/builder/trace", status_code=201)
+async def trace_example(model_id: UUID, req: TraceExample, user: User):
+    await checked(service.get_detail(user["id"], model_id))
+    item, notes = await checked(builder.trace_input(user["id"], req.trace_id))
+    await checked(
+        service.add_examples(
+            user["id"],
+            model_id,
+            [
+                {
+                    "item": item,
+                    "label": req.label,
+                    "note": (req.note + "\n" + notes).strip()[:2000],
+                    "split": "train",
+                }
+            ],
+            "human",
+        )
+    )
+    return await checked(builder.reserve_holdout(user["id"], model_id))
+
+
 @router.get("/{model_id}")
 async def detail(model_id: UUID, user: User):
     return await checked(service.get_detail(user["id"], model_id))
@@ -275,8 +342,10 @@ async def predictions(
     model_id: UUID,
     user: User,
     status: Literal["unreviewed", "labeled", "dismissed", "all"] = "unreviewed",
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ):
-    return await checked(service.list_predictions(user["id"], model_id, status))
+    return await checked(service.list_predictions(user["id"], model_id, status, limit, offset))
 
 
 @router.post("/{model_id}/predictions/{prediction_id}/review")

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronRight, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import SyntaxCode from "@/components/reward-models/SyntaxCode";
+import { Select } from "@/components/ui/select";
 import type { Item, OutputType } from "@/lib/intuition-api";
 
 /** Escape for inclusion inside a single-quoted shell string. */
@@ -11,7 +12,7 @@ function shellQuote(text: string): string {
   return text.replace(/'/g, "'\\''");
 }
 
-export default function AgentUsagePanel({ modelId, outputType, sample }: { modelId: string; outputType: OutputType; sample: Item }) {
+export default function AgentUsagePanel({ modelId, outputType, sample, models, onModelChange }: { modelId: string; outputType: OutputType; sample: Item; models?: { value: string; label: string }[]; onModelChange?: (id: string) => void }) {
   const [origin, setOrigin] = useState("https://your-stash-host");
   const [example, setExample] = useState("curl");
   const [copiedText, setCopiedText] = useState("");
@@ -43,6 +44,8 @@ export default function AgentUsagePanel({ modelId, outputType, sample }: { model
         Connect
       </summary>
       <div className="pb-5">
+        {models && onModelChange && <Select aria-label="Connected eval" value={modelId} onChange={onModelChange} options={models} className="mb-3 h-8 max-w-xs px-3 text-xs" />}
+        <p className="mb-3 text-xs text-muted-foreground">Use this eval to grade a completed run, check a proposed action as a guardrail, or verify an output before returning it. Every prediction is logged for review and correction.</p>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2 text-xs">
             <span className="font-medium text-success">{example === "mcp" ? "TOOL" : "POST"}</span>
