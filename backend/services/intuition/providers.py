@@ -48,6 +48,27 @@ def _json(value) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def judge_item(item):
+    """Keep binary previews out of the text judge; use the visible extracted content."""
+    if isinstance(item, dict):
+        if (
+            item.get("kind") == "image"
+            and item.get("data_url")
+            and not str(item.get("content") or "").strip()
+        ):
+            raise ProviderError(
+                "Upload images through /api/v1/intuitions/inputs and evaluate the returned item, including its visual description"
+            )
+        return {
+            k: judge_item(v)
+            for k, v in item.items()
+            if not (item.get("kind") == "image" and k == "data_url")
+        }
+    if isinstance(item, list):
+        return [judge_item(v) for v in item]
+    return item
+
+
 def seed_payload(output_type: str, seeds: list[dict]) -> list[dict]:
     """How labeled seed examples are shown to the judge."""
     rendered = []
@@ -56,9 +77,9 @@ def seed_payload(output_type: str, seeds: list[dict]) -> list[dict]:
             better, worse = (
                 (s["item"], s["item_b"]) if s["label"] == "a" else (s["item_b"], s["item"])
             )
-            rendered.append({"better": better, "worse": worse})
+            rendered.append({"better": judge_item(better), "worse": judge_item(worse)})
         else:
-            rendered.append({"item": s["item"], "label": s["label"]})
+            rendered.append({"item": judge_item(s["item"]), "label": s["label"]})
     return rendered
 
 
@@ -114,7 +135,7 @@ def _checked(probabilities: dict, question: dict) -> dict:
 def jev_request(version: dict, questions: list[dict], seeds: list[dict], item) -> dict:
     return {
         "model": version["provider_model"],
-        "state": item,
+        "state": judge_item(item),
         "questions": {
             q["id"]: {
                 "type": q["type"],
