@@ -6,70 +6,77 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { RmPage } from "@/components/reward-models/rm-ui";
-import MonitoringNav from "@/components/reward-models/MonitoringNav";
-import { ErrorNotice, useWorkbenchLoad } from "@/components/workbench/workbench-ui";
-import { rmListAllTraces, rmListRewardModels, rmScoreTrace } from "@/lib/api";
-import type { RmTraceSummary } from "@/lib/types";
-import CreateOptimization from "@/components/optimization/CreateOptimization";
-import { listOptimizations } from "@/lib/optimization-api";
 import { relativeTime } from "@/components/reward-models/rm-text";
+import { ErrorNotice, RecordBadge, useWorkbenchLoad } from "@/components/workbench/workbench-ui";
+import CreateOptimization from "@/components/optimization/CreateOptimization";
+import RollingRewardChart, { signed, value } from "@/components/monitoring/RollingRewardChart";
+import PromptEvolution from "@/components/monitoring/PromptEvolution";
+import GepaHistory from "@/components/monitoring/GepaHistory";
+import { getOptimization } from "@/lib/optimization-api";
+import { getMonitoring, getRewardHistory, type MonitoredAgent, type MonitoringOverview } from "@/lib/monitoring-api";
+import { cn } from "@/lib/utils";
+
+function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: MonitoringOverview }) {
+  const programs = overview.programs.filter((p) => p.agent === agent.agent);
+  const [selectedProgram, setProgram] = useState(programs.find((p) => p.status === "active")?.id ?? programs[0]?.id ?? "recorded");
+  const program = programs.find((p) => p.id === selectedProgram);
+  const [selectedModel, setModel] = useState(overview.models[0]?.id ?? "");
+  const modelId = program?.reward_model_id ?? selectedModel;
+  const [window, setWindow] = useState(20);
+  const [creating, setCreating] = useState(false);
+  const selection = `${agent.agent}:${modelId}:${program?.id ?? "recorded"}:${window}`;
+  const loader = useCallback(async () => ({ selection, history: modelId ? await getRewardHistory(agent.agent, modelId, window, program?.id) : null }), [selection, agent.agent, modelId, window, program?.id]);
+  const { data, error, reload } = useWorkbenchLoad(loader, 10000);
+  const programId = program?.id;
+  const detailLoader = useCallback(async () => programId ? getOptimization(programId) : null, [programId]);
+  const { data: detail, error: detailError, reload: reloadDetail } = useWorkbenchLoad(detailLoader, 10000);
+  const history = data?.selection === selection ? data.history : null;
+  const matchingDetail = detail?.id === program?.id ? detail : null;
+  const fullWindows = history && history.current_n === window && history.previous_n === window;
+  const change = fullWindows && history.current_mean != null && history.previous_mean != null ? history.current_mean - history.previous_mean : null;
+  return <section aria-label={`${agent.display_name} monitoring`} className="mt-6">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="m-0 text-base font-semibold text-foreground">{agent.display_name}</h2><p className="mb-0 mt-1 text-xs text-muted-foreground">{program ? `${program.name} · ${program.scope}` : "Performance across recorded runs"}</p></div><Button size="sm" variant="outline" disabled={!overview.models.length} onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "Optimize prompt"}</Button></div>
+    {creating && <div className="mb-5"><CreateOptimization initialModelId={modelId} initialAgent={agent.agent} /></div>}
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+      {!!programs.length && <Select aria-label="Workload" value={selectedProgram} onChange={setProgram} options={[{ value: "recorded", label: "All recorded runs" }, ...programs.map((p) => ({ value: p.id, label: `${p.name} · ${p.scope}` }))]} className="h-9 max-w-lg px-3 text-xs" />}
+      <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && !overview.models.some((m) => m.id === program.reward_model_id) ? [{ value: program.reward_model_id, label: program.reward_model_name }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
+      <Select aria-label="Rolling window" value={String(window)} onChange={(s) => setWindow(Number(s))} options={[20, 50, 100].map((n) => ({ value: String(n), label: `Last ${n} scored runs` }))} className="h-9 px-3 text-xs" />
+      {program && <RecordBadge value={program.status === "active" ? "optimizing" : program.status} />}
+    </div>
+    <ErrorNotice error={error ?? detailError} onRetry={() => { void reload(); void reloadDetail(); }} />
+    {!overview.models.length && !program ? <p className="text-sm text-muted-foreground">Choose a <Link className="underline" href="/reward-models/models">reward model</Link> once it is ready to monitor agent performance.</p> : !history ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading agent rewards…</p> : <>
+      <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Metric label="Average reward" content={value(history.current_mean)} hint={`${history.current_n} recent scored runs${program ? ` · current prompt v${program.active_version}` : ""}`} />
+        <Metric label="Change from previous window" content={change == null ? "—" : signed(change)} hint={change == null ? `Needs ${window * 2} scored runs${program ? " on the current prompt" : ""}` : "Observed change in reward units"} />
+        <Metric label="Accepted prompt changes" content={program ? String(program.accepted_count) : programs.length ? "—" : "0"} hint={program ? `${program.run_count} runs assigned to this workload` : "No workload selected"} />
+        <Metric label="Current prompt" content={program ? `v${program.active_version}` : "Not tracked"} hint={program ? "Current supplementary instructions" : "Connect a prompt experiment to track revisions"} />
+      </div>
+      <RollingRewardChart data={history} program={matchingDetail} />
+    </>}
+    {program ? matchingDetail && <PromptEvolution program={matchingDetail} /> : <section id="prompt-optimization" aria-label="Prompt evolution" className="mt-6"><h2 className="m-0 text-sm font-semibold text-foreground">Prompt evolution</h2><p className="mt-2 text-sm text-muted-foreground">{programs.length ? "Choose a workload above to see its prompt versions and experiment decisions." : "No prompt optimization is connected to this agent yet."}</p><p className="mb-0 text-xs text-muted-foreground">A connected experiment records candidate instructions, baseline comparisons, accepted changes, and the prompt assigned to each run.</p></section>}
+  </section>;
+}
+
+function Metric({ label, content, hint }: { label: string; content: string; hint: string }) {
+  return <div><p className="m-0 text-xs text-muted-foreground">{label}</p><p className="mb-1 mt-2 font-mono text-xl tabular-nums">{content}</p><p className="m-0 text-[11px] leading-relaxed text-muted-foreground">{hint}</p></div>;
+}
 
 export default function MonitoringPage() {
   useBreadcrumbs([{ label: "Monitoring" }], "rm-monitoring");
-  const { data: models, error: modelsError, reload: reloadModels } = useWorkbenchLoad(rmListRewardModels);
-  const { data: optimizations, error: optimizationError, reload: reloadOptimizations } = useWorkbenchLoad(listOptimizations, 10000);
-  const [creating, setCreating] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("");
-  const [agent, setAgent] = useState("all");
-  const [scoring, setScoring] = useState(false);
-  const [scoreStatus, setScoreStatus] = useState<string | null>(null);
-  async function scoreRuns() {
-    if (!modelId) return;
-    setScoring(true); setScoreStatus(null);
-    const modelName = available.find((model) => model.id === modelId)?.name ?? "Reward model";
-    let queued = 0;
-    try {
-      for (const trace of visible.filter((t) => scoreOf(t) === null && t.can_score !== false)) { await rmScoreTrace(trace.id, modelId); queued++; }
-      setScoreStatus(`${modelName}: ${queued} runs queued for scoring.`);
-    } catch { setScoreStatus(`${modelName}: ${queued} runs queued. Couldn’t queue the remaining runs; try again.`); }
-    finally { setScoring(false); }
-  }
-  const available = models?.filter((model) => model.status === "succeeded") ?? [];
-  const modelId = selectedModel || available[0]?.id;
-  const loader = useCallback(async () => ({ modelId, traces: modelId ? await rmListAllTraces("", modelId) : [] }), [modelId]);
-  const { data, error, reload, loading } = useWorkbenchLoad(loader, 10000);
-  const traces = data && data.modelId === modelId ? data.traces : [];
-  const metrics = available.find((model) => model.id === modelId)?.metrics;
-  const actionCredit = metrics?.action_scoring_version === 1 && metrics?.trace_scoring_version !== 1;
-  const supportsScoring = metrics?.trace_scoring_version === 1 || actionCredit;
-  const scoreOf = (trace: RmTraceSummary) => actionCredit ? trace.action_credit?.mean ?? null : trace.latest_score?.score ?? null;
-  const agents = [...new Set(traces.map((trace) => trace.agent || trace.source_format))].sort();
-  const experiments = optimizations?.filter((item) => item.reward_model_id === modelId && (agent === "all" || item.agent === agent));
-  const visible = traces.filter((trace) => agent === "all" || (trace.agent || trace.source_format) === agent);
-  const scored = visible.filter((trace) => scoreOf(trace) !== null);
-  const values = scored.map((trace) => scoreOf(trace)!);
-  const average = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-  const chronological = [...scored].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  const low = values.length ? Math.min(...values) : 0, high = values.length ? Math.max(...values) : 1;
-  const firstTime = chronological.length ? new Date(chronological[0].created_at).getTime() : 0;
-  const lastTime = chronological.length ? new Date(chronological.at(-1)!.created_at).getTime() : 0;
-  const x = (time: string) => 10 + (new Date(time).getTime() - firstTime) / (lastTime - firstTime || 1) * 580;
-  return <RmPage title="Monitoring" description="Track agent performance on real runs and improve its instructions with prompt experiments.">
-    <MonitoringNav />
-    <ErrorNotice error={modelsError ?? error} onRetry={() => { void reloadModels(); void reload(); }} />
-    {models && !available.length ? <p className="text-sm text-muted-foreground">Create a <Link className="underline" href="/reward-models/models">reward model</Link> from annotated traces to monitor your agent’s scores.</p> : <>
-      <div className="mb-5 flex flex-wrap gap-3"><Select aria-label="Reward model" value={modelId ?? ""} onChange={setSelectedModel} disabled={scoring} options={available.map((model) => ({ value: model.id, label: model.name }))} className="h-9 min-w-52 px-3 text-sm" /><Select aria-label="Agent" value={agent} onChange={setAgent} options={[{ value: "all", label: "All agents" }, ...agents.map((name) => ({ value: name, label: name }))]} className="h-9 min-w-36 px-3 text-sm" /></div>
-      <div className="mb-3 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{actionCredit ? "Mean action credit per recorded run from the selected reward model." : "Recorded runs scored by the selected reward model."}</p>{supportsScoring && <Button size="sm" variant="outline" disabled={scoring || !visible.some((t) => scoreOf(t) === null && t.can_score !== false)} onClick={() => void scoreRuns()}>{scoring ? "Queuing…" : "Score unscored runs"}</Button>}</div>
-      {scoreStatus && <p role="status" className="text-xs text-muted-foreground">{scoreStatus}</p>}
-      <div className="mb-6 grid grid-cols-3 gap-4">{[["Scored runs", `${scored.length} / ${visible.length}`], [actionCredit ? "Average action credit" : "Average score", average?.toFixed(2) ?? "—"], [actionCredit ? "Lowest action credit" : "Lowest score", values.length ? low.toFixed(2) : "—"]].map(([label, value]) => <div key={label} className="rounded-lg border border-border p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 font-mono text-2xl tabular-nums">{value}</div></div>)}</div>
-      {chronological.length > 1 && <figure className="mb-6 rounded-lg border border-border p-4"><figcaption className="mb-2 text-sm">{actionCredit ? "Action credit over time" : "Score over time"}</figcaption><svg viewBox="0 0 600 130" preserveAspectRatio="none" className="h-40 w-full" role="img" aria-label="Reward model scores ordered by recorded time"><polyline fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" className="text-brand-500" points={chronological.map((trace) => `${x(trace.created_at)},${110 - (scoreOf(trace)! - low) / (high - low || 1) * 90}`).join(" ")} />{chronological.map((trace) => <circle key={trace.id} cx={x(trace.created_at)} cy={110 - (scoreOf(trace)! - low) / (high - low || 1) * 90} r="3" fill="currentColor"><title>{trace.title}: {scoreOf(trace)!.toFixed(2)}</title></circle>)}</svg><div className="flex justify-between text-xs text-muted-foreground"><span>{new Date(chronological[0].created_at).toLocaleDateString()}</span><span>{new Date(chronological.at(-1)!.created_at).toLocaleDateString()}</span></div></figure>}
-      {loading || data?.modelId !== modelId ? <p>Loading scores…</p> : !scored.length ? <p className="text-sm text-muted-foreground">No runs have a saved score from this model yet.</p> : <table className="w-full text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="py-2">Trace</th><th>Agent</th><th>Recorded</th><th className="text-right">{actionCredit ? "Action credit" : "Score"}</th></tr></thead><tbody>{scored.map((trace) => <tr key={trace.id} className="border-b border-border-subtle"><td className="py-3"><Link className="hover:underline" href={`/reward-models/traces/${trace.id}`}>{trace.title}</Link></td><td>{trace.agent || trace.source_format}</td><td>{relativeTime(trace.created_at)}</td><td className="text-right font-mono tabular-nums">{scoreOf(trace)!.toFixed(2)}</td></tr>)}</tbody></table>}
-      <section id="prompt-optimization" className="mt-8 scroll-mt-4 border-t border-border pt-4" aria-label="Prompt optimization">
-        <div className="mb-3 flex items-center justify-between gap-3"><h2 className="m-0 text-sm font-semibold">Prompt optimization</h2><Button size="sm" variant="outline" disabled={!modelId} onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "New experiment"}</Button></div>
-        <ErrorNotice error={optimizationError} onRetry={() => void reloadOptimizations()} />
-        {creating && <div className="mb-4"><CreateOptimization key={modelId} initialModelId={modelId} /></div>}
-        {experiments && (experiments.length ? <table className="w-full text-left text-xs"><thead><tr className="border-b border-border text-muted-foreground"><th className="py-2">Experiment</th><th>Agent</th><th>Status</th><th className="text-right">Runs</th></tr></thead><tbody>{experiments.map((item) => <tr key={item.id} className="border-b border-border-subtle"><td className="py-3"><Link className="hover:underline" href={`/reward-models/optimization/${item.id}`}>{item.name}</Link></td><td>{item.agent}</td><td>{item.status.replaceAll("_", " ")}</td><td className="text-right tabular-nums">{item.run_count ?? "—"}</td></tr>)}</tbody></table> : <p className="text-xs text-muted-foreground">No prompt experiments for this selection yet. Compare new instructions against the current prompt using future agent runs.</p>)}
-      </section>
+  const { data, error, reload } = useWorkbenchLoad(getMonitoring, 10000);
+  const [selected, setSelected] = useState("");
+  const agent = data?.agents.find((a) => a.agent === selected) ?? data?.agents[0];
+  return <RmPage title="Monitoring" description="Your agents, their prompts, and how their reward changes over time." wide>
+    <ErrorNotice error={error} onRetry={() => void reload()} />
+    {!data ? <p role="status" className="text-sm text-muted-foreground">Loading agents…</p> : <>
+      {!data.agents.length ? <p className="text-sm text-muted-foreground">Connect an agent or import its traces to start monitoring.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-surface/50 text-xs text-muted-foreground"><tr className="border-y border-border"><th className="px-3 py-2.5">Agent</th><th className="px-3">Prompt optimization</th><th className="px-3">Current prompt</th><th className="px-3 text-right">Recorded runs</th><th className="px-3 text-right">Last activity</th></tr></thead><tbody>{data.agents.map((a) => {
+        const programs = data.programs.filter((p) => p.agent === a.agent);
+        const active = programs.filter((p) => p.status === "active");
+        const status = active.length ? `${active.length} active workload${active.length === 1 ? "" : "s"}` : programs.length ? programs[0].status.replaceAll("_", " ") : "Not connected";
+        return <tr key={a.agent} onClick={() => setSelected(a.agent)} className={cn("cursor-pointer border-b border-border-subtle", agent?.agent === a.agent ? "bg-brand-500/5" : "hover:bg-surface/60")}><td className="px-3 py-3"><button aria-pressed={agent?.agent === a.agent} className="w-full text-left font-medium" onClick={() => setSelected(a.agent)}>{a.display_name}</button></td><td className="px-3 text-xs"><span className={cn("mr-2 inline-block h-1.5 w-1.5 rounded-full", active.length ? "bg-emerald-500" : "bg-muted-foreground/30")} />{status}</td><td className="px-3 text-xs text-muted-foreground">{programs.length === 1 ? `v${programs[0].active_version}` : programs.length ? `${programs.length} workloads` : "—"}</td><td className="px-3 text-right tabular-nums">{a.trace_count}</td><td className="px-3 text-right text-xs text-muted-foreground">{a.last_seen ? relativeTime(a.last_seen) : "Awaiting runs"}</td></tr>;
+      })}</tbody></table></div>}
+      {agent && <AgentDetail key={agent.agent} agent={agent} overview={data} />}
+      <GepaHistory runs={data.gepa} />
     </>}
   </RmPage>;
 }

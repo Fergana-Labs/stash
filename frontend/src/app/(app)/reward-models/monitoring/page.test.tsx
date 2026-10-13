@@ -1,45 +1,84 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
 import MonitoringPage from "./page";
+import type { MonitoringOverview, RewardHistory } from "@/lib/monitoring-api";
 
-const api = vi.hoisted(() => ({ models: vi.fn(), traces: vi.fn(), score: vi.fn(), optimizations: vi.fn(async () => []) }));
-vi.mock("@/lib/api", () => ({ rmListRewardModels: api.models, rmListAllTraces: api.traces, rmScoreTrace: api.score }));
-vi.mock("@/lib/optimization-api", () => ({ listOptimizations: api.optimizations }));
+const api = vi.hoisted(() => ({ overview: vi.fn(), history: vi.fn(), detail: vi.fn(), gepa: vi.fn() }));
+vi.mock("@/lib/monitoring-api", () => ({ getMonitoring: api.overview, getRewardHistory: api.history }));
+vi.mock("@/lib/optimization-api", () => ({ getOptimization: api.detail }));
+vi.mock("@/lib/api", () => ({ rmGetGepaRun: api.gepa }));
+vi.mock("@/components/optimization/CreateOptimization", () => ({ default: ({ initialAgent }: { initialAgent: string }) => <p>Begin optimization for {initialAgent}</p> }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/reward-models/monitoring" }));
 
-it("loads the selected model's scores and never substitutes automatic annotations", async () => {
-  api.models.mockResolvedValue(["one", "two"].map((id) => ({ id, name: `Model ${id}`, status: "succeeded", metrics: { trace_scoring_version: 1 } })));
-  let finishSecond!: (value: unknown[]) => void;
-  api.traces.mockImplementation(async (_query, modelId) => modelId === "one" ? [{ id: "trace", title: "Scored trace", agent: "codex", source_format: "codex", created_at: "2026-10-07", evaluation: { current: true, score: 0.87 }, latest_score: { reward_model_id: "one", score: -2 } }] : new Promise((resolve) => { finishSecond = resolve; }));
+const overview: MonitoringOverview = {
+  agents: [{ agent: "codex", display_name: "Codex", trace_count: 60, last_seen: "2026-10-12" }, { agent: "support", display_name: "Support", trace_count: 10, last_seen: "2026-10-11" }],
+  models: [{ id: "one", name: "Model one", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }, { id: "two", name: "Model two", metrics: { action_scoring_version: 1 }, finished_at: "2026-10-10" }], programs: [], gepa: [],
+};
+const history: RewardHistory = { agent: "codex", model_id: "one", program_id: null, active_revision_id: null, unit: "action_credit", window: 20, total: 60, mean: 0.2, current_n: 20, current_mean: 0.4, previous_n: 20, previous_mean: 0.1, points: [{ id: "trace", trace_id: "trace", title: "Recorded task", recorded_at: "2026-10-10", reward: 0.5, revision_id: null, rolling_mean: 0.4, window_count: 20 }] };
+
+beforeEach(() => { vi.clearAllMocks(); api.overview.mockResolvedValue(overview); api.history.mockResolvedValue(history); });
+
+it("starts with agents, shows reward units and does not imply an accepted prompt", async () => {
   render(<MonitoringPage />);
-  expect(await screen.findByRole("link", { name: "Scored trace" })).toBeVisible();
-  expect(screen.getByRole("cell", { name: "-2.00" })).toBeVisible();
-  expect(screen.queryByText("0.87")).not.toBeInTheDocument();
+  expect(await screen.findByText("+0.300")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText("No prompt optimization is connected to this agent yet.")).toBeVisible();
+  expect(screen.getByText("Not tracked")).toBeVisible();
+  expect(screen.getByText("No GEPA trials recorded yet.")).toBeVisible();
+  expect(api.history).toHaveBeenCalledWith("codex", "one", 20, undefined);
+  fireEvent.click(screen.getByRole("button", { name: "Optimize prompt" }));
+  expect(screen.getByText("Begin optimization for codex")).toBeVisible();
+});
+
+it("selects an agent anywhere on its row and clears stale rewards immediately", async () => {
+  let finish!: (data: RewardHistory) => void;
+  api.history.mockImplementation(async (agent, model) => agent === "codex" && model === "one" ? history : new Promise((resolve) => { finish = resolve; }));
+  render(<MonitoringPage />);
+  expect(await screen.findByText("+0.300")).toBeVisible();
+  const row = screen.getByRole("button", { name: "Support" }).closest("tr")!;
+  fireEvent.click(within(row).getByRole("cell", { name: "10" }));
+  await waitFor(() => expect(api.history).toHaveBeenCalledWith("support", "one", 20, undefined));
+  expect(screen.queryByText("+0.300")).not.toBeInTheDocument();
+  await act(async () => finish({ ...history, agent: "support", current_n: 1, previous_n: 0, current_mean: -0.2, points: [] }));
+  expect(screen.getByText("-0.200")).toBeVisible();
+  expect(screen.queryByText("+0.300")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("combobox", { name: "Reward model" }));
   fireEvent.click(await screen.findByRole("option", { name: "Model two" }));
-  await waitFor(() => expect(api.traces).toHaveBeenCalledWith("", "two"));
-  expect(screen.queryByRole("link", { name: "Scored trace" })).not.toBeInTheDocument();
-  await act(async () => finishSecond([]));
-  expect(screen.getByText("No runs have a saved score from this model yet.")).toBeVisible();
+  await waitFor(() => expect(api.history).toHaveBeenCalledWith("support", "two", 20, undefined));
+  expect(screen.queryByText("-0.200")).not.toBeInTheDocument();
+  await act(async () => finish({ ...history, model_id: "two", current_n: 0, previous_n: 0, current_mean: null, points: [] }));
 });
 
-it("monitors action-only models using that model's saved action credit", async () => {
-  api.models.mockResolvedValue([{ id: "actions", name: "Action model", status: "succeeded", metrics: { action_scoring_version: 1 } }]);
-  api.traces.mockResolvedValue([{ id: "trace", title: "Action-scored trace", created_at: "2026-10-07", source_format: "codex", action_credit: { mean: -0.3, count: 4 }, latest_score: null, evaluation: { current: true, score: 0.87 } }]);
+it("shows accepted and rejected trials, baseline diffs, outcomes, and prompt usage", async () => {
+  const program = { id: "program", name: "Support experiment", agent: "codex", scope: "/project", status: "active", reward_model_id: "one", reward_model_name: "Model one", active_revision_id: "r2", active_version: 2, run_count: 140, accepted_count: 1, error: null };
+  api.overview.mockResolvedValue({ ...overview, programs: [program] });
+  api.history.mockResolvedValue({ ...history, program_id: "program", active_revision_id: "r2", points: [{ ...history.points[0], revision_id: "r2" }] });
+  api.detail.mockResolvedValue({ ...program, runs_per_arm: 20, max_rounds: 10, metric: { name: "Task accepted" }, reward_model: { id: "one", name: "Model one", status: "succeeded" },
+    revisions: [{ id: "r1", version: 1, content: "Verify parts", rationale: "Original instructions", created_at: "2026-10-08" }, { id: "r2", version: 2, content: "Verify parts\nCheck the VIN", rationale: "Require VIN confirmation", created_at: "2026-10-09" }, { id: "r3", version: 3, content: "Guess parts", rationale: "Try a faster lookup", created_at: "2026-10-10" }],
+    revision_stats: [{ revision_id: "r2", assigned: 60, completed: 55, reward: 0.4 }],
+    rounds: [{ id: "trial1", number: 1, baseline_id: "r1", candidate_id: "r2", status: "promoted", report: { reason: "Reward improved and business guardrail passed", arms: { baseline: { reward: { mean: 0.1 }, completed: 20, business: { mean: 0.8 } }, candidate: { reward: { mean: 0.4 }, completed: 20, business: { n: 20, mean: 0.95 } } }, reward_change: { mean: 0.3, low: 0.15, high: 0.45 } } }, { id: "trial2", number: 2, baseline_id: "r2", candidate_id: "r3", status: "rejected", report: { reason: "Reward did not improve", arms: {} } }], events: [],
+  });
   render(<MonitoringPage />);
-  expect(await screen.findByRole("link", { name: "Action-scored trace" })).toBeVisible();
-  expect(screen.getByRole("columnheader", { name: "Action credit" })).toBeVisible();
-  expect(screen.getByRole("cell", { name: "-0.30" })).toBeVisible();
-  expect(screen.queryByText("0.87")).not.toBeInTheDocument();
+  expect((await screen.findAllByText("Require VIN confirmation"))[0]).toBeVisible();
+  expect(screen.getByText("Reward improved and business guardrail passed")).toBeVisible();
+  expect(screen.getByText("Reward did not improve")).toBeVisible();
+  expect(screen.getByText("99% interval 0.150 to 0.450")).toBeVisible();
+  expect(screen.getByText("60 assigned runs · 55 scored runs · mean reward 0.400")).toBeInTheDocument();
+  expect(screen.getByText("Changes from baseline v1")).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Reward model" })).toBeDisabled();
+  expect(api.history).toHaveBeenCalledWith("codex", "one", 20, "program");
+  fireEvent.click(screen.getByRole("combobox", { name: "Rolling window" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Last 50 scored runs" }));
+  await waitFor(() => expect(api.history).toHaveBeenCalledWith("codex", "one", 50, "program"));
 });
 
-it("shows live prompt experiments for the selected model rather than training jobs", async () => {
-  api.models.mockResolvedValue([{ id: "one", name: "Reward model", status: "succeeded", metrics: { trace_scoring_version: 1 } }]);
-  api.traces.mockResolvedValue([]);
-  api.optimizations.mockResolvedValue([{ id: "experiment", name: "Support prompt", reward_model_id: "one", agent: "support", status: "running", run_count: 12 }, { id: "other", name: "Unrelated experiment", reward_model_id: "two", agent: "support", status: "running", run_count: 5 }] as never);
+it("keeps GEPA selection separate from accepted and delivered agent prompts", async () => {
+  api.overview.mockResolvedValue({ ...overview, gepa: [{ id: "gepa", skill_name: "Parts skill", status: "succeeded", task_model: "task-model", reward_model_name: "Model one", seed_score: 0.2, best_score: 0.8, candidate_count: 2, created_at: "2026-10-10" }] });
+  api.gepa.mockResolvedValue({ id: "gepa", seed_skill: "old skill", best_skill: "better skill", candidates: [{ skill: "old skill", score: 0.2 }, { skill: "better skill", score: 0.8 }] });
   render(<MonitoringPage />);
-  expect(await screen.findByRole("link", { name: "Support prompt" })).toHaveAttribute("href", "/reward-models/optimization/experiment");
-  expect(screen.queryByRole("link", { name: "Unrelated experiment" })).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Prompt optimization" })).toHaveAttribute("href", "/reward-models/monitoring#prompt-optimization");
-  expect(screen.queryByText("Preparing data")).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: /Parts skill/ }));
+  expect(await screen.findByText("Selected by GEPA")).toBeInTheDocument();
+  expect(screen.queryByText("accepted", { exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText(/agent delivery and acceptance are not recorded here/)).toBeVisible();
+  expect(api.gepa).toHaveBeenCalledWith("gepa");
 });

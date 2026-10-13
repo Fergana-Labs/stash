@@ -11,12 +11,12 @@ import type { RmRewardModel } from "@/lib/types";
 
 export const fieldClass = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 
-export default function CreateOptimization({ initialModelId = "" }: { initialModelId?: string }) {
+export default function CreateOptimization({ initialModelId = "", initialAgent = "codex" }: { initialModelId?: string; initialAgent?: string }) {
   const router = useRouter();
   const [models, setModels] = useState<RmRewardModel[]>([]);
   const [modelId, setModelId] = useState(initialModelId);
   const [name, setName] = useState("");
-  const [agent, setAgent] = useState("codex");
+  const [agent, setAgent] = useState(initialAgent);
   const [scope, setScope] = useState("");
   const [prompt, setPrompt] = useState("");
   const [metric, setMetric] = useState<BusinessMetric>({ name: "Task accepted", unit: "0 or 1", direction: "higher", minimum: 0, maximum: 1, regression_tolerance: 0 });

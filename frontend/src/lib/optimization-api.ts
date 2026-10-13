@@ -14,7 +14,7 @@ export interface Comparison {
   arms: Record<string, { assigned: number; completed: number; reward: Estimate; business: Estimate }>;
   reward_change?: Omit<Estimate, "n">; business_change?: Omit<Estimate, "n">;
 }
-export interface OptimizationRound { id: string; number: number; baseline_id: string; candidate_id: string | null; status: string; error: string | null; report: Comparison | null }
+export interface OptimizationRound { id: string; number: number; baseline_id: string; candidate_id: string | null; status: string; error: string | null; report: Comparison | null; created_at?: string; finished_at?: string | null }
 export interface OptimizationRun {
   id: string; revision_id: string; round_id: string | null; work_key: string; agent_version: string;
   arm: string; status: string; trace_id: string | null; reward: number | null; outcome: number | null;
@@ -23,6 +23,7 @@ export interface OptimizationRun {
 export interface Trend { day: string; revision_id: string; assigned: number; scored: number; measured: number; reward: number | null; business: number | null }
 export interface OptimizationDetail extends Optimization {
   reward_model: { id: string; name: string; status: string; error: string | null };
+  revision_stats?: { revision_id: string; assigned: number; completed: number; reward: number | null; first_assigned_at: string; last_assigned_at: string }[];
   revisions: PromptRevision[]; rounds: OptimizationRound[]; runs: OptimizationRun[]; trends: Trend[];
   events: { kind: string; detail: Record<string, unknown>; created_at: string }[];
 }
