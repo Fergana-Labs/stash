@@ -69,9 +69,20 @@ it("shows accepted and rejected trials, baseline diffs, outcomes, and prompt usa
   expect(screen.getByText("Changes from baseline v1")).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "Reward model" })).toBeDisabled();
   expect(api.history).toHaveBeenCalledWith("codex", "one", 20, "program");
-  fireEvent.click(screen.getByRole("combobox", { name: "Rolling window" }));
-  fireEvent.click(await screen.findByRole("option", { name: "Last 50 scored runs" }));
-  await waitFor(() => expect(api.history).toHaveBeenCalledWith("codex", "one", 50, "program"));
+  expect(screen.queryByRole("combobox", { name: "Rolling window" })).not.toBeInTheDocument();
+});
+
+it("automatically averages the available runs when fewer than 20 have been scored", async () => {
+  api.history.mockResolvedValue({ ...history, total: 9, current_n: 9, current_mean: 0.081, previous_n: 0, previous_mean: null, points: [{ ...history.points[0], rolling_mean: 0.081, window_count: 9 }] });
+  render(<MonitoringPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Codex" }));
+  expect(await screen.findByText("0.081")).toBeVisible();
+  expect(screen.getByText("9 recent scored runs")).toBeVisible();
+  expect(screen.getByText("9 scored runs in total")).toBeVisible();
+  expect(screen.getByText("Needs 40 scored runs")).toBeVisible();
+  expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  expect(screen.getByRole("combobox", { name: "Reward model" })).toBeEnabled();
+  expect(api.history).toHaveBeenCalledWith("codex", "one", 20, undefined);
 });
 
 it("omits the retired skill section even if an older API returns legacy trials", async () => {
