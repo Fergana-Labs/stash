@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
@@ -30,7 +30,7 @@ it("creates an eval from user criteria without trace-training settings", async (
 
 it("prepares the held-out split before drafting criteria and fits only calibration data", async () => {
   render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Calibrate eval" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Build and test" }));
   await waitFor(() => expect(api.imFit).toHaveBeenCalledWith("eval", { train_on: "train", calibrate: true }));
   expect(api.evalPrepare.mock.invocationCallOrder[0]).toBeLessThan(api.imDraftRubric.mock.invocationCallOrder[0]);
   expect(api.imGrade.mock.invocationCallOrder[0]).toBeLessThan(api.imFit.mock.invocationCallOrder[0]);
@@ -40,7 +40,7 @@ it("prepares the held-out split before drafting criteria and fits only calibrati
 it("shows failed grading and does not calibrate or activate partial results", async () => {
   api.imGrade.mockResolvedValue({ graded: 2, remaining: 1, failed: 1, errors: ["Judge unavailable"] });
   render(<EvalWorkspace id="eval" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Calibrate eval" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Build and test" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Judge unavailable");
   expect(api.imFit).not.toHaveBeenCalled(); expect(api.imPromote).not.toHaveBeenCalled();
 });
@@ -135,4 +135,38 @@ it("keeps failed submissions editable and clears canceled input", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Add example" }));
   expect(within(await screen.findByRole("dialog")).getByRole("button", { name: "Add example" })).toBeDisabled();
   expect(screen.getByRole("textbox", { name: "Example output" })).toHaveValue("");
+});
+
+
+it("shows immediate progress beside the build button, hides old results, then offers a test action", async () => {
+  api.imGet.mockResolvedValue({ ...detail, draft: { ...version, head: {}, head_stale: false, metrics: { eval: { n: 1, accuracy: 1, rows: [] } } } });
+  let finishDraft!: (value: unknown) => void;
+  api.imDraftRubric.mockReturnValueOnce(new Promise((resolve) => { finishDraft = resolve; }));
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Update eval" }));
+  expect(screen.queryByText("100% agreement")).not.toBeInTheDocument();
+  const running = screen.getByRole("button", { name: "Building eval…" });
+  expect(running).toBeDisabled();
+  expect(await screen.findByRole("status")).toHaveTextContent("Creating evaluation criteria");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+  await act(async () => { finishDraft({ rubric: [{ id: "helpful", prompt: "Is it helpful?" }] }); });
+  expect(await screen.findByRole("button", { name: "Try this eval" })).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("Eval built");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "4");
+  fireEvent.click(screen.getByRole("button", { name: "Try this eval" }));
+  expect(screen.getByRole("button", { name: "Run eval" })).toBeVisible();
+});
+
+it("shows a failed build at the button and makes retry available without fitting partial grades", async () => {
+  api.imGrade.mockResolvedValueOnce({ graded: 1, remaining: 1, failed: 1, errors: ["Judge unavailable"] });
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Build and test" }));
+  expect(await screen.findByRole("button", { name: "Retry build" })).toBeEnabled();
+  expect(screen.getByRole("status")).toHaveTextContent("The build stopped");
+  expect(screen.getByRole("alert")).toHaveTextContent("Judge unavailable");
+  expect(api.imFit).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Try this eval" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry build" }));
+  expect(await screen.findByRole("button", { name: "Try this eval" })).toBeVisible();
+  expect(api.imFit).toHaveBeenCalledOnce();
 });

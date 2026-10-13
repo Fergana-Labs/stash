@@ -9,7 +9,7 @@ The main product has two areas: Traces for observability and Evals for creating,
 1. Name the eval and describe what good looks like. Accept unstructured interview notes and explanations.
 2. Use the single Examples collection and its Add example dialog to submit labeled good and bad outputs by pasting text or JSON, uploading files, or choosing recorded traces. The saved example appears in that same collection, where labels and feedback remain editable. Add reference material without labeling it. Trace annotations are imported separately as feedback, never included in the prediction input.
 3. Automatically reserve a distinct labeled example for a held-out check while retaining at least two labels in calibration data. Show its input, human label, predicted label, and probability of the human label. Very small checks are presented as limited validation, not proof of generalization.
-4. Generate criteria with an LLM using only calibration examples and reference material. Show calibration examples as few-shot references to the judge. Fit a small classifier and calibrate probabilities; this does not fine-tune an LLM.
+4. Build and test the eval with visible preparation, criteria generation, scoring, and checking stages next to the button. Show elapsed time, completion with a test action, or an actionable failure and retry. Progress counts completed stages, not an estimated time or fraction of provider computation. Hide previous scorecards while rebuilding. Generate criteria with an LLM using only calibration examples and reference material. Show calibration examples as few-shot references to the judge. Fit a small classifier and calibrate probabilities; this does not fine-tune an LLM. Show the generated evaluation criteria by default. This implements the core Jev + head approach in [Jevisify](https://docs.google.com/document/d/1WYWmdz8jtr3MvP6eikWtlmCbiRnjRlmoOfEXdWWeFsk/edit).
 5. User corrections and additional guidance can update the draft eval. Active versions continue serving while a draft is edited. Activating an insufficiently validated or regressed draft requires an explicit override after seeing the failed checks.
 
 File inputs accept TXT, Markdown, JSON/JSONL, PDF, DOCX, PPTX, and common image formats up to 2 MB. Document parsing runs in a bounded subprocess. PDFs and decks use extracted text. Image outputs use a generated visual description, displayed alongside the original preview; the text judge evaluates that description. Upload screenshots to judge visual slide design. Inputs that cannot be read fail visibly.
@@ -32,10 +32,12 @@ Whole-trace classification and per-criterion judge probabilities are distinct fr
 
 ## Local preview
 
-These screenshots use a separate local database and explicitly labeled demo data. The scorecard uses previously recorded judge answers; fresh provider calls are disabled in this preview.
+These screenshots use a separate local database and explicitly labeled demo data. The original support-reply scorecard uses previously recorded judge answers. Local preview provider calls are now enabled using server-side development credentials; the concise-answer demo was built with live rubric and judge calls. Data stays in the separate local database. No GPU or LLM fine-tuning runs locally.
 
 ![Eval builder with labeled examples and automatic holdout](assets/eval-builder-preview.png)
 
 ![Eval decision and criteria scorecard](assets/eval-scorecard-preview.png)
 
 ![Dedicated eval page with Download and Connect menu](assets/eval-options-preview.png)
+
+![Completed build with stage progress and visible evaluation criteria](assets/eval-build-feedback-preview.png)

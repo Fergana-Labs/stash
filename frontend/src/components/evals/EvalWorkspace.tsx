@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, MoreHorizontal, Plug, Plus } from "lucide-react";
+import { Check, Circle, Download, Loader2, MoreHorizontal, Plug, Plus, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,9 @@ import {
 import EvalInput from "./EvalInput";
 import ModelTraceConversation from "@/components/reward-models/ModelTraceConversation";
 import type { RmTraceDetail } from "@/lib/types";
+
+const BUILD_STEPS = ["Prepare examples", "Draft criteria", "Score examples", "Check eval"];
+type BuildProgress = { status: "running" | "complete" | "failed"; step: number; message: string; startedAt: number; finishedAt?: number };
 
 export default function EvalWorkspace({ id }: { id: string }) {
   const [detail, setDetail] = useState<ModelDetail | null>(null);
@@ -39,6 +42,8 @@ export default function EvalWorkspace({ id }: { id: string }) {
   const [connectOpen, setConnectOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
+  const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
+  const [buildError, setBuildError] = useState("");
   const load = useCallback(async () => {
     const [next, rows] = await Promise.all([imGet(id), imExamples(id)]);
     setDetail(next); setExamples(rows);
@@ -49,10 +54,11 @@ export default function EvalWorkspace({ id }: { id: string }) {
   const labels = detail?.model.output_type === "preference" ? ["good", "bad"] : version?.labels.map((l) => l.id) ?? ["good", "bad"];
   const metrics = version?.metrics;
   const results = metrics?.eval.rows ?? [];
-  async function action(message: string, perform: () => Promise<unknown>) {
+  const showBuildResults = buildProgress?.status !== "running" && buildProgress?.status !== "failed";
+  async function action(message: string, perform: () => Promise<unknown>, onError?: (message: string) => void) {
     setBusy(message); setError("");
-    try { await perform(); await load(); }
-    catch (e) { setError(errorMessage(e)); }
+    try { await perform(); await load(); return true; }
+    catch (e) { const message = errorMessage(e); setError(message); onError?.(message); return false; }
     finally { setBusy(""); }
   }
   async function add(label: string | null) {
@@ -64,24 +70,38 @@ export default function EvalWorkspace({ id }: { id: string }) {
     });
   }
   async function calibrate() {
-    await action("Preparing examples…", async () => {
-      await imEditDraft(id, { description });
-      await evalPrepare(id);
-      setBusy("Drafting criteria from your examples and feedback…");
-      const proposed = await imDraftRubric(id, { guidance });
-      await imEditDraft(id, { rubric: proposed.rubric });
-      for (let batch = 0; batch < 100; batch++) {
-        setBusy("Evaluating examples…");
-        const graded = await imGrade(id, 50);
-        if (graded.failed) throw new Error(graded.errors.join("; ") || "Some examples could not be evaluated. Retry calibration.");
-        if (!graded.remaining) {
-          setBusy("Calibrating decisions and checking the held-out examples…");
-          await imFit(id, { train_on: "train", calibrate: true }); return;
+    const startedAt = Date.now();
+    setBuildError("");
+    function stage(step: number, message: string) {
+      setBusy(message);
+      setBuildProgress({ status: "running", step, message, startedAt });
+    }
+    stage(0, "Saving instructions and setting aside examples for the check…");
+    const succeeded = await action("Preparing examples…", async () => {
+      try {
+        await imEditDraft(id, { description });
+        await evalPrepare(id);
+        stage(1, "Creating evaluation criteria from your examples and feedback…");
+        const proposed = await imDraftRubric(id, { guidance });
+        await imEditDraft(id, { rubric: proposed.rubric });
+        let scored = 0;
+        stage(2, "Evaluating your examples against the criteria…");
+        for (let batch = 0; batch < 100; batch++) {
+          const graded = await imGrade(id, 50);
+          scored += graded.graded;
+          if (graded.failed) throw new Error(graded.errors.join("; ") || "Some examples could not be evaluated. Retry calibration.");
+          if (!graded.remaining) {
+            stage(3, "Learning your labels and checking the held-out examples…");
+            await imFit(id, { train_on: "train", calibrate: true }); return;
+          }
+          if (!graded.graded) throw new Error("Evaluation did not make progress. Retry calibration.");
+          stage(2, `${scored} evaluations scored · ${graded.remaining} remaining…`);
         }
-        if (!graded.graded) throw new Error("Evaluation did not make progress. Retry calibration.");
-      }
-      throw new Error("More examples remain. Continue calibration.");
-    });
+        throw new Error("More examples remain. Continue calibration.");
+      } catch (e) { setBuildError(errorMessage(e)); throw e; }
+    }, setBuildError);
+    if (!succeeded) { try { await load(); } catch { /* Keep the build error visible if refreshing also fails. */ } }
+    setBuildProgress((current) => current && ({ ...current, status: succeeded ? "complete" : "failed", step: succeeded ? BUILD_STEPS.length : current.step, message: succeeded ? "Eval built. Review the held-out results below, or try it on a new output." : "The build stopped. Your examples are saved; you can retry.", finishedAt: Date.now() }));
   }
   if (!detail) return <div className="p-5">{error ? <p role="alert">{error}</p> : <p role="status" className="text-xs text-muted-foreground">Loading eval…</p>}</div>;
   return <section aria-label={`${detail.model.name} eval`} className="space-y-5 py-4">
@@ -107,8 +127,8 @@ export default function EvalWorkspace({ id }: { id: string }) {
       <div className="flex gap-2" role="group" aria-label="Eval workspace">{["build", "test", "usage"].map((tab) => <Button key={tab} size="sm" variant={view === tab ? "secondary" : "ghost"} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setItem(null); setTraceId(null); if (tab === "test") setTestItem(null); }}>{tab === "build" ? "Build eval" : tab === "test" ? "Test eval" : "Usage & corrections"}</Button>)}</div>
       <span className="text-xs text-muted-foreground">{detail.active ? `Active v${detail.active.number}` : "Draft"}{detail.draft && detail.active ? ` · updating v${detail.draft.number}` : ""}</span>
     </div>
-    {error && !addOpen && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {busy && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
+    {error && !addOpen && !(buildProgress?.status === "failed" && error === buildError) && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    {busy && buildProgress?.status !== "running" && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
     {view === "build" ? <>
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">1. Describe what good looks like</h2>
@@ -127,10 +147,12 @@ export default function EvalWorkspace({ id }: { id: string }) {
           </article>)}{!examples.length && <p className="col-span-full py-8 text-xs text-muted-foreground">No examples yet. Add an output, file, trace, or reference material to get started.</p>}</div>
       </section>
       <section className="space-y-3 border-t border-border pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">3. Calibrate and check</h2><Button size="sm" disabled={!!busy || !detail.judge.configured} onClick={() => void calibrate()}>{metrics ? "Update eval" : "Calibrate eval"}</Button></div>
-        <textarea aria-label="Eval improvement feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Tell us what to change about the current eval…" value={guidance} disabled={!!busy} onChange={(e) => setGuidance(e.target.value)} />
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">3. Build and test eval</h2><Button size="sm" disabled={!!busy || !detail.judge.configured} onClick={() => void calibrate()}>{buildProgress?.status === "running" ? <><Loader2 className="size-3.5 animate-spin" />Building eval…</> : buildProgress?.status === "failed" ? "Retry build" : metrics ? "Update eval" : "Build and test"}</Button></div>
+        <p className="text-xs text-muted-foreground">Create criteria from your examples, learn how to predict your labels, and check against held-out examples.</p>
+        {buildProgress && <BuildStatus progress={buildProgress} error={buildError} onTest={() => { setTestItem(null); setView("test"); }} />}
+        <textarea aria-label="Eval improvement feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Optional guidance—for example, be stricter about unsupported promises…" value={guidance} disabled={!!busy} onChange={(e) => setGuidance(e.target.value)} />
         {!detail.judge.configured && <p className="text-xs text-muted-foreground">The evaluator must be connected on the server before calibration or new predictions can run.</p>}
-        {metrics && !version?.head_stale && <>
+        {showBuildResults && metrics && !version?.head_stale && <>
           <div className="flex flex-wrap items-baseline gap-4"><span className="text-lg font-semibold">{metrics.eval.accuracy === null ? "—" : `${Math.round(metrics.eval.accuracy * 100)}%`} agreement</span><span className="text-xs text-muted-foreground">{metrics.eval.n} held-out example{metrics.eval.n === 1 ? "" : "s"} · excluded from criteria generation and calibration</span></div>
           {metrics.eval.n < 4 && <p className="text-xs text-muted-foreground">This is a small check. Add more labeled examples before relying on this eval.</p>}
           <div className="grid gap-3 md:grid-cols-2">{results.map((row) => { const example = examples.find((e) => e.id === row.example_id); return <article key={row.example_id} className="rounded-lg border border-border p-4">
@@ -138,7 +160,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
           </article>; })}</div>
           {!!detail.draft && <Button size="sm" variant="outline" disabled={!!busy} onClick={() => detail.draft?.gate?.passed ? void action("Activating eval…", () => imPromote(id)) : setConfirm(true)}>Use this eval</Button>}
         </>}
-        {!!version?.rubric.length && <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">View evaluation criteria</summary><ul className="space-y-2">{version.rubric.map((q) => <li key={q.id}>{q.prompt}</li>)}</ul></details>}
+        {showBuildResults && !!version?.rubric.length && <details open className="text-xs"><summary className="cursor-pointer font-medium">Evaluation criteria ({version?.rubric.length})</summary><p className="my-2 text-muted-foreground">Generated from your instructions, examples, and feedback. The evaluator scores each criterion, then combines those scores to predict your label.</p><ul className="list-disc space-y-2 pl-5">{version.rubric.map((q) => <li key={q.id}>{q.prompt}</li>)}</ul></details>}
       </section>
     </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
     <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Use this eval with limited validation?" description={<><p>Review the held-out scorecard before using this eval.</p>{detail.draft?.gate?.checks.filter((c) => !c.passed).map((c) => <p key={c.name}>{c.detail}</p>)}<p>Activating makes this version available to API callers.</p></>} confirmLabel="Activate anyway" onConfirm={async () => { let failed = false; await action("Activating eval…", async () => { try { await imPromote(id, true); } catch (e) { failed = true; throw e; } }); return !failed; }} />
@@ -159,6 +181,26 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </DialogContent>
     </Dialog>
   </section>;
+}
+
+function BuildStatus({ progress, error, onTest }: { progress: BuildProgress; error: string; onTest: () => void }) {
+  const [now, setNow] = useState(progress.startedAt);
+  useEffect(() => {
+    if (progress.status !== "running") return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [progress.status]);
+  const elapsed = Math.max(0, Math.floor(((progress.finishedAt ?? now) - progress.startedAt) / 1000));
+  return <div className="rounded-lg border border-border bg-surface/50 p-4" aria-label="Eval build progress">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm font-medium">{progress.status === "running" ? <Loader2 className="size-4 animate-spin" /> : progress.status === "complete" ? <Check className="size-4 text-success" /> : <X className="size-4 text-destructive" />}{progress.message}</p>
+      <span className="text-xs tabular-nums text-muted-foreground">{elapsed}s {progress.status === "running" ? "elapsed" : "total"}</span>
+    </div>
+    <div role="progressbar" aria-label="Eval build steps completed" aria-valuemin={0} aria-valuemax={4} aria-valuenow={progress.step} aria-valuetext={`${Math.min(progress.step, 4)} of 4 steps complete`} className="my-3 h-1.5 overflow-hidden rounded-full bg-border"><div className="h-full bg-primary transition-[width]" style={{ width: `${progress.step / 4 * 100}%` }} /></div>
+    <ol className="grid gap-2 text-xs sm:grid-cols-4">{BUILD_STEPS.map((label, step) => <li key={label} aria-current={progress.status === "running" && step === progress.step ? "step" : undefined} className={`flex items-center gap-1.5 ${step < progress.step ? "text-foreground" : "text-muted-foreground"}`}>{step < progress.step ? <Check className="size-3 text-success" /> : step === progress.step && progress.status === "running" ? <Loader2 className="size-3 animate-spin" /> : step === progress.step && progress.status === "failed" ? <X className="size-3 text-destructive" /> : <Circle className="size-3" />}{label}</li>)}</ol>
+    {progress.status === "failed" && error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
+    {progress.status === "complete" && <Button variant="outline" size="sm" className="mt-3" onClick={onTest}>Try this eval</Button>}
+  </div>;
 }
 
 function EvalTest({ id, detail, initialItem }: { id: string; detail: ModelDetail; initialItem: Item | null }) {
