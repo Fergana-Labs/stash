@@ -44,7 +44,7 @@ async def default_evaluator() -> dict | None:
 async def can_score(owner: UUID, model_id: UUID):
     return await get_pool().fetchrow(
         """
-        SELECT * FROM rm_reward_models m WHERE m.id = $1 AND
+        SELECT m.id, m.status, m.artifact_key, m.metrics FROM rm_reward_models m WHERE m.id = $1 AND
         (m.owner_user_id = $2 OR EXISTS (SELECT 1 FROM rm_evaluator_releases r WHERE r.reward_model_id = m.id))
     """,
         model_id,
@@ -66,15 +66,38 @@ async def enqueue_score(
                 )
             manifest = await customer_heads.basis(conn, model_id)
             await customer_heads.checked_head(conn, owner, customer_head_id, manifest, model_id)
+        else:
+            # A default cache hit cannot satisfy a personalized request.
+            cached = await conn.fetchrow(
+                """SELECT r.* FROM rm_scoring_runs r
+                JOIN rm_traces t ON t.id=r.trace_id AND t.owner_user_id=$1
+                JOIN rm_reward_models m ON m.id=r.reward_model_id AND m.status='succeeded'
+                WHERE r.owner_user_id=$1 AND r.trace_id=$2 AND r.reward_model_id=$3
+                AND r.customer_head_id IS NULL AND r.status='succeeded'
+                AND r.trace_updated_at=t.updated_at AND r.model_finished_at=m.finished_at
+                ORDER BY r.finished_at DESC LIMIT 1""",
+                owner,
+                trace_id,
+                model_id,
+            )
+            if cached:
+                if automatic:
+                    await conn.execute(
+                        """DELETE FROM rm_auto_scores q USING rm_traces t,rm_evaluator_registry er
+                        WHERE q.trace_id=$1 AND t.id=q.trace_id AND t.updated_at=$2 AND er.model_id=$3""",
+                        trace_id,
+                        cached["trace_updated_at"],
+                        model_id,
+                    )
+                return dict(cached), False
         run = await conn.fetchrow(
-            """
-            INSERT INTO rm_scoring_runs(owner_user_id, trace_id, reward_model_id, automatic,
-                trace_updated_at, customer_head_id)
-            SELECT $1, id, $3, $4, updated_at, $5 FROM rm_traces WHERE id = $2 AND owner_user_id = $1
-            ON CONFLICT (trace_id, reward_model_id,
+            """INSERT INTO rm_scoring_runs(owner_user_id,trace_id,reward_model_id,automatic,
+                trace_updated_at,model_finished_at,customer_head_id)
+            SELECT $1,t.id,$3,$4,t.updated_at,m.finished_at,$5 FROM rm_traces t
+            JOIN rm_reward_models m ON m.id=$3 WHERE t.id=$2 AND t.owner_user_id=$1
+            ON CONFLICT (trace_id,reward_model_id,
                 (coalesce(customer_head_id,'00000000-0000-0000-0000-000000000000'::uuid)))
-            WHERE status IN ('queued', 'running') DO NOTHING RETURNING *
-        """,
+            WHERE status IN ('queued','running') DO NOTHING RETURNING *""",
             owner,
             trace_id,
             model_id,
@@ -92,6 +115,14 @@ async def enqueue_score(
             )
     if run is None:
         raise EvaluatorInvalid("Trace was deleted")
+    if not created and not automatic and run.get("batch_id") and run["status"] == "queued":
+        requested = await pool.fetchrow(
+            """UPDATE rm_scoring_runs SET requested_at=coalesce(requested_at,now())
+            WHERE id=$1 AND owner_user_id=$2 AND status='queued' RETURNING *""",
+            run["id"],
+            owner,
+        )
+        run = requested or run
     return dict(run), created
 
 
@@ -569,6 +600,7 @@ async def promote(model_id: UUID, reason: str, *, rollback=False, automatic=Fals
 async def reconcile() -> dict:
     """A durable sweep, bounded to 50 traces and 10 contributions per tick."""
     from ...tasks import reward_models as tasks
+    from . import precompute
 
     pool = get_pool()
     # Personal training runs detached from Render. Interrupted submissions
@@ -583,6 +615,7 @@ async def reconcile() -> dict:
     # Recover interrupted workers. Job hard limit is 30 min; allow a margin before retry.
     await pool.execute("""UPDATE rm_scoring_runs SET status = 'failed', error = 'Scoring worker interrupted', finished_at = now()
         WHERE status = 'running' AND started_at < now() - interval '35 minutes'""")
+    await precompute.reconcile()
     await pool.execute("""UPDATE rm_example_collection SET status = 'queued'
         WHERE status = 'running' AND started_at < now() - interval '35 minutes' AND attempts < 3""")
     await pool.execute("""UPDATE rm_example_collection SET status = 'failed', error = 'Collection worker interrupted'
@@ -622,7 +655,7 @@ async def reconcile() -> dict:
                 queued += 1
     # Broker outages leave the durable queued row for the next sweep.
     runs = await pool.fetch(
-        "SELECT id FROM rm_scoring_runs WHERE status = 'queued' ORDER BY created_at LIMIT 50"
+        "SELECT id FROM rm_scoring_runs WHERE status = 'queued' AND batch_id IS NULL ORDER BY created_at LIMIT 50"
     )
     for run in runs:
         tasks.score_trace.delay(str(run["id"]))

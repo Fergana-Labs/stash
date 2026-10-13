@@ -160,7 +160,10 @@ async def test_ownership_and_legacy_models(client, monkeypatch):
     assert response.json()["rows"] == []
 
 
-@pytest.mark.parametrize("problem", ["missing", "duplicate", "nonfinite", "bounds", "reimport"])
+@pytest.mark.parametrize(
+    "problem",
+    ["missing", "duplicate", "nonfinite", "bounds", "reimport", "append", "context", "checkpoint"],
+)
 async def test_scoring_failure_is_atomic_and_retryable(client, monkeypatch, artifact_dir, problem):
     auth = await _register(client)
     [trace_id] = await _import(client, auth, REFUND_TRACE)
@@ -180,6 +183,19 @@ async def test_scoring_failure_is_atomic_and_retryable(client, monkeypatch, arti
             rows[0]["score"] = float("nan")
         elif problem == "bounds":
             rows[0]["credit"] = 2
+        elif problem == "checkpoint":
+            await get_pool().execute(
+                "UPDATE rm_reward_models SET finished_at=now() WHERE id=$1", UUID(model_id)
+            )
+        elif problem in ("append", "context"):
+            if problem == "append":
+                await get_pool().execute(
+                    "INSERT INTO rm_trace_steps(trace_id,idx,role,content) VALUES($1,6,'assistant','Later answer')",
+                    UUID(trace_id),
+                )
+            await get_pool().execute(
+                "UPDATE rm_traces SET updated_at=now() WHERE id=$1", UUID(trace_id)
+            )
         else:
             await _import(client, auth, REFUND_TRACE)
         path.write_text("".join(json.dumps(r) + "\n" for r in rows))

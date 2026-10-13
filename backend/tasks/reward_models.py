@@ -8,7 +8,7 @@ from uuid import UUID
 
 from ..celery_app import celery
 from ..database import get_pool
-from ..services.rm import evaluator, jobs, playground
+from ..services.rm import evaluator, jobs, playground, precompute
 from ._celery_helpers import run_async
 
 ERROR_CHARS = 2000
@@ -81,12 +81,35 @@ async def run_gepa_async(run_id: UUID) -> None:
 async def score_trace_async(run_id: UUID) -> None:
     # Duplicate deliveries must not run inference twice or overwrite a completed job.
     claimed = await get_pool().fetchval(
-        "UPDATE rm_scoring_runs SET status = 'running', started_at = now() WHERE id = $1 AND status = 'queued' RETURNING id",
+        "UPDATE rm_scoring_runs SET status = 'running', started_at = now() WHERE id = $1 AND status = 'queued' AND batch_id IS NULL RETURNING id",
         run_id,
     )
     if claimed is None:
         return
     await _run_tracked("rm_scoring_runs", run_id, jobs.run_scoring)
+
+
+async def score_batch_async(batch_id: UUID) -> None:
+    pool = get_pool()
+    claimed = await pool.fetchval(
+        """UPDATE rm_scoring_batches SET status='running',started_at=now()
+        WHERE id=$1 AND status='queued' RETURNING id""",
+        batch_id,
+    )
+    if claimed is None:
+        return
+    from rm_worker import cloud_scoring
+
+    try:
+        call_id = await asyncio.to_thread(cloud_scoring.dispatch, str(batch_id))
+    except Exception as exc:
+        await precompute.fail(batch_id, str(exc))
+        raise
+    # Once submitted, the detached cloud worker owns completion, including
+    # when this Render worker is redeployed before the metadata write.
+    await pool.execute(
+        "UPDATE rm_scoring_batches SET remote_call_id=$2 WHERE id=$1", batch_id, call_id
+    )
 
 
 async def train_evaluator_async(model_id: UUID) -> None:
@@ -135,6 +158,11 @@ def compute_customer_features(job_id: str) -> None:
 @celery.task(name="backend.tasks.reward_models.score_trace")
 def score_trace(run_id: str) -> None:
     run_async(score_trace_async(UUID(run_id)))
+
+
+@celery.task(name="backend.tasks.reward_models.score_batch")
+def score_batch(batch_id: str) -> None:
+    run_async(score_batch_async(UUID(batch_id)))
 
 
 @celery.task(name="backend.tasks.reward_models.train_reward_model")

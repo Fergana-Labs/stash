@@ -353,25 +353,33 @@ async def store_action_scores(
     )
 
 
-async def run_scoring(run_id: UUID) -> None:
+async def run_scoring(run_id: UUID, *, worker=None) -> None:
     pool = get_pool()
     await scoring_progress.stage(run_id, "preparing")
     run = await pool.fetchrow(
         """
-        SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config FROM rm_scoring_runs r
+        SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config,
+            m.finished_at AS checkpoint_finished_at,t.updated_at AS current_trace_updated_at FROM rm_scoring_runs r
         JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
             OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
+        JOIN rm_traces t ON t.id=r.trace_id AND t.owner_user_id=r.owner_user_id
         WHERE r.id = $1 AND m.status = 'succeeded'
         """,
         run_id,
     )
     if run is None or run["artifact_key"] is None:
         raise ValueError("Reward model is unavailable")
+    if run["model_finished_at"] != run["checkpoint_finished_at"]:
+        raise ValueError("Reward model checkpoint changed; score it again")
+    if run["trace_updated_at"] != run["current_trace_updated_at"]:
+        raise ValueError("Trace changed while waiting for scoring; score it again")
     customer_head = None
     customer_manifest = None
     if run.get("customer_head_id") is not None:
         from . import customer_heads
 
+        if worker is not None:
+            raise ValueError("Customer heads cannot use default background scoring batches")
         async with pool.acquire() as conn, conn.transaction():
             customer_manifest = await customer_heads.basis(conn, run["reward_model_id"])
             head_row = await customer_heads.checked_head(
@@ -420,7 +428,10 @@ async def run_scoring(run_id: UUID) -> None:
         else "rm_worker.score_run"
     )
     await scoring_progress.stage(run_id, "starting")
-    await run_worker(module, directory)
+    if worker is None:
+        await run_worker(module, directory)
+    else:
+        await worker(directory, run_id)
     await scoring_progress.stage(run_id, "saving")
     scores = _read_jsonl(directory / "action_scores.jsonl")
     validate_action_scores(items, scores)
@@ -433,6 +444,17 @@ async def run_scoring(run_id: UUID) -> None:
         if received != customer_provenance:
             raise ValueError("Customer scoring worker used a different checkpoint or head")
     async with pool.acquire() as conn, conn.transaction():
+        # Parent model before trace/run matches cascading deletion lock order.
+        model = await conn.fetchrow(
+            "SELECT status,finished_at FROM rm_reward_models WHERE id=$1 FOR SHARE",
+            run["reward_model_id"],
+        )
+        if (
+            model is None
+            or model["status"] != "succeeded"
+            or model["finished_at"] != run["model_finished_at"]
+        ):
+            raise ValueError("Reward model checkpoint changed; score it again")
         if customer_head is not None:
             current_manifest = await customer_heads.basis(conn, run["reward_model_id"])
             current_head = await customer_heads.checked_head(
@@ -451,10 +473,13 @@ async def run_scoring(run_id: UUID) -> None:
             run["trace_id"],
             run["owner_user_id"],
         )
-        if customer_head is not None and (
-            not trace or trace["updated_at"] != run["trace_updated_at"]
-        ):
+        if not trace or trace["updated_at"] != run["trace_updated_at"]:
             raise ValueError("Trace changed while customer scoring; score it again")
+        status = await conn.fetchval(
+            "SELECT status FROM rm_scoring_runs WHERE id=$1 FOR UPDATE", run_id
+        )
+        if status != "running":
+            raise ValueError("Scoring run is no longer active")
         current = await conn.fetch(
             "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
         )

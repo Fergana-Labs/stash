@@ -37,8 +37,8 @@ def manifest():
 async def released(owner):
     model_id = await get_pool().fetchval(
         """INSERT INTO rm_reward_models(owner_user_id,name,base_model,compute,epochs,max_pairs,
-        trace_ids,scope,status,artifact_key,metrics) VALUES($1,'basis','test/frozen','modal',1,2,
-        '{}','shared','succeeded','private/test.tar.gz',$2) RETURNING id""",
+        trace_ids,scope,status,artifact_key,metrics,finished_at) VALUES($1,'basis','test/frozen','modal',1,2,
+        '{}','shared','succeeded','private/test.tar.gz',$2,now()) RETURNING id""",
         owner,
         {
             "evaluator_kind": "shared_basis_v1",
@@ -422,6 +422,11 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     ).status_code == 404
     latest_private = await client.post(url, headers=auth, json=body)
     assert latest_private.status_code == 202 and latest_private.json()["id"] != private.json()["id"]
+    assert latest_private.json()["customer_head_id"] == str(head["id"])
+    assert latest_private.json()["id"] != default.json()["id"]
+    repeated_default = await client.post(url, headers=auth, json={"reward_model_id": str(model_id)})
+    assert repeated_default.json()["id"] == default.json()["id"]
+    assert repeated_default.json()["customer_head_id"] is None
     # The legacy default-score panel must not pick a newer personalized run.
     trace_detail = await _detail(client, auth, trace_id)
     assert [r["id"] for r in trace_detail["scoring_runs"]] == [default.json()["id"]]

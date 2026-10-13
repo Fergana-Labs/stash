@@ -10,15 +10,16 @@ from rm_worker.evaluation import action_score_rows
 from rm_worker.progress import Reporter
 
 
-def run(directory: Path) -> None:
-    progress = Reporter()
-    progress.update("downloading")
-    from rm_worker.scoring import RewardModel
-
+def run(directory: Path, *, model=None, model_dir=None, progress=None) -> None:
+    progress = progress or Reporter()
     job = json.loads((directory / "job.json").read_text())
-    model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
-    progress.update("loading")
-    model = RewardModel(model_dir)
+    if model is None:
+        progress.update("downloading")
+        from rm_worker.scoring import RewardModel
+
+        model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
+        progress.update("loading")
+        model = RewardModel(model_dir)
     head = job.get("customer_head")
     if head is not None and getattr(model, "basis", None) is None:
         raise ValueError("Customer heads require a shared learned reward basis")

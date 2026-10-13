@@ -61,11 +61,13 @@ and whether each comparison was used for training or held-out evaluation.
 Review these before trusting the scores. AI review is not human approval and can
 still miss unsupported assumptions or reward easy, unrepresentative alternatives.
 
-Initial scoring covers the sampled actions in the selected tasks. Score another
-trace with `POST /api/v1/rm/traces/{id}/score` and the personal `reward_model_id`.
-Scores are relative preferences, not probabilities of correctness. Training does
-not change the shared evaluator, contribution consent, or auto-score every future
-trace. Existing requests without `training_config` retain the legacy behavior.
+After a personal Modal model becomes Ready, background batches score all eligible
+owned traces and pick up new or changed traces after an idle debounce. Run, or
+`POST /api/v1/rm/traces/{id}/score` with the personal `reward_model_id`, reuses
+completed scores for the same trace revision and checkpoint. Uncached traces
+remain explicitly scoreable. Scores are relative preferences, not probabilities
+of correctness. Personal-model precomputation does not change the shared
+evaluator or contribution consent. Local models retain explicit scoring.
 
 The worker saves the input version, criteria, and 4,096-token context window with
 the checkpoint. Instructions, initial task, latest request, recent history, action,

@@ -30,7 +30,7 @@ default-model runs in the legacy trace UI.
 
 ## API workflow
 
-Apply migrations `0236` then `0237` to a development deployment. Both the API
+Apply migrations `0237` then `0238` to a development deployment. Both the API
 and reward Celery worker must include these modules; the feature task runs through
 Modal and private artifact storage. No model inference or backbone training
 belongs in the API process or on the laptop.
@@ -69,7 +69,7 @@ not become gold outcome labels or shared-training permission.
 There is no customer-head selector in the existing frontend in this change.
 The experiment is exposed through the API and operator/cloud tools.
 
-Migration rollback from `0237` removes personalized runs: the old schema cannot
+Migration rollback from `0238` removes personalized runs: the old schema cannot
 represent them. Preserve those results before a rollback if they are needed.
 
 ## Evidence and claim boundaries
@@ -89,11 +89,19 @@ The residual basis changed during training; the frozen 596,050,944-parameter
 encoder was not optimized. These data establish a completed training/export
 pilot, not a better Stash default.
 
+A population-residual candidate fitted on the same 512/128 public development
+split scored 95/128 (74.2%) against the anchor's 98/128 (76.6%), with 11 paired
+wins and 14 losses. Its learned default weights were trained and saved, but this
+trial regressed and was not promoted. Further source-only model selection and
+fresh owned validation are required.
+
 These pilots use human HelpSteer2 ratings (CC-BY-4.0) and the pinned Skywork
 0.6B reward model (Apache-2.0). Rating criteria are source profiles, not customers.
 Public-data foundation-training exposure is unknown. The later run uses the
 model's official chat serialization. The earlier and later scores are not a
 controlled improvement comparison because their data and serialization differ.
+These official-chat artifacts are development models. Quality on the API's
+Stash context renderer needs its own matching-contract benchmark before release.
 
 The initial live harness run failed the artifact-format contract. It supplies no
 agent-quality evidence. The corrected harness records generated source hashes,
