@@ -430,6 +430,11 @@ async def scoring_run(owner, run_id):
         result["customer_scores"] = None
         if row["status"] == "succeeded":
             manifest = await basis(conn, row["reward_model_id"])
+            checkpoint_finished_at = await conn.fetchval(
+                "SELECT finished_at FROM rm_reward_models WHERE id=$1", row["reward_model_id"]
+            )
+            if checkpoint_finished_at != row["model_finished_at"]:
+                raise HeadInvalid("Customer scores refer to a changed checkpoint")
             head_row = await checked_head(
                 conn, owner, row["customer_head_id"], manifest, row["reward_model_id"]
             )

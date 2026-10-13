@@ -420,6 +420,19 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     assert (
         await client.get(f"{URL}/scoring-runs/{private.json()['id']}", headers=other)
     ).status_code == 404
+    checkpoint_time = await get_pool().fetchval(
+        "SELECT finished_at FROM rm_reward_models WHERE id=$1", model_id
+    )
+    await get_pool().execute(
+        "UPDATE rm_reward_models SET finished_at=finished_at+interval '1 second' WHERE id=$1",
+        model_id,
+    )
+    assert (
+        await client.get(f"{URL}/scoring-runs/{private.json()['id']}", headers=auth)
+    ).status_code == 422
+    await get_pool().execute(
+        "UPDATE rm_reward_models SET finished_at=$2 WHERE id=$1", model_id, checkpoint_time
+    )
     latest_private = await client.post(url, headers=auth, json=body)
     assert latest_private.status_code == 202 and latest_private.json()["id"] != private.json()["id"]
     assert latest_private.json()["customer_head_id"] == str(head["id"])
@@ -436,7 +449,7 @@ async def test_customer_head_trace_scores_are_private_pinned_and_deduplicated(
     ).status_code == 422
 
 
-@pytest.mark.parametrize("mutation", ["feedback", "trace", "worker_pin"])
+@pytest.mark.parametrize("mutation", ["feedback", "trace", "checkpoint", "worker_pin"])
 async def test_customer_trace_scoring_rechecks_sources_at_publication(
     client, monkeypatch, artifact_dir, mutation
 ):
@@ -461,6 +474,10 @@ async def test_customer_trace_scoring_rechecks_sources_at_publication(
             await heads.label_pair(owner, pair_id, "b")
         elif mutation == "trace":
             await _import(client, auth, REFUND_TRACE)
+        elif mutation == "checkpoint":
+            await get_pool().execute(
+                "UPDATE rm_reward_models SET finished_at=now() WHERE id=$1", model_id
+            )
         else:
             provenance["feature_version"] = "9" * 64
         (directory / "result.json").write_text(json.dumps({"customer_provenance": provenance}))
