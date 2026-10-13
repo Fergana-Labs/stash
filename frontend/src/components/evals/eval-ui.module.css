@@ -1,0 +1,49 @@
+.surface {
+  --bg-surface: #fafafa;
+  --bg-raised: #f4f4f5;
+  --border-color: #e4e4e7;
+  --border-subtle-color: #f0f0f2;
+  --text-primary: #27272a;
+  --text-dim: #52525b;
+  --text-muted: #71717a;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #27272a;
+  --accent: #f4f4f5;
+  --accent-foreground: #27272a;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --input: #e4e4e7;
+  --radius: 0.3rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text-primary);
+}
+
+:global([data-theme="dark"]) .surface {
+  --bg-base: #18181b;
+  --bg-surface: #1f1f23;
+  --bg-raised: #27272a;
+  --border-color: #3f3f46;
+  --border-subtle-color: #27272a;
+  --text-primary: #f4f4f5;
+  --text-dim: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --secondary: #27272a;
+  --secondary-foreground: #f4f4f5;
+  --accent: #27272a;
+  --accent-foreground: #f4f4f5;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --input: #3f3f46;
+  --card: #18181b;
+  --card-foreground: #f4f4f5;
+  --popover: #18181b;
+  --popover-foreground: #f4f4f5;
+}
+
+.surface :global([data-slot="button"]) {
+  border-radius: 4px;
+}
+
+.surface :global([data-eval-tab]) {
+  border-radius: 0;
+}

@@ -4,6 +4,10 @@ Product decision from the [October 12 design review](https://notes.granola.ai/d/
 
 The main product has two areas: Traces for observability and Evals for creating, checking, and using decision models. Prompt optimization is deferred and removed from the main navigation. The old model-list URL opens Evals for current accounts; the legacy list remains at `/reward-models/models/legacy`, and explicitly pinned snapshots retain their view. Existing model detail URLs, APIs, and optimization records remain available; no production data is deleted.
 
+## Workspace design
+
+The eval list and detail workspace follow the compact toolbar, neutral surfaces, and table-oriented structure shown in [Braintrust’s playground UI](https://www.braintrust.dev/docs/evaluate/playgrounds). Instructions and build controls sit in a narrow configuration column. One examples table shows outputs, labels, calibration/holdout/reference use, and feedback; opening a row provides a focused inspector for full content, corrections, and testing. Validation results and generated criteria occupy the main pane. Creation, testing, and usage share the same scoped visual styles, preserving the rest of the application and pinned product snapshots.
+
 ## Create and update
 
 1. Name the eval and describe what good looks like. Accept unstructured interview notes and explanations.
@@ -41,3 +45,5 @@ These screenshots use a separate local database and explicitly labeled demo data
 ![Dedicated eval page with Download and Connect menu](assets/eval-options-preview.png)
 
 ![Completed build with stage progress and visible evaluation criteria](assets/eval-build-feedback-preview.png)
+
+![Compact eval workspace with examples table and validation panel](assets/eval-workspace-polished.png)

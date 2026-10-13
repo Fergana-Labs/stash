@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import TraceSandboxInput from "@/components/reward-models/TraceSandboxInput";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { inputClass } from "@/components/workbench/workbench-ui";
+import { evalInputClass as inputClass } from "./eval-ui";
 import { evalReadFile, type Item } from "@/lib/intuition-api";
 import ItemView from "@/components/intuitions/ItemView";
 import type { RmTraceDetail } from "@/lib/types";

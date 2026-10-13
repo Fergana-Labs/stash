@@ -119,7 +119,7 @@ it("adds a labeled example into the single Examples collection", async () => {
   fireEvent.click(form.getByRole("button", { name: "Add example" }));
   await waitFor(() => expect(api.evalAddExamples).toHaveBeenCalledWith("eval", [{ item: "A concrete next step", label: "good", note: "Useful and concise" }]));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(within(screen.getByRole("region", { name: "2. Examples (1)" })).getByText("A concrete next step")).toBeVisible();
+  expect(within(screen.getByRole("region", { name: "Examples (1)" })).getByText("A concrete next step")).toBeVisible();
 });
 
 it("keeps failed submissions editable and clears canceled input", async () => {
@@ -169,4 +169,22 @@ it("shows a failed build at the button and makes retry available without fitting
   fireEvent.click(screen.getByRole("button", { name: "Retry build" }));
   expect(await screen.findByRole("button", { name: "Try this eval" })).toBeVisible();
   expect(api.imFit).toHaveBeenCalledOnce();
+});
+
+
+it("opens a compact example row for feedback and tests the selected content", async () => {
+  api.imGet.mockResolvedValue({ ...detail, draft: { ...version, head: {}, head_stale: false } });
+  api.imExamples.mockResolvedValue([{ id: "row", item: "A concrete next step", label: "good", note: "Useful", split: "train" }]);
+  api.imPredict.mockResolvedValue({ label: "good", confidence: 0.9, probabilities: { good: 0.9, bad: 0.1 }, version: 1, rubric: {} });
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Inspect example 1" }));
+  const form = within(await screen.findByRole("dialog", { name: "Example 1" }));
+  fireEvent.change(form.getByRole("textbox", { name: "Feedback for example row" }), { target: { value: "Use a concrete timeline" } });
+  fireEvent.click(form.getByRole("button", { name: "Save feedback" }));
+  await waitFor(() => expect(api.imEditExample).toHaveBeenCalledWith("eval", "row", { note: "Use a concrete timeline" }));
+  await waitFor(() => expect(form.getByRole("button", { name: "Test this example" })).toBeEnabled());
+  fireEvent.click(form.getByRole("button", { name: "Test this example" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
+  await waitFor(() => expect(api.imPredict).toHaveBeenCalledWith("eval", "A concrete next step", "draft"));
 });
