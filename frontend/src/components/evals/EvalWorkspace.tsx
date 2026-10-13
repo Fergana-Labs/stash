@@ -139,7 +139,6 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </section>
       <section className="space-y-3 rounded border border-border p-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Build and test</h2><Button size="sm" disabled={!!busy || !detail.judge.configured} onClick={() => void calibrate()}>{buildProgress?.status === "running" ? <><Loader2 className="size-3.5 animate-spin" />Building eval…</> : buildProgress?.status === "failed" ? "Retry build" : metrics ? "Update eval" : "Build and test"}</Button></div>
-        <p className="text-xs text-muted-foreground">Create criteria from your examples, learn how to predict your labels, and check against held-out examples.</p>
         {buildProgress && <BuildStatus progress={buildProgress} error={buildError} onTest={() => { setTestItem(null); setView("test"); }} />}
         {!detail.judge.configured && <p className="text-xs text-muted-foreground">The evaluator must be connected on the server before calibration or new predictions can run.</p>}
       </section>
