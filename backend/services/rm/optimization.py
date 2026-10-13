@@ -150,6 +150,17 @@ async def detail(owner, optimization_id):
             optimization_id,
         )
     ]
+    program["revision_stats"] = [
+        dict(r)
+        for r in await pool.fetch(
+            """SELECT revision_id,count(*)::int AS assigned,
+            count(*) FILTER (WHERE status='completed')::int AS completed,
+            avg(reward) FILTER (WHERE status='completed') AS reward,
+            min(assigned_at) AS first_assigned_at,max(assigned_at) AS last_assigned_at
+            FROM rm_optimization_runs WHERE optimization_id=$1 GROUP BY revision_id""",
+            optimization_id,
+        )
+    ]
     # Aggregate all observations, not just the paged recent-run list. Group by
     # assignment date so late outcomes stay in their original workload cohort.
     program["trends"] = [

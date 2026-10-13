@@ -3,11 +3,12 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..auth import get_current_user
 from ..database import get_pool
+from ..services.rm import monitoring
 from ..services.rm import optimization as service
 from .reward_models import require_reward_models
 from .workbench import checked, require_workbench
@@ -98,6 +99,22 @@ async def list_optimizations(user=Depends(get_current_user)):
 @router.post("", status_code=201)
 async def create_optimization(body: Create, user=Depends(get_current_user)):
     return await checked(service.create(user["id"], body.model_dump()))
+
+
+@router.get("/monitoring")
+async def agent_monitoring(user=Depends(get_current_user)):
+    return await monitoring.overview(user["id"])
+
+
+@router.get("/monitoring/rewards")
+async def agent_rewards(
+    agent: str = Query(min_length=1, max_length=160),
+    model_id: UUID = Query(),
+    window: int = Query(default=20, ge=20, le=100),
+    program_id: UUID | None = None,
+    user=Depends(get_current_user),
+):
+    return await checked(monitoring.rewards(user["id"], agent, model_id, window, program_id))
 
 
 @router.get("/runs/{run_id}")
