@@ -59,7 +59,7 @@ def _setup_error(exc: Exception) -> str | None:
     response = exc.response
     try:
         payload = response.json()
-    except ValueError:
+    except (ValueError, httpx.StreamError):
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
