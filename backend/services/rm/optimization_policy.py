@@ -15,7 +15,7 @@ from rm_worker.context import render_action_input
 
 from .datasets import render_action_context, render_steps
 
-POLICY_VERSION = "online-prompt-v1"
+POLICY_VERSION = "online-prompt-v2"
 MAX_ACTIONS = 64
 WRAPPER = re.compile(r"<stash-optimization\b[^>]*>.*?</stash-optimization>", re.S)
 
@@ -126,20 +126,30 @@ def difference(baseline, candidate):
     return {"mean": delta, "low": delta - margin, "high": delta + margin}
 
 
-def compare(runs, per_arm, metric):
+def compare(runs, per_arm, metric=None):
     arms = {arm: [r for r in runs if r["arm"] == arm] for arm in ("baseline", "candidate")}
     report = {
         "policy": POLICY_VERSION,
         "ready": False,
         "promote": False,
         "required_per_arm": per_arm,
+        "objective": "reward_model",
+        "business_guardrail": bool(metric),
         "arms": {},
     }
     for arm, rows in arms.items():
         report["arms"][arm] = {
             "assigned": len(rows),
             "completed": sum(r["status"] == "completed" for r in rows),
-            "reward": summary([r["reward"] for r in rows if r["status"] == "completed"]),
+            "reward": summary(
+                [
+                    r["reward"]
+                    for r in rows
+                    if r["status"] == "completed"
+                    and r["reward"] is not None
+                    and math.isfinite(r["reward"])
+                ]
+            ),
             "business": summary([r["outcome"] for r in rows if r["outcome"] is not None]),
         }
     if any(len(rows) < per_arm for rows in arms.values()):
@@ -154,10 +164,24 @@ def compare(runs, per_arm, metric):
             "ready": True,
             "reason": "Incomplete run evidence; keep the current prompt.",
         }
+    if any(r["reward"] is None or not math.isfinite(r["reward"]) for r in runs):
+        report["reason"] = "Waiting for valid reward model scores for every assigned run."
+        return report
+    reward = difference(*[[r["reward"] for r in arms[a]] for a in arms])
+    if not metric:
+        promote = reward["low"] is not None and reward["low"] > 0
+        return {
+            **report,
+            "ready": True,
+            "promote": promote,
+            "reward_change": reward,
+            "reason": "The candidate improved the selected reward model's score."
+            if promote
+            else "The candidate did not establish an improvement in reward model scores.",
+        }
     if any(r["outcome"] is None for r in runs):
         report["reason"] = "Waiting for measured business outcomes for every assigned run."
         return report
-    reward = difference(*[[r["reward"] for r in arms[a]] for a in arms])
     sign = 1 if metric["direction"] == "higher" else -1
     business = difference(*[[sign * r["outcome"] for r in arms[a]] for a in arms])
     promote = reward["low"] > 0 and business["low"] >= -metric["regression_tolerance"]
