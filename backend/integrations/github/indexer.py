@@ -50,16 +50,22 @@ MAX_INDEXED_TEXT_BYTES = 512 * 1024
 MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024
 
 
-async def _github_head_sha(url: str, headers: dict) -> str:
+async def _github_head_sha(url: str, headers: dict) -> str | None:
     """Latest commit SHA on the default branch — one cheap API call, used to
     skip the full zipball download when nothing changed since the last sync."""
     owner, repo = _parse_owner_repo(urlparse(url).path)
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         resp = await client.get(
             f"https://api.github.com/repos/{owner}/{repo}/commits",
             params={"per_page": 1},
             headers=headers,
         )
+        if resp.status_code == 409 and resp.json().get("message") == "Git Repository is empty.":
+            return None
+        if resp.status_code == 404:
+            raise source_service.SourceSetupRequired(
+                "Repository is unavailable. Check its URL and your GitHub access."
+            )
         resp.raise_for_status()
         return resp.json()[0]["sha"]
 
@@ -67,7 +73,7 @@ async def _github_head_sha(url: str, headers: dict) -> str:
 async def _github_snapshot_tree(url: str, headers: dict, head_sha: str) -> dict:
     """The repo's full file listing at `head_sha` — one API call, no download."""
     owner, repo = _parse_owner_repo(urlparse(url).path)
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         resp = await client.get(
             f"https://api.github.com/repos/{owner}/{repo}/git/trees/{head_sha}",
             params={"recursive": "1"},
@@ -127,6 +133,8 @@ async def _crawl_archive(
                     continue
                 with zf.open(info) as src:
                     raw = src.read()
+                if b"\x00" in raw:
+                    continue  # binary, even when it happens to decode as UTF-8
                 try:
                     text = raw.decode("utf-8")
                 except UnicodeDecodeError:
@@ -161,6 +169,11 @@ async def index_github_repo(source: dict) -> str | None:
     head_sha = None
     if resolved.host_kind == "github":
         head_sha = await _github_head_sha(url, resolved.headers)
+        if head_sha is None:
+            # Empty upstream listings must not erase an existing archive.
+            # Keep checking on schedule so the first commit is picked up.
+            logger.info("github source %s: repository is empty", source_id)
+            return None
         if head_sha == source["sync_cursor"]:
             logger.info("github source %s: HEAD unchanged, skipping crawl", source_id)
             return head_sha
