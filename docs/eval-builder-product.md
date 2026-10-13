@@ -24,7 +24,7 @@ For API file inputs, upload with `POST /api/v1/intuitions/inputs` (multipart `fi
 
 - Open an eval from anywhere on its list row to visit its dedicated page. The page’s three-dot menu offers Download.
 - Download a JSON snapshot of the saved model definition, active/draft calibration heads and frozen seeds, validation results, and examples. This is a definition export; inference still uses the configured judge provider.
-- The visible Connect row displays this eval's POST endpoint and copy control. Request example expands an authenticated trace-shaped cURL request and MCP example inline. Calls to this endpoint are logged with input, output, caller, version, and timestamp and appear in Usage & corrections.
+- The visible Connect row displays this eval's POST endpoint and copy control. A subtle info icon with an API request details tooltip expands an authenticated trace-shaped cURL request and MCP example inline. Calls to this endpoint are logged with input, output, caller, version, and timestamp and appear in Usage & corrections.
 - Open in sandbox preloads a saved example directly into the editable sandbox input; Run eval explicitly scores it. Structured examples appear as JSON and retain their object input type when edited; invalid JSON disables the run until corrected. This inspects criterion answers and decisions, rather than providing independent evidence on examples used to build the eval. Test against any new output or recorded trace independently of eval creation.
 - Sandbox and normal API calls use the same saved evaluator. Editing instructions does not silently switch either to a different test version. After Save succeeds, both use the updated version.
 - Run a saved eval from the trace viewer and display its scorecard.
@@ -38,6 +38,8 @@ Whole-trace classification and per-criterion judge probabilities are distinct fr
 ## Local preview
 
 These screenshots use a separate local database and explicitly labeled demo data. The original support-reply scorecard uses previously recorded judge answers. Local preview provider calls are now enabled using server-side development credentials; the concise-answer demo was built with live rubric and judge calls. Data stays in the separate local database. No GPU or LLM fine-tuning runs locally.
+
+![Connect row with a subtle info control](assets/eval-endpoint-info.png)
 
 ![One Save action and visible Connect endpoint, with separate checks and criteria](assets/eval-save-preview.png)
 

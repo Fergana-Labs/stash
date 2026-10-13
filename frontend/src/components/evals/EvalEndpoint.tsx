@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AgentUsagePanel from "@/components/intuitions/AgentUsagePanel";
 import type { OutputType } from "@/lib/intuition-api";
@@ -33,7 +33,7 @@ export default function EvalEndpoint({ id, outputType }: { id: string; outputTyp
         setError("");
         void navigator.clipboard.writeText(endpoint).then(() => setCopied(true)).catch(() => setError("Could not copy. Select the endpoint to copy it manually."));
       }}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy"}</Button>
-      <Button size="xs" variant="ghost" aria-expanded={exampleOpen} aria-controls="api-request-example" onClick={() => setExampleOpen((open) => !open)}>Request example</Button>
+      <Button size="icon-xs" variant="ghost" className="text-muted-foreground hover:text-foreground" aria-label="API request details" title="API request details" aria-expanded={exampleOpen} aria-controls="api-request-example" onClick={() => setExampleOpen((open) => !open)}><Info /></Button>
     </div>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {exampleOpen && <div id="api-request-example"><InlinePanel title="API request" onClose={() => setExampleOpen(false)}><AgentUsagePanel standalone showDescription={false} modelId={id} outputType={outputType} sample={TRACE_EXAMPLE} /></InlinePanel></div>}

@@ -89,7 +89,7 @@ it("shows the endpoint directly, keeps Connect out of the menu, and expands requ
   const menu = await screen.findByRole("menu", { name: "Eval options" });
   expect(within(menu).queryByRole("menuitem", { name: "Connect" })).not.toBeInTheDocument();
   fireEvent.keyDown(menu, { key: "Escape" });
-  fireEvent.click(screen.getByRole("button", { name: "Request example" }));
+  fireEvent.click(screen.getByRole("button", { name: "API request details" }));
   const panel = await screen.findByRole("region", { name: "API request" });
   expect(panel).toHaveTextContent("Authorization: Bearer $STASH_API_KEY");
   expect(panel).toHaveTextContent("steps");
