@@ -34,7 +34,6 @@ export default function EvalWorkspace({ id }: { id: string }) {
   const [item, setItem] = useState<Item | null>(null);
   const [traceId, setTraceId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [guidance, setGuidance] = useState("");
   const [exampleFeedback, setExampleFeedback] = useState<Record<string, string>>({});
   const [testItem, setTestItem] = useState<Item | null>(null);
   const [inputRevision, setInputRevision] = useState(0);
@@ -84,7 +83,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
         await imEditDraft(id, { description });
         await evalPrepare(id);
         stage(1, "Creating evaluation criteria from your examples and feedback…");
-        const proposed = await imDraftRubric(id, { guidance });
+        const proposed = await imDraftRubric(id, {});
         await imEditDraft(id, { rubric: proposed.rubric });
         let scored = 0;
         stage(2, "Evaluating your examples against the criteria…");
@@ -142,7 +141,6 @@ export default function EvalWorkspace({ id }: { id: string }) {
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Build and test</h2><Button size="sm" disabled={!!busy || !detail.judge.configured} onClick={() => void calibrate()}>{buildProgress?.status === "running" ? <><Loader2 className="size-3.5 animate-spin" />Building eval…</> : buildProgress?.status === "failed" ? "Retry build" : metrics ? "Update eval" : "Build and test"}</Button></div>
         <p className="text-xs text-muted-foreground">Create criteria from your examples, learn how to predict your labels, and check against held-out examples.</p>
         {buildProgress && <BuildStatus progress={buildProgress} error={buildError} onTest={() => { setTestItem(null); setView("test"); }} />}
-        <textarea aria-label="Eval improvement feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Optional guidance—for example, be stricter about unsupported promises…" value={guidance} disabled={!!busy} onChange={(e) => setGuidance(e.target.value)} />
         {!detail.judge.configured && <p className="text-xs text-muted-foreground">The evaluator must be connected on the server before calibration or new predictions can run.</p>}
       </section>
         </aside>

@@ -35,6 +35,7 @@ it("prepares the held-out split before drafting criteria and fits only calibrati
   expect(api.evalPrepare.mock.invocationCallOrder[0]).toBeLessThan(api.imDraftRubric.mock.invocationCallOrder[0]);
   expect(api.imGrade.mock.invocationCallOrder[0]).toBeLessThan(api.imFit.mock.invocationCallOrder[0]);
   expect(api.imPromote).not.toHaveBeenCalled();
+  expect(api.imDraftRubric).toHaveBeenCalledWith("eval", {});
 });
 
 it("shows failed grading and does not calibrate or activate partial results", async () => {
