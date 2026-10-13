@@ -892,7 +892,7 @@ def stash_optimization_begin(
     reward_model_id: str,
     agent: str,
     scope: str,
-    metric_name: str,
+    metric_name: str = "",
     metric_direction: str = "higher",
     metric_unit: str = "",
     metric_minimum: float = 0,
@@ -905,9 +905,10 @@ def stash_optimization_begin(
     """Begin ongoing prompt optimization when the user asks to improve this agent.
     Authorizes up to max_rounds candidate generations and remote scoring of submitted
     runs. Future tasks receive randomized current/candidate instructions; winners
-    promote automatically only after reward and business-outcome gates pass.
-    agent/scope identify exactly which workload participates. Business outcomes must
-    come from actual measurements, not invented scores. A training model is allowed:
+    promote automatically when the selected reward model establishes an improvement.
+    agent/scope identify exactly which workload participates. Leave metric_name empty
+    to optimize reward alone. An explicit metric_name adds a business guardrail using
+    actual measurements, never invented outcomes. A training model is allowed:
     optimization waits for it. Existing agent permissions remain in force.
     """
     with _client() as client:
@@ -929,7 +930,9 @@ def stash_optimization_begin(
                         "minimum": metric_minimum,
                         "maximum": metric_maximum,
                         "regression_tolerance": regression_tolerance,
-                    },
+                    }
+                    if metric_name.strip()
+                    else None,
                 },
             )
         )
