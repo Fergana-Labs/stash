@@ -50,6 +50,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
   useEffect(() => { void load().catch((e) => setError(errorMessage(e))); }, [load]);
   const version = detail?.draft ?? detail?.active;
   const labels = detail?.model.output_type === "preference" ? ["good", "bad"] : version?.labels.map((l) => l.id) ?? ["good", "bad"];
+  const tableExamples = [...examples.filter((example) => example.label === null || example.split !== "eval"), ...examples.filter((example) => example.label !== null && example.split === "eval")];
   const metrics = version?.metrics;
   const results = metrics?.eval.rows ?? [];
   const showBuildResults = buildProgress?.status !== "running" && buildProgress?.status !== "failed";
@@ -156,7 +157,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
         </InlinePanel></div>}
         <div className="max-h-[560px] overflow-auto border-t border-border">
           <table aria-label="Examples" className="w-full min-w-[560px] table-fixed text-left text-xs"><thead className="sticky top-0 z-10 bg-surface text-muted-foreground"><tr className="h-8 border-b border-border [&>th]:px-3 [&>th]:font-medium"><th className="w-8">#</th><th>Output</th><th className="w-24">Label</th><th className="w-24">Use</th><th className="w-32">Feedback</th></tr></thead><tbody>
-            {examples.map((example, index) => <Fragment key={example.id}><tr className="h-12 cursor-pointer border-b border-border last:border-0 hover:bg-surface [&>td]:px-3" onClick={(event) => { if (!(event.target as HTMLElement).closest("button,[role=option],[role=listbox]")) toggleExample(example.id); }}>
+            {tableExamples.map((example, index) => <Fragment key={example.id}><tr className="h-12 cursor-pointer border-b border-border last:border-0 hover:bg-surface [&>td]:px-3" onClick={(event) => { if (!(event.target as HTMLElement).closest("button,[role=option],[role=listbox]")) toggleExample(example.id); }}>
               <td className="tabular-nums text-muted-foreground">{index + 1}</td>
               <td><button className="block w-full py-2 text-left" onClick={() => toggleExample(example.id)} aria-expanded={selectedExample === example.id} aria-controls={`example-${example.id}`} aria-label={`Inspect example ${index + 1}`}><span className="line-clamp-2 leading-5">{examplePreview(example.item)}</span></button></td>
               <td>{example.label === null ? <span className="text-muted-foreground">—</span> : <Select aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-6 w-fit px-2 text-[11px]" />}</td>
