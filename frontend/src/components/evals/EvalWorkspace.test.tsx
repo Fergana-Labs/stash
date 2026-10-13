@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
@@ -104,4 +104,35 @@ it("downloads saved definitions, fitted heads, frozen seeds, and examples for th
     const exported = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(create.mock.calls[0][0]); });
     expect(JSON.parse(exported)).toMatchObject({ format: "stash-eval", format_version: 1, model: detail.model, active, examples });
   } finally { click.mockRestore(); URL.createObjectURL = oldCreate; URL.revokeObjectURL = oldRevoke; }
+});
+
+
+it("adds a labeled example into the single Examples collection", async () => {
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Add example" }));
+  const dialog = await screen.findByRole("dialog", { name: "Add example" });
+  const form = within(dialog);
+  expect(form.getByRole("button", { name: "Add example" })).toBeDisabled();
+  fireEvent.change(form.getByRole("textbox", { name: "Example output" }), { target: { value: "A concrete next step" } });
+  fireEvent.change(form.getByRole("textbox", { name: "Example feedback" }), { target: { value: "Useful and concise" } });
+  api.imExamples.mockResolvedValue([{ id: "new", item: "A concrete next step", label: "good", note: "Useful and concise", split: "train" }]);
+  fireEvent.click(form.getByRole("button", { name: "Add example" }));
+  await waitFor(() => expect(api.evalAddExamples).toHaveBeenCalledWith("eval", [{ item: "A concrete next step", label: "good", note: "Useful and concise" }]));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(within(screen.getByRole("region", { name: "2. Examples (1)" })).getByText("A concrete next step")).toBeVisible();
+});
+
+it("keeps failed submissions editable and clears canceled input", async () => {
+  api.evalAddExamples.mockRejectedValueOnce(new Error("Could not save"));
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Add example" }));
+  const form = within(await screen.findByRole("dialog", { name: "Add example" }));
+  fireEvent.change(form.getByRole("textbox", { name: "Example output" }), { target: { value: "Keep this draft" } });
+  fireEvent.click(form.getByRole("button", { name: "Add example" }));
+  expect(await form.findByRole("alert")).toHaveTextContent("Could not save");
+  expect(form.getByRole("textbox", { name: "Example output" })).toHaveValue("Keep this draft");
+  fireEvent.click(form.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add example" }));
+  expect(within(await screen.findByRole("dialog")).getByRole("button", { name: "Add example" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "Example output" })).toHaveValue("");
 });

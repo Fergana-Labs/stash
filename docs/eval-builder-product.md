@@ -7,7 +7,7 @@ The main product has two areas: Traces for observability and Evals for creating,
 ## Create and update
 
 1. Name the eval and describe what good looks like. Accept unstructured interview notes and explanations.
-2. Add labeled good and bad outputs by pasting text or JSON, uploading files, or choosing recorded traces. Add reference material without labeling it. Trace annotations are imported separately as feedback, never included in the prediction input.
+2. Use the single Examples collection and its Add example dialog to submit labeled good and bad outputs by pasting text or JSON, uploading files, or choosing recorded traces. The saved example appears in that same collection, where labels and feedback remain editable. Add reference material without labeling it. Trace annotations are imported separately as feedback, never included in the prediction input.
 3. Automatically reserve a distinct labeled example for a held-out check while retaining at least two labels in calibration data. Show its input, human label, predicted label, and probability of the human label. Very small checks are presented as limited validation, not proof of generalization.
 4. Generate criteria with an LLM using only calibration examples and reference material. Show calibration examples as few-shot references to the judge. Fit a small classifier and calibrate probabilities; this does not fine-tune an LLM.
 5. User corrections and additional guidance can update the draft eval. Active versions continue serving while a draft is edited. Activating an insufficiently validated or regressed draft requires an explicit override after seeing the failed checks.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, MoreHorizontal, Plug } from "lucide-react";
+import { Download, MoreHorizontal, Plug, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ export default function EvalWorkspace({ id }: { id: string }) {
   const [inputRevision, setInputRevision] = useState(0);
   const [confirm, setConfirm] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
   const load = useCallback(async () => {
     const [next, rows] = await Promise.all([imGet(id), imExamples(id)]);
     setDetail(next); setExamples(rows);
@@ -58,7 +60,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
     await action("Saving example…", async () => {
       if (traceId && label) await evalAddTrace(id, traceId, label, note);
       else await evalAddExamples(id, [{ item, label, note: label === null ? "Reference material" : note }]);
-      setItem(null); setTraceId(null); setNote(""); setInputRevision((value) => value + 1);
+      setItem(null); setTraceId(null); setNote(""); setInputRevision((value) => value + 1); setAddOpen(false);
     });
   }
   async function calibrate() {
@@ -105,28 +107,25 @@ export default function EvalWorkspace({ id }: { id: string }) {
       <div className="flex gap-2" role="group" aria-label="Eval workspace">{["build", "test", "usage"].map((tab) => <Button key={tab} size="sm" variant={view === tab ? "secondary" : "ghost"} aria-pressed={view === tab} disabled={!!busy} onClick={() => { if (tab === view) return; setView(tab); setItem(null); setTraceId(null); if (tab === "test") setTestItem(null); }}>{tab === "build" ? "Build eval" : tab === "test" ? "Test eval" : "Usage & corrections"}</Button>)}</div>
       <span className="text-xs text-muted-foreground">{detail.active ? `Active v${detail.active.number}` : "Draft"}{detail.draft && detail.active ? ` · updating v${detail.draft.number}` : ""}</span>
     </div>
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    {error && !addOpen && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {busy && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
     {view === "build" ? <>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold">1. Describe what good looks like</h2>
-          <textarea aria-label="Eval instructions" rows={5} maxLength={6000} className={inputClass} value={description} disabled={!!busy} onChange={(e) => setDescription(e.target.value)} />
-          <Button size="xs" variant="outline" disabled={!!busy} onClick={() => void action("Saving instructions…", () => imEditDraft(id, { description }))}>Save instructions</Button>
-          <h2 className="pt-2 text-sm font-semibold">2. Add examples and reference material</h2>
-          <EvalInput key={inputRevision} onChange={setItem} onTrace={setTraceId} disabled={!!busy} />
-          <textarea aria-label="Example feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Why is this good or bad? What should change?" value={note} disabled={!!busy} onChange={(e) => setNote(e.target.value)} />
-          <div className="flex flex-wrap gap-2">{labels.map((label) => <Button key={label} size="xs" variant="outline" disabled={!!busy || item === null} onClick={() => void add(label)}>Add {label} example</Button>)}<Button size="xs" variant="ghost" disabled={!!busy || item === null} onClick={() => void add(null)}>Add reference material</Button></div>
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Your examples <span className="font-normal text-muted-foreground">({examples.length})</span></h2>
-          <p className="text-xs text-muted-foreground">Add at least three distinct examples, including good and bad outputs. One is held aside to check the eval.</p>
-          <div className="max-h-[430px] space-y-2 overflow-y-auto">{examples.map((example) => <article key={example.id} className="rounded-md border border-border p-3">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">1. Describe what good looks like</h2>
+        <textarea aria-label="Eval instructions" rows={3} maxLength={6000} className={inputClass} value={description} disabled={!!busy} onChange={(e) => setDescription(e.target.value)} />
+        <Button size="xs" variant="outline" disabled={!!busy} onClick={() => void action("Saving instructions…", () => imEditDraft(id, { description }))}>Save instructions</Button>
+      </section>
+      <section aria-labelledby="eval-examples-heading" className="space-y-3 border-t border-border pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="eval-examples-heading" className="text-sm font-semibold">2. Examples <span className="font-normal text-muted-foreground">({examples.length})</span></h2>
+          <Button size="sm" variant="outline" disabled={!!busy} onClick={() => { setNewLabel(labels[0] ?? ""); setError(""); setAddOpen(true); }}><Plus />Add example</Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Add at least three distinct examples, including good and bad outputs. One is held aside to check the eval.</p>
+          <div className="grid max-h-[430px] gap-3 overflow-y-auto lg:grid-cols-2">{examples.map((example) => <article key={example.id} className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{example.label === null ? "Reference material" : example.split === "eval" ? "Held-out check" : "Calibration example"}</span>{example.label !== null && <Select aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-7 px-2 text-xs" />}</div>
             <ItemView item={example.item} />{example.label !== null && <div className="mt-2 space-y-2"><textarea aria-label={`Feedback for example ${example.id}`} maxLength={2000} rows={2} className={inputClass} disabled={!!busy} value={exampleFeedback[example.id] ?? example.note} onChange={(e) => setExampleFeedback({ ...exampleFeedback, [example.id]: e.target.value })} placeholder="Explain what makes this good or bad…" /><div className="flex gap-2"><Button size="xs" variant="ghost" disabled={!!busy || exampleFeedback[example.id] === undefined || exampleFeedback[example.id] === example.note} onClick={() => void action("Saving feedback…", () => imEditExample(id, example.id, { note: exampleFeedback[example.id] }))}>Save feedback</Button><Button size="xs" variant="ghost" disabled={!!busy} onClick={() => { setTestItem(example.item); setView("test"); }}>Test this example</Button></div></div>}
-          </article>)}{!examples.length && <p className="py-8 text-xs text-muted-foreground">Your examples will appear here.</p>}</div>
-        </section>
-      </div>
+          </article>)}{!examples.length && <p className="col-span-full py-8 text-xs text-muted-foreground">No examples yet. Add an output, file, trace, or reference material to get started.</p>}</div>
+      </section>
       <section className="space-y-3 border-t border-border pt-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">3. Calibrate and check</h2><Button size="sm" disabled={!!busy || !detail.judge.configured} onClick={() => void calibrate()}>{metrics ? "Update eval" : "Calibrate eval"}</Button></div>
         <textarea aria-label="Eval improvement feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Tell us what to change about the current eval…" value={guidance} disabled={!!busy} onChange={(e) => setGuidance(e.target.value)} />
@@ -143,6 +142,16 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </section>
     </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
     <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Use this eval with limited validation?" description={<><p>Review the held-out scorecard before using this eval.</p>{detail.draft?.gate?.checks.filter((c) => !c.passed).map((c) => <p key={c.name}>{c.detail}</p>)}<p>Activating makes this version available to API callers.</p></>} confirmLabel="Activate anyway" onConfirm={async () => { let failed = false; await action("Activating eval…", async () => { try { await imPromote(id, true); } catch (e) { failed = true; throw e; } }); return !failed; }} />
+    <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setItem(null); setTraceId(null); setNote(""); setInputRevision((value) => value + 1); } }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" aria-describedby={undefined}>
+        <DialogHeader><DialogTitle>Add example</DialogTitle></DialogHeader>
+        <EvalInput key={inputRevision} onChange={setItem} onTrace={setTraceId} disabled={!!busy} />
+        <label className="space-y-1.5"><span className="block text-xs font-medium">How should the eval use this?</span><Select aria-label="Example label" value={newLabel} onChange={setNewLabel} disabled={!!busy} options={[...labels.map((label) => ({ value: label, label })), { value: "", label: "Reference material" }]} className="h-8 px-3 text-xs" /></label>
+        {newLabel && <textarea aria-label="Example feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Why is this good or bad? What should change?" value={note} disabled={!!busy} onChange={(e) => setNote(e.target.value)} />}
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+        <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={!!busy} onClick={() => { setAddOpen(false); setItem(null); setTraceId(null); setNote(""); setInputRevision((value) => value + 1); }}>Cancel</Button><Button size="sm" disabled={!!busy || item === null} onClick={() => void add(newLabel || null)}>{busy ? "Saving…" : "Add example"}</Button></div>
+      </DialogContent>
+    </Dialog>
     <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Connect {detail.model.name}</DialogTitle></DialogHeader>
