@@ -145,6 +145,98 @@ async def test_healthy_and_disabled_sources_do_not_alert(client, pool, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_fresh_recovery_job_does_not_alert_but_expired_running_job_does(
+    client, pool, monkeypatch
+):
+    _, sid = await make_source(client)
+    send = AsyncMock()
+    monkeypatch.setattr(alert_service, "send_alert", send)
+    await pool.execute(
+        "UPDATE user_sources SET created_at=now()-interval '2 days', "
+        "sync_task_id='recovering', sync_claimed_at=now(), sync_started_at=now() WHERE id=$1",
+        sid,
+    )
+    assert await sources._alert_stalled_syncs() == 0
+    await pool.execute(
+        "UPDATE user_sources SET sync_claimed_at=now()-interval '36 minutes' WHERE id=$1", sid
+    )
+    assert await sources._alert_stalled_syncs() == 1
+
+
+@pytest.mark.asyncio
+async def test_rejected_grant_is_actionable_and_does_not_page(client, pool, monkeypatch):
+    import httpx
+
+    _, sid = await make_source(client)
+    response = httpx.Response(
+        400,
+        json={"error": "invalid_grant", "error_description": "private-token"},
+        request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+    )
+    monkeypatch.setitem(
+        sources.INDEXERS,
+        "google_drive_folder",
+        AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "private-token", request=response.request, response=response
+            )
+        ),
+    )
+    assert await sources._sync_source(sid) == {"status": "needs_setup"}
+    row = await pool.fetchrow("SELECT sync_status,sync_error FROM user_sources WHERE id=$1", sid)
+    assert row["sync_status"] == "needs_setup"
+    assert "Reconnect" in row["sync_error"]
+    assert "private-token" not in row["sync_error"]
+    await pool.execute(
+        "UPDATE user_sources SET created_at=now()-interval '2 days' WHERE id=$1", sid
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(alert_service, "send_alert", send)
+    assert await sources._alert_stalled_syncs() == 0
+    send.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "status,host,path,payload,actionable",
+    [
+        (400, "oauth2.googleapis.com", "/token", {"error": "invalid_grant"}, True),
+        (400, "mcp-auth.granola.ai", "/oauth2/token", {"error": "invalid_grant"}, True),
+        (401, "oauth2.googleapis.com", "/token", {"error": "invalid_client"}, False),
+        (401, "www.googleapis.com", "/drive/v3/files", {}, True),
+        (403, "mcp.posthog.com", "/mcp", {}, True),
+        (
+            403,
+            "www.googleapis.com",
+            "/drive/v3/drives",
+            {"error": {"errors": [{"reason": "insufficientPermissions"}]}},
+            True,
+        ),
+        (
+            403,
+            "www.googleapis.com",
+            "/drive/v3/drives",
+            {"error": {"errors": [{"reason": "rateLimitExceeded"}]}},
+            False,
+        ),
+        (403, "api.github.com", "/repos/test/test", {}, False),
+        (429, "mcp.posthog.com", "/mcp", {}, False),
+        (503, "mcp.posthog.com", "/mcp", {}, False),
+        (400, "oauth2.googleapis.com", "/token", ["invalid_grant"], False),
+    ],
+)
+def test_access_error_classification(status, host, path, payload, actionable):
+    import httpx
+
+    response = httpx.Response(
+        status, json=payload, request=httpx.Request("POST", f"https://{host}{path}")
+    )
+    error = httpx.HTTPStatusError("secret", request=response.request, response=response)
+    assert bool(sources._setup_error(error)) is actionable
+    assert bool(sources._setup_error(ExceptionGroup("MCP", [error]))) is actionable
+    assert sources._setup_error(ExceptionGroup("mixed", [error, ConnectionError()])) is None
+
+
+@pytest.mark.asyncio
 async def test_missing_alert_destination_fails_loudly(client, monkeypatch):
     monkeypatch.setattr(settings, "ALERT_SLACK_TEAM_ID", None)
     with pytest.raises(RuntimeError, match="required"):

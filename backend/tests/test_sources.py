@@ -1153,6 +1153,7 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
             "README.md": b"# Widgets\nrun the migration",
             "src/app.py": b"print('hello')",
             "logo.png": b"\x89PNG\x00\x01\x02\x03\xff\xfe",  # binary → skipped
+            "binary.dat": b"header\x00body",  # decodable UTF-8 is not necessarily text
             ".git/config": b"[core]",  # dotdir → skipped
         }
     )
