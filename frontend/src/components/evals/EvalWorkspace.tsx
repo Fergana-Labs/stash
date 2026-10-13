@@ -148,7 +148,6 @@ export default function EvalWorkspace({ id }: { id: string }) {
           <h2 id="eval-examples-heading" className="text-sm font-semibold">Examples <span className="font-normal text-muted-foreground">({examples.length})</span></h2>
           <Button size="sm" variant="outline" disabled={!!busy} onClick={() => { setNewLabel(labels[0] ?? ""); setError(""); setAddOpen(true); }}><Plus />Add example</Button>
         </div>
-        <p className="px-4 pb-3 text-[11px] text-muted-foreground">Add at least three distinct examples, including good and bad outputs. One is held aside to check the eval.</p>
         <div className="max-h-[360px] overflow-auto border-t border-border">
           <table aria-label="Examples" className="w-full min-w-[560px] table-fixed text-left text-xs"><thead className="sticky top-0 z-10 bg-surface text-muted-foreground"><tr className="h-8 border-b border-border [&>th]:px-3 [&>th]:font-medium"><th className="w-8">#</th><th>Output</th><th className="w-24">Label</th><th className="w-24">Use</th><th className="w-32">Feedback</th></tr></thead><tbody>
             {examples.map((example, index) => <tr key={example.id} className="h-12 cursor-pointer border-b border-border last:border-0 hover:bg-surface [&>td]:px-3" onClick={(event) => { if (!(event.target as HTMLElement).closest("button")) setSelectedExample(example.id); }}>
