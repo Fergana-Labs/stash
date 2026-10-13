@@ -6,7 +6,7 @@ The main product has two areas: Traces for observability and Evals for creating,
 
 ## Workspace design
 
-The eval list and detail workspace follow the compact toolbar, neutral surfaces, and table-oriented structure shown in [Braintrust’s playground UI](https://www.braintrust.dev/docs/evaluate/playgrounds). Instructions sit in a narrow configuration column and save automatically. The toolbar shows the persisted update state, with no manual Save or retrain action. One examples table shows outputs, labels, calibration/holdout/reference use, and feedback; opening a row expands a focused inspector directly beneath it for full content, corrections, and sandbox inspection. Add example and the API request example expand inline. On Build eval, a Connect row shows this eval's full POST endpoint and offers a copy control; Connect is removed from the menu. There is no separate activation control or Draft/Active status in the workspace. These flows use no modal overlays. Held-out checks stay in Build eval; the dedicated Implementation tab displays the complete rubric, including answer options and definitions, by default. Small sample checks carry a Limited data badge and show matched-label counts. Inline panels use a minus icon to collapse. Creation, testing, and usage share the same scoped visual styles, preserving the rest of the application and pinned product snapshots.
+The eval list and detail workspace follow the compact toolbar, neutral surfaces, and table-oriented structure shown in [Braintrust’s playground UI](https://www.braintrust.dev/docs/evaluate/playgrounds). Instructions sit in a narrow configuration column and save automatically. The toolbar shows the persisted update state, with no manual Save or retrain action. One examples table shows outputs, labels, calibration/holdout/reference use, and feedback; opening a row expands a focused inspector directly beneath it for full content, corrections, and sandbox inspection. Add example and the API request example expand inline. On Build eval, a Connect row shows this eval's full POST endpoint and offers a copy control; Connect is removed from the menu. There is no separate activation control or Draft/Active status in the workspace. These flows use no modal overlays. Held-out checks stay in Build eval; the dedicated Implementation tab displays the complete rubric, including answer options and definitions, by default. A collapsed Advanced options section beneath the rubric shows the serving version, judge model, training/holdout counts, probability temperature, L2 regularization, confidence-calibration policy, frozen context count, and read-only learned weights/bias. Small sample checks carry a Limited data badge and show matched-label counts. Inline panels use a minus icon to collapse. Creation, testing, and usage share the same scoped visual styles, preserving the rest of the application and pinned product snapshots.
 
 ## Create and update
 
@@ -51,6 +51,8 @@ These screenshots use a separate local database and synthetic demo data. Two upl
 ![Feedback persisted and automatic calibration completed](assets/eval-auto-completed-preview.png)
 
 ![Implementation displays the complete rubric](assets/eval-auto-implementation-preview.png)
+
+![Collapsed-by-default Advanced options expanded to inspect calibration and learned weights](assets/eval-advanced-options-preview.png)
 
 ![Sandbox with a selected example preloaded in the editable input and no Connect row](assets/eval-sandbox-preview.png)
 

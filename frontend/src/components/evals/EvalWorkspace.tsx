@@ -17,6 +17,7 @@ import EvalInput from "./EvalInput";
 import EvalEndpoint from "./EvalEndpoint";
 import BulkExamples from "./BulkExamples";
 import ExampleFeedback from "./ExampleFeedback";
+import EvalAdvanced from "./EvalAdvanced";
 import ModelTraceConversation from "@/components/reward-models/ModelTraceConversation";
 import type { RmTraceDetail } from "@/lib/types";
 
@@ -190,7 +191,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
 
         </div>
       </div>
-    </> : view === "implementation" ? <section aria-label="Evaluation criteria" className="space-y-3 rounded border border-border p-4"><h2 className="text-sm font-semibold">Evaluation criteria <span className="font-normal text-muted-foreground">({version?.rubric.length ?? 0})</span></h2>{version?.rubric.length ? <ol className="space-y-4 text-xs">{version.rubric.map((question, index) => <li key={question.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0"><p className="font-medium">{index + 1}. {question.prompt}</p><dl className="grid gap-1.5 pl-4">{(Array.isArray(question.criteria) ? question.criteria.map((definition, option) => [String(option), definition]) : Object.entries(question.criteria)).map(([option, definition]) => <div key={option} className="flex gap-3"><dt className="min-w-12 font-mono text-muted-foreground">{option}</dt><dd>{definition}</dd></div>)}</dl></li>)}</ol> : <p className="text-xs text-muted-foreground">Criteria appear after you label good and bad examples.</p>}</section> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
+    </> : view === "implementation" ? <div className="space-y-4"><section aria-label="Evaluation criteria" className="space-y-3 rounded border border-border p-4"><h2 className="text-sm font-semibold">Evaluation criteria <span className="font-normal text-muted-foreground">({version?.rubric.length ?? 0})</span></h2>{version?.rubric.length ? <ol className="space-y-4 text-xs">{version.rubric.map((question, index) => <li key={question.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0"><p className="font-medium">{index + 1}. {question.prompt}</p><dl className="grid gap-1.5 pl-4">{(Array.isArray(question.criteria) ? question.criteria.map((definition, option) => [String(option), definition]) : Object.entries(question.criteria)).map(([option, definition]) => <div key={option} className="flex gap-3"><dt className="min-w-12 font-mono text-muted-foreground">{option}</dt><dd>{definition}</dd></div>)}</dl></li>)}</ol> : <p className="text-xs text-muted-foreground">Criteria appear after you label good and bad examples.</p>}</section><EvalAdvanced version={detail.active ?? detail.draft} serving={!!detail.active} /></div> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} /> : <EvalUsage id={id} labels={labels} onCorrected={() => { void load(); }} />}
   </section>;
 }
 
