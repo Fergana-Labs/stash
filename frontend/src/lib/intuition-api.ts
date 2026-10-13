@@ -36,13 +36,17 @@ export interface Evaluation {
 }
 export interface FitOptions { l2: number; train_on: "train" | "all"; sources: ExampleSource[] | null; calibrate: boolean; rows: number }
 export interface Metrics { train: Evaluation; eval: Evaluation; ungraded_examples: number; fit_options: FitOptions | null }
-export interface GateCheck { name: string; passed: boolean; detail: string }
+/** Blocking checks are regressions; advisory ones (e.g. a small held-out set) never stop a save. */
+export interface GateCheck { name: string; passed: boolean; detail: string; blocking?: boolean }
+export interface Flip { example_id: string; label: string; active: string; candidate: string; pinned: boolean }
 export interface Gate {
   passed: boolean;
   checks: GateCheck[];
   incumbent: { n: number; accuracy: number | null; log_loss: number | null; ece: number | null } | null;
   active_version: number | null;
   forced?: boolean;
+  flips?: Flip[];
+  pinned?: { n: number; accuracy: number | null; rows: EvalRow[] };
 }
 
 export interface Version {
@@ -99,6 +103,7 @@ export interface Example {
   id: string; model_id: string; kind: "item" | "pair";
   item: Item; item_b: Item | null; label: string | null;
   source: ExampleSource; split: Split; needs_review: boolean; note: string; created_at: string;
+  pinned?: boolean;
 }
 export interface NewExample { item: Item; item_b?: Item | null; label?: string | null; split?: Split; needs_review?: boolean; note?: string }
 
@@ -190,7 +195,7 @@ export const imExamples = (id: string) => apiFetch<Example[]>(`${IM}/${id}/examp
 export const imAddExamples = (id: string, examples: NewExample[], source: ExampleSource = "human") =>
   post<Example[]>(`${IM}/${id}/examples`, { examples, source });
 export const imGenerate = (id: string, body: { count?: number; guidance?: string }) => post<Example[]>(`${IM}/${id}/examples/generate`, body);
-export const imEditExample = (id: string, exampleId: string, body: { label?: string | null; split?: Split; needs_review?: boolean; note?: string }) =>
+export const imEditExample = (id: string, exampleId: string, body: { label?: string | null; split?: Split; needs_review?: boolean; note?: string; pinned?: boolean }) =>
   apiFetch<Example>(`${IM}/${id}/examples/${exampleId}`, { method: "PATCH", body: JSON.stringify(body) });
 export const imDeleteExample = (id: string, exampleId: string) => apiFetch<void>(`${IM}/${id}/examples/${exampleId}`, { method: "DELETE" });
 
@@ -213,3 +218,24 @@ export function evalReadFile(file: File): Promise<Item> {
   const body = new FormData(); body.set("file", file);
   return apiFetch<Item>(`${IM}/inputs`, { method: "POST", body });
 }
+
+export interface QueueItem {
+  prediction_id: string; kind: "predict" | "compare"; input: { item: Item; item_b?: Item };
+  predicted: string; confidence: number | null; ref: string | null; caller: string; version: number; created_at: string;
+  uncertainty: number; novelty: number | null; conflict: boolean; score: number; reasons: string[];
+}
+export const imLabelQueue = (id: string) => apiFetch<QueueItem[]>(`${IM}/${id}/label-queue`);
+
+export interface ImproveCandidate {
+  name: "current" | "add_question" | "rewrite_weakest" | "prune" | "fresh"; title: string; rationale: string;
+  questions: number; new_questions: string[]; rubric: RubricQuestion[];
+  cv_log_loss: number | null; cv_accuracy: number | null; rows: number;
+}
+export interface ImproveJob {
+  id: string; model_id: string; status: "queued" | "running" | "succeeded" | "failed";
+  progress: { stage?: string; message?: string; completed?: number; total?: number };
+  result: { base_version: number; winner: string; changed: boolean; candidates: ImproveCandidate[]; gate: Gate; held_out: { n: number; accuracy: number | null; log_loss: number | null } } | null;
+  error: string | null; created_at: string; finished_at: string | null;
+}
+export const imStartImprove = (id: string) => post<ImproveJob>(`${IM}/${id}/improve`);
+export const imImproveStatus = (id: string) => apiFetch<{ job: ImproveJob | null }>(`${IM}/${id}/improve`);

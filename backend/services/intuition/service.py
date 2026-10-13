@@ -392,7 +392,8 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
         model, await _current_labels(model), merged["kind"], merged["label"], merged["needs_review"]
     )
     updated = await get_pool().fetchrow(
-        """UPDATE intuition_examples SET label = $3, split = $4, needs_review = $5, note = $6
+        """UPDATE intuition_examples SET label = $3, split = $4, needs_review = $5, note = $6,
+                  pinned = $7
             WHERE id = $1 AND model_id = $2 RETURNING *""",
         example_id,
         model_id,
@@ -400,6 +401,7 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
         merged["split"],
         merged["needs_review"],
         merged["note"],
+        merged["pinned"],
     )
     await _invalidate_draft(model_id, example_id)
     await _touch(model_id)
@@ -595,6 +597,7 @@ async def _rows(model: dict, version: dict) -> tuple[list[dict], int]:
                 "split": e["split"],
                 "source": e["source"],
                 "seed": e["id"] in seeds,
+                "pinned": e["pinned"],
             }
         )
     return rows, missing
@@ -647,21 +650,27 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
         "ungraded_examples": missing,
         "fit_options": fit_options,
     }
+    pinned_rows = [r for r in rows if r["pinned"]]
+    pinned = heads.evaluate(head, model["output_type"], pinned_rows)
     active = await _load_version(model["active_version_id"])
-    incumbent = None
+    incumbent, flips = None, None
     if active and not active["head_stale"]:
         active_rows, _ = await _rows(model, active)
         held_ids = {r["example_id"] for r in held}
         shared = [r for r in active_rows if r["example_id"] in held_ids]
         incumbent = heads.evaluate(active["head"], model["output_type"], shared)
         incumbent["missing"] = len(held_ids) - len(shared)
-    gate = heads.gate(metrics["eval"], incumbent)
+        flips = _flips(model["output_type"], head, active["head"], held + pinned_rows, active_rows)
+    gate = heads.gate(metrics["eval"], incumbent, flips=flips, pinned=pinned)
+    gate["flips"] = flips or []
+    gate["pinned"] = {k: pinned[k] for k in ("n", "accuracy", "rows")}
     if fit_options and fit_options.get("train_on") == "all":
         gate["passed"] = False
         gate["checks"].append(
             {
                 "name": "held_out_independent",
                 "passed": False,
+                "blocking": True,
                 "detail": "This head was fitted on all examples, including evaluation data.",
             }
         )
@@ -670,6 +679,7 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
             {
                 "name": "incumbent_graded",
                 "passed": False,
+                "blocking": True,
                 "detail": f"{incumbent['missing']} held-out examples are not graded under the active version",
             }
         )
@@ -689,6 +699,30 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
     )
     await _touch(model["id"])
     return {"head": head, "metrics": metrics, "gate": gate}
+
+
+def _flips(output_type, head, active_head, rows, active_rows) -> list[dict]:
+    """Held-out or pinned examples the active version got right and the candidate gets wrong."""
+    active_by_id = {r["example_id"]: r for r in active_rows}
+    flips, seen = [], set()
+    for row in rows:
+        old = active_by_id.get(row["example_id"])
+        if old is None or row["example_id"] in seen:
+            continue
+        seen.add(row["example_id"])
+        _, was = heads.row_probability(active_head, output_type, old)
+        _, now = heads.row_probability(head, output_type, row)
+        if was == row["label"] and now != row["label"]:
+            flips.append(
+                {
+                    "example_id": row["example_id"],
+                    "label": row["label"],
+                    "active": was,
+                    "candidate": now,
+                    "pinned": row["pinned"],
+                }
+            )
+    return flips
 
 
 async def fit(

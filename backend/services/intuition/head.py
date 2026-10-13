@@ -297,30 +297,38 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
     }
 
 
-def gate(candidate: dict, incumbent: dict | None) -> dict:
-    """Promotion check on the shared held-out split; mirrors the reward-compiler gate."""
-    checks = []
-    if candidate["n"] < MIN_GATE_EXAMPLES:
-        checks.append(
-            {
-                "name": "held_out_size",
-                "passed": False,
-                "detail": f"{candidate['n']} held-out examples; need {MIN_GATE_EXAMPLES}",
-            }
-        )
-    else:
-        checks.append(
-            {
-                "name": "held_out_size",
-                "passed": True,
-                "detail": f"{candidate['n']} held-out examples",
-            }
-        )
+def gate(
+    candidate: dict,
+    incumbent: dict | None,
+    *,
+    flips: list[dict] | None = None,
+    pinned: dict | None = None,
+) -> dict:
+    """Promotion check on the shared held-out split; mirrors the reward-compiler gate.
+
+    Blocking checks are regressions: a pinned example the candidate gets wrong, an
+    example the active version got right that the candidate now gets wrong (a flip),
+    and lower held-out accuracy or log loss once there are enough held-out examples
+    to compare. A small held-out set alone is advisory, so a first version on little
+    data can still be saved; it shows as limited data instead.
+    """
+    enough = candidate["n"] >= MIN_GATE_EXAMPLES
+    checks = [
+        {
+            "name": "held_out_size",
+            "passed": enough,
+            "blocking": False,
+            "detail": f"{candidate['n']} held-out examples"
+            + ("" if enough else f"; {MIN_GATE_EXAMPLES} are needed to compare accuracy"),
+        }
+    ]
     if incumbent is not None and incumbent["n"] and candidate["n"]:
+        comparable = enough and incumbent["n"] >= MIN_GATE_EXAMPLES
         checks.append(
             {
                 "name": "accuracy_not_lower",
                 "passed": candidate["accuracy"] >= incumbent["accuracy"] - 1e-9,
+                "blocking": comparable,
                 "detail": f"{candidate['accuracy']:.3f} vs active {incumbent['accuracy']:.3f}",
             }
         )
@@ -328,7 +336,30 @@ def gate(candidate: dict, incumbent: dict | None) -> dict:
             {
                 "name": "log_loss_within_slack",
                 "passed": candidate["log_loss"] <= incumbent["log_loss"] + GATE_LOG_LOSS_SLACK,
+                "blocking": comparable,
                 "detail": f"{candidate['log_loss']:.3f} vs active {incumbent['log_loss']:.3f} (+{GATE_LOG_LOSS_SLACK})",
             }
         )
-    return {"passed": all(c["passed"] for c in checks), "checks": checks}
+    if pinned is not None and pinned["n"]:
+        wrong = [r for r in pinned["rows"] if r["predicted"] != r["label"]]
+        checks.append(
+            {
+                "name": "pinned_examples",
+                "passed": not wrong,
+                "blocking": True,
+                "detail": f"{pinned['n'] - len(wrong)} of {pinned['n']} pinned examples correct",
+            }
+        )
+    if incumbent is not None and flips is not None:
+        checks.append(
+            {
+                "name": "no_flips",
+                "passed": not flips,
+                "blocking": True,
+                "detail": f"{len(flips)} examples the active version got right are now wrong"
+                if flips
+                else "No held-out or pinned example got worse",
+            }
+        )
+    passed = all(c["passed"] for c in checks if c["blocking"])
+    return {"passed": passed, "checks": checks}

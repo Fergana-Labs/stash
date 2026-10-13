@@ -88,14 +88,13 @@ async def test_builder_holdout_calibration_serving_and_correction(client, fake_j
     assert fitted.status_code == 200, fitted.text
     assert fitted.json()["metrics"]["eval"]["n"] == 1
     assert fitted.json()["metrics"]["fit_options"]["rows"] == 4
-    assert not fitted.json()["gate"]["passed"]
+    # One held-out example is limited data, not a regression: the first version saves.
+    gate = fitted.json()["gate"]
+    assert gate["passed"]
+    (size,) = [c for c in gate["checks"] if c["name"] == "held_out_size"]
+    assert not size["passed"] and not size["blocking"]
     assert (
         await client.post(f"/api/v1/intuitions/{model_id}/draft/promote", headers=auth, json={})
-    ).status_code == 409
-    assert (
-        await client.post(
-            f"/api/v1/intuitions/{model_id}/draft/promote", headers=auth, json={"force": True}
-        )
     ).status_code == 200
     predicted = await client.post(
         f"/api/v1/intuitions/{model_id}/predict",

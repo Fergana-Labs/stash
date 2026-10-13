@@ -2,8 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, expect, it, vi } from "vitest";
 import EvalWorkspace from "./EvalWorkspace";
 import CreateEval from "./CreateEval";
+import { ApiError } from "@/lib/api";
 
-const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn(), imFeedback: vi.fn(), imMonitoring: vi.fn() }));
+const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn(), imFeedback: vi.fn(), imMonitoring: vi.fn(), imImproveStatus: vi.fn(), imStartImprove: vi.fn(), imLabelQueue: vi.fn(), imRestore: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
 vi.mock("./EvalInput", () => ({ default: ({ initialItem, onChange }: { initialItem?: string; onChange: (item: string) => void }) => <textarea aria-label="Example output" defaultValue={initialItem ?? ""} onChange={(event) => onChange(event.target.value)} /> }));
 
@@ -16,6 +17,7 @@ beforeEach(() => {
   api.imDraftRubric.mockResolvedValue({ rubric: [{ id: "helpful", prompt: "Is it helpful?" }] });
   api.imPredictions.mockResolvedValue([]);
   api.imEditDraft.mockResolvedValue(undefined); api.imPromote.mockResolvedValue(detail);
+  api.imImproveStatus.mockResolvedValue({ job: null }); api.imLabelQueue.mockResolvedValue([]);
 });
 
 it("creates an eval from user criteria without trace-training settings", async () => {
@@ -35,7 +37,7 @@ it("prepares the held-out split before drafting criteria and fits only calibrati
   await waitFor(() => expect(api.imFit).toHaveBeenCalledWith("eval", { train_on: "train", calibrate: true }));
   expect(api.evalPrepare.mock.invocationCallOrder[0]).toBeLessThan(api.imDraftRubric.mock.invocationCallOrder[0]);
   expect(api.imGrade.mock.invocationCallOrder[0]).toBeLessThan(api.imFit.mock.invocationCallOrder[0]);
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
+  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", false));
   expect(api.imFit.mock.invocationCallOrder[0]).toBeLessThan(api.imPromote.mock.invocationCallOrder[0]);
   expect(api.imDraftRubric).toHaveBeenCalledWith("eval", {});
 });
@@ -61,7 +63,7 @@ it("keeps limited-data checks visible without a separate activation step", async
   expect(screen.queryByRole("button", { name: /Activate/ })).not.toBeInTheDocument();
   expect(screen.queryByText("Draft")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
+  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", false));
   expect(await screen.findByRole("status", { name: "Save status" })).toHaveTextContent("Eval saved");
 });
 
@@ -140,6 +142,34 @@ it("opens a disagreement from Monitoring as the matching call in Usage", async (
   expect(await screen.findByText("Driven by polite")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: /Refund sent/ }));
   await waitFor(() => expect(document.getElementById("call-missed-call")).toHaveAttribute("open"));
+});
+
+it("blocks a save that regresses, shows what got worse, and saves anyway on request", async () => {
+  const examples = [{ id: "pinned", item: "Refund sent, sorry!", label: "good", split: "train", note: "", pinned: true }];
+  api.imExamples.mockResolvedValue(examples);
+  const gate = { passed: false, checks: [{ name: "pinned_examples", passed: false, blocking: true, detail: "0 of 1 pinned examples correct" }, { name: "held_out_size", passed: false, blocking: false, detail: "1 held-out examples" }], incumbent: null, active_version: 1, flips: [{ example_id: "pinned", label: "good", active: "good", candidate: "bad", pinned: true }] };
+  api.imPromote.mockRejectedValueOnce(new ApiError(409, "The draft fails the promotion gate"));
+  api.imGet.mockResolvedValueOnce(detail).mockResolvedValue({ ...detail, draft: { ...version, gate } });
+  render(<EvalWorkspace id="eval" />);
+  expect(await screen.findByText("Pinned")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  const panel = await screen.findByRole("region", { name: "Regressions" });
+  expect(within(panel).getByText("0 of 1 pinned examples correct")).toBeVisible();
+  expect(within(panel).queryByText("1 held-out examples")).not.toBeInTheDocument();
+  expect(within(panel).getByText("Refund sent, sorry!")).toBeVisible();
+  expect(screen.getAllByText(/Not saved/).length).toBeGreaterThan(0);
+  fireEvent.click(within(panel).getByRole("button", { name: "Save anyway" }));
+  await waitFor(() => expect(api.imPromote).toHaveBeenLastCalledWith("eval", true));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Regressions" })).not.toBeInTheDocument());
+});
+
+it("pins an example as a regression test from its inspector", async () => {
+  api.imExamples.mockResolvedValue([{ id: "ex", item: "A reply", label: "good", split: "train", note: "" }]);
+  api.imEditExample.mockResolvedValue({});
+  render(<EvalWorkspace id="eval" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Inspect example 1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Pin as a regression test/ }));
+  await waitFor(() => expect(api.imEditExample).toHaveBeenCalledWith("eval", "ex", { pinned: true }));
 });
 
 it("downloads saved definitions, fitted heads, frozen seeds, and examples for this eval", async () => {
@@ -276,7 +306,7 @@ it("saves the latest instructions only when Save is clicked and applies them aft
   expect(api.imEditDraft).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Save instructions" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", true));
+  await waitFor(() => expect(api.imPromote).toHaveBeenCalledWith("eval", false));
   expect(api.imEditDraft).toHaveBeenNthCalledWith(1, "eval", { description: "Latest instructions" });
   expect(api.imEditDraft.mock.invocationCallOrder[0]).toBeLessThan(api.evalPrepare.mock.invocationCallOrder[0]);
   expect(api.imFit.mock.invocationCallOrder[0]).toBeLessThan(api.imPromote.mock.invocationCallOrder[0]);

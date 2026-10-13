@@ -1148,6 +1148,28 @@ def stash_intuition_monitoring(model_id: str, days: int = 30) -> str:
 
 
 @mcp.tool()
+def stash_intuition_label_queue(model_id: str, limit: int = 10) -> str:
+    """Unreviewed calls of an intuition model ranked by how much a label would teach
+    it (it was unsure, the input is unlike its examples, or an outcome already
+    disagrees), each with its reasons. Ask the user to label the top ones, then
+    send each with stash_intuition_review."""
+    with _client() as client:
+        return _json(client._get(f"/api/v1/intuitions/{model_id}/label-queue?limit={limit}"))
+
+
+@mcp.tool()
+def stash_intuition_improve(model_id: str, start: bool = False) -> str:
+    """Search for better rubric questions for a saved intuition model. start=True
+    launches the background search (minutes); call again with start=False to read
+    its progress and result: each candidate's cross-validated accuracy, the winner,
+    and the regression gate. The winner becomes the draft; promote it with
+    stash_intuition_promote (blocked if it regresses unless forced)."""
+    with _client() as client:
+        path = f"/api/v1/intuitions/{model_id}/improve"
+        return _json(client._post(path) if start else client._get(path))
+
+
+@mcp.tool()
 def stash_intuition_review(
     model_id: str, prediction_id: str, label: str = "", dismiss: bool = False
 ) -> str:

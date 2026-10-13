@@ -12,7 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.intuition import builder, demo, feedback, monitoring, providers, service
+from ..services.intuition import (
+    builder,
+    demo,
+    feedback,
+    improve,
+    monitoring,
+    providers,
+    selection,
+    service,
+)
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -89,6 +98,8 @@ class EditExample(Body):
     split: Literal["train", "eval"] | None = None
     needs_review: bool | None = None
     note: str | None = Field(default=None, max_length=2000)
+    # Pinned examples are regression tests: a new version must keep them correct.
+    pinned: bool | None = None
 
 
 class Generate(Body):
@@ -402,3 +413,22 @@ async def give_feedback(model_id: UUID, req: Feedback, user: User):
 @router.get("/{model_id}/monitoring")
 async def monitor(model_id: UUID, user: User, days: int = Query(default=30, ge=1, le=365)):
     return await checked(monitoring.overview(user["id"], model_id, days))
+
+
+@router.get("/{model_id}/label-queue")
+async def label_queue(
+    model_id: UUID, user: User, limit: int = Query(default=selection.QUEUE_SIZE, ge=1, le=100)
+):
+    """Unreviewed calls ranked by how much a label would teach the eval."""
+    return await checked(selection.label_queue(user["id"], model_id, limit))
+
+
+@router.post("/{model_id}/improve", status_code=202)
+async def start_improve(model_id: UUID, user: User):
+    """Search for better criteria in the background; the winner becomes the draft."""
+    return await checked(improve.start(user["id"], model_id))
+
+
+@router.get("/{model_id}/improve")
+async def improve_status(model_id: UUID, user: User):
+    return {"job": await checked(improve.latest(user["id"], model_id))}

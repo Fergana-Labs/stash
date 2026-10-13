@@ -518,3 +518,20 @@ class Stash:
 
     def eval_monitoring(self, eval_id: str, days: int = 30) -> dict:
         return self._get(f"/api/v1/intuitions/{eval_id}/monitoring", days=days)
+
+    def eval_label_queue(self, eval_id: str, limit: int = 20) -> list:
+        """Unreviewed calls ranked by how much a label would teach the eval."""
+        return self._get(f"/api/v1/intuitions/{eval_id}/label-queue", limit=limit)
+
+    def eval_improve(self, eval_id: str) -> dict:
+        """Start a background search for better criteria; poll with ``eval_improve_status``."""
+        return self._post(f"/api/v1/intuitions/{eval_id}/improve")
+
+    def eval_improve_status(self, eval_id: str) -> dict | None:
+        return self._get(f"/api/v1/intuitions/{eval_id}/improve")["job"]
+
+    def eval_pin(self, eval_id: str, example_id: str, pinned: bool = True) -> dict:
+        """Pin an example as a regression test: new versions must keep it correct."""
+        return self._patch(
+            f"/api/v1/intuitions/{eval_id}/examples/{example_id}", json={"pinned": pinned}
+        )

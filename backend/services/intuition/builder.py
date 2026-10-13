@@ -13,7 +13,7 @@ from uuid import UUID
 
 from .. import llm
 from ..rm import traces
-from . import providers, service
+from . import providers, selection, service
 
 MAX_BYTES = 2 * 1024 * 1024
 MAX_TEXT = 50000
@@ -140,7 +140,7 @@ async def prepare(owner_id: UUID, model_id: UUID) -> dict:
         )
     await service.ensure_draft(owner_id, model_id)
     return await service.update_draft(
-        owner_id, model_id, {"seed_example_ids": [e["id"] for e in train[:20]]}
+        owner_id, model_id, {"seed_example_ids": [e["id"] for e in selection.seeds(train)]}
     )
 
 
