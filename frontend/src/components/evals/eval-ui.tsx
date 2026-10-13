@@ -25,7 +25,7 @@ export function examplePreview(item: Item): string {
 
 
 export function InlinePanel({ title, onClose, children, disabled = false, className }: { title: string; onClose: () => void; children: ReactNode; disabled?: boolean; className?: string }) {
-  return <section aria-label={title} className={cn("space-y-3 rounded border border-border bg-surface/30 p-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-2 duration-150", className)} onKeyDown={(event) => { if (event.key === "Escape" && !disabled) { event.stopPropagation(); onClose(); } }}>
+  return <section aria-label={title} className={cn("grid gap-3 rounded border border-border bg-surface/30 p-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-2 duration-150", className)} onKeyDown={(event) => { if (event.key === "Escape" && !disabled) { event.stopPropagation(); onClose(); } }}>
     <header className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{title}</h3><Button variant="ghost" size="icon-xs" aria-label={`Close ${title}`} disabled={disabled} onClick={onClose}><X /></Button></header>
     {children}
   </section>;

@@ -5,7 +5,7 @@ import { Check, Circle, Download, Loader2, MoreHorizontal, Plug, Plus, X } from 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { evalInputClass as inputClass, InlinePanel, examplePreview } from "./eval-ui";
+import { evalInputClass as inputClass, evalSurfaceClass, InlinePanel, examplePreview } from "./eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import ItemView from "@/components/intuitions/ItemView";
 import AgentUsagePanel from "@/components/intuitions/AgentUsagePanel";
@@ -110,7 +110,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
       <h1 className="text-lg font-semibold tracking-tight">{detail.model.name}</h1>
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="Eval options"><MoreHorizontal /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuContent align="end" className={`${evalSurfaceClass} w-40 rounded-[4px] shadow-sm`}>
           <DropdownMenuItem disabled={!!busy} onSelect={() => {
             const blob = new Blob([JSON.stringify({ format: "stash-eval", format_version: 1, exported_at: new Date().toISOString(), ...detail, examples }, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
@@ -150,7 +150,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
           <Button size="sm" variant="outline" disabled={!!busy} aria-expanded={addOpen} aria-controls="add-example-panel" onClick={() => { if (addOpen) { closeAdd(); return; } setNewLabel(labels[0] ?? ""); setError(""); setAddOpen(true); }}><Plus />Add example</Button>
         </div>
         {addOpen && <div id="add-example-panel" className="border-t border-border"><InlinePanel title="Add example" onClose={closeAdd} disabled={!!busy} className="rounded-none border-0">        <EvalInput key={inputRevision} onChange={setItem} onTrace={setTraceId} disabled={!!busy} />
-        <label className="space-y-1.5"><span className="block text-xs font-medium">How should the eval use this?</span><Select aria-label="Example label" value={newLabel} onChange={setNewLabel} disabled={!!busy} options={[...labels.map((label) => ({ value: label, label })), { value: "", label: "Reference material" }]} className="h-8 px-3 text-xs" /></label>
+        <label className="block space-y-1.5"><span className="block text-xs font-medium">How should the eval use this?</span><Select contentClassName={`${evalSurfaceClass} rounded-[4px] shadow-sm`} aria-label="Example label" value={newLabel} onChange={setNewLabel} disabled={!!busy} options={[...labels.map((label) => ({ value: label, label })), { value: "", label: "Reference material" }]} className="h-8 px-3 text-xs" /></label>
         {newLabel && <textarea aria-label="Example feedback" rows={2} maxLength={2000} className={inputClass} placeholder="Why is this good or bad? What should change?" value={note} disabled={!!busy} onChange={(e) => setNote(e.target.value)} />}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={!!busy} onClick={closeAdd}>Cancel</Button><Button size="sm" disabled={!!busy || item === null} onClick={() => void add(newLabel || null)}>{busy ? "Saving…" : "Add example"}</Button></div>
@@ -160,12 +160,12 @@ export default function EvalWorkspace({ id }: { id: string }) {
             {tableExamples.map((example, index) => <Fragment key={example.id}><tr className="h-12 cursor-pointer border-b border-border last:border-0 hover:bg-surface [&>td]:px-3" onClick={(event) => { if (!(event.target as HTMLElement).closest("button,[role=option],[role=listbox]")) toggleExample(example.id); }}>
               <td className="tabular-nums text-muted-foreground">{index + 1}</td>
               <td><button className="block w-full py-2 text-left" onClick={() => toggleExample(example.id)} aria-expanded={selectedExample === example.id} aria-controls={`example-${example.id}`} aria-label={`Inspect example ${index + 1}`}><span className="line-clamp-2 leading-5">{examplePreview(example.item)}</span></button></td>
-              <td>{example.label === null ? <span className="text-muted-foreground">—</span> : <Select aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-6 w-fit px-2 text-[11px]" />}</td>
+              <td>{example.label === null ? <span className="text-muted-foreground">—</span> : <Select contentClassName={`${evalSurfaceClass} rounded-[4px] shadow-sm`} aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-6 w-fit px-2 text-[11px]" />}</td>
               <td><span className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">{example.label === null ? "Reference" : example.split === "eval" ? "Holdout" : "Calibration"}</span></td>
               <td><span className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">{example.label === null ? "—" : example.note || "—"}</span></td>
             </tr>{selectedExample === example.id && <tr id={`example-${example.id}`}><td colSpan={5} className="border-b border-border p-0"><InlinePanel title={`Example ${index + 1}`} onClose={() => setSelectedExample(null)} className="rounded-none border-0">          <div className="rounded border border-border bg-surface/50 p-3"><ItemView item={example.item} clamp={false} /></div>
           {example.label !== null && <>
-            <label className="space-y-1.5"><span className="block text-xs font-medium">Expected label</span><Select aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-7 px-2 text-xs" /></label>
+            <label className="block space-y-1.5"><span className="block text-xs font-medium">Expected label</span><Select contentClassName={`${evalSurfaceClass} rounded-[4px] shadow-sm`} aria-label={`Label for example ${example.id}`} value={example.label} onChange={(label) => void action("Saving correction…", () => imEditExample(id, example.id, { label, needs_review: false }))} disabled={!!busy} options={labels.map((label) => ({ value: label, label }))} className="h-7 px-2 text-xs" /></label>
             <textarea aria-label={`Feedback for example ${example.id}`} maxLength={2000} rows={3} className={inputClass} disabled={!!busy} value={exampleFeedback[example.id] ?? example.note} onChange={(e) => setExampleFeedback({ ...exampleFeedback, [example.id]: e.target.value })} placeholder="Explain what makes this good or bad…" />
             <div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={!!busy || exampleFeedback[example.id] === undefined || exampleFeedback[example.id] === example.note} onClick={() => void action("Saving feedback…", () => imEditExample(id, example.id, { note: exampleFeedback[example.id] }))}>Save feedback</Button><Button size="sm" disabled={!!busy} onClick={() => { setTestItem(example.item); setSelectedExample(null); setView("test"); }}>Test this example</Button></div>
           </>}

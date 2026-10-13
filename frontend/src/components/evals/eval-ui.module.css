@@ -13,7 +13,7 @@
   --muted: #f4f4f5;
   --muted-foreground: #71717a;
   --input: #e4e4e7;
-  --radius: 0.3rem;
+  --radius: 4px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text-primary);
 }
@@ -46,4 +46,13 @@
 
 .surface :global([data-eval-tab]) {
   border-radius: 0;
+}
+
+.surface :global([role="combobox"]) {
+  border-radius: 4px;
+}
+
+.surface :global([role="option"]),
+.surface :global([role="menuitem"]) {
+  border-radius: 2px;
 }
