@@ -5,7 +5,7 @@ import CreateEval from "./CreateEval";
 
 const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditDraft: vi.fn(), evalPrepare: vi.fn(), imDraftRubric: vi.fn(), imGrade: vi.fn(), imFit: vi.fn(), imPromote: vi.fn(), evalAddExamples: vi.fn(), evalAddTrace: vi.fn(), imEditExample: vi.fn(), imPredict: vi.fn(), imPredictions: vi.fn(), imReview: vi.fn(), imCreate: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
-vi.mock("./EvalInput", () => ({ default: ({ onChange }: { onChange: (item: string) => void }) => <textarea aria-label="Example output" onChange={(event) => onChange(event.target.value)} /> }));
+vi.mock("./EvalInput", () => ({ default: ({ initialItem, onChange }: { initialItem?: string; onChange: (item: string) => void }) => <textarea aria-label="Example output" defaultValue={initialItem ?? ""} onChange={(event) => onChange(event.target.value)} /> }));
 
 const version = { id: "draft", status: "draft", number: 1, description: "Be helpful", labels: [{ id: "good" }, { id: "bad" }], rubric: [], head: null, head_stale: true, metrics: null, gate: null };
 const detail = { model: { id: "eval", name: "Replies", output_type: "choice" }, draft: version, active: null, judge: { configured: true }, versions: [], counts: {} };
@@ -190,8 +190,13 @@ it("opens a compact example row for feedback and tests the selected content", as
   await waitFor(() => expect(form.getByRole("button", { name: "Open in test" })).toBeEnabled());
   fireEvent.click(form.getByRole("button", { name: "Open in test" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Example output" })).toHaveValue("A concrete next step");
+  expect(api.imPredict).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
   await waitFor(() => expect(api.imPredict).toHaveBeenCalledWith("eval", "A concrete next step", "draft"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Example output" }), { target: { value: "Edited output" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
+  await waitFor(() => expect(api.imPredict).toHaveBeenLastCalledWith("eval", "Edited output", "draft"));
 });
 
 

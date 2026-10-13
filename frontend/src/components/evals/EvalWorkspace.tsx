@@ -268,7 +268,7 @@ function EvalTest({ id, detail, initialItem }: { id: string; detail: ModelDetail
     if (item === null) return; setBusy(true); setError(""); setResult(null); setReviewed(false);
     try { setResult(await imPredict(id, item, version?.status === "draft" ? "draft" : "active")); }
     catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-  }}>{busy ? "Evaluating…" : "Run eval"}</Button></div>{initialItem && item === initialItem && <ItemView item={initialItem} />}<EvalInput disabled={busy} onDetail={setTrace} onChange={(next) => { setItem(next); setResult(null); setError(""); }} />{!version?.head && <p className="text-xs text-muted-foreground">Calibrate the eval to start testing.</p>}</section>
+  }}>{busy ? "Evaluating…" : "Run eval"}</Button></div><EvalInput initialItem={initialItem} disabled={busy} onDetail={setTrace} onChange={(next) => { setItem(next); setResult(null); setError(""); }} />{!version?.head && <p className="text-xs text-muted-foreground">Calibrate the eval to start testing.</p>}</section>
     <section className="min-w-0 space-y-3 rounded border border-border p-4"><h2 className="text-sm font-semibold">Scorecard</h2>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}{busy && <p role="status" className="text-xs">Evaluating input…</p>}{result ? <>
       <div className="flex items-baseline gap-3"><strong className="text-xl">{result.label}</strong><span className="text-xs text-muted-foreground">{Math.round(result.confidence * 100)}% confidence · v{result.version}</span></div>
       <ProbabilityBars probabilities={result.probabilities} order={labels} highlight={result.label} />

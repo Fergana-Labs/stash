@@ -25,7 +25,7 @@ For API file inputs, upload with `POST /api/v1/intuitions/inputs` (multipart `fi
 - Open an eval from anywhere on its list row to visit its dedicated page. The page’s three-dot menu offers Download and Connect.
 - Download a JSON snapshot of the saved model definition, active/draft calibration heads and frozen seeds, validation results, and examples. This is a definition export; inference still uses the configured judge provider.
 - Connect expands this eval’s API and MCP examples beneath the page toolbar.
-- Open in test preloads a saved example into the test tab; Run eval explicitly scores it. This inspects criterion answers and decisions, rather than providing independent evidence on examples used to build the eval. Test against any new output or recorded trace independently of eval creation.
+- Open in test preloads a saved example directly into the editable test input; Run eval explicitly scores it. Structured examples appear as JSON and retain their object input type when edited; invalid JSON disables the run until corrected. This inspects criterion answers and decisions, rather than providing independent evidence on examples used to build the eval. Test against any new output or recorded trace independently of eval creation.
 - Activate eval promotes a fitted draft to the version served by normal API calls. Manual draft tests do not require activation. Failed activation checks retain an explicit override.
 - Run an activated eval from the trace viewer and display its scorecard.
 - Call the versioned prediction API for completed-run evals, proposed-action guardrails, or output verification in an agent loop. The existing API and MCP contracts are retained.
@@ -52,3 +52,5 @@ These screenshots use a separate local database and explicitly labeled demo data
 ![Example details expanded directly beneath their row](assets/eval-inline-example.png)
 
 ![Autosaved instructions, inline example inspector, and separate held-out checks and criteria](assets/eval-autosave-checks.png)
+
+![Selected example preloaded directly into the editable test input](assets/eval-preloaded-input.png)
