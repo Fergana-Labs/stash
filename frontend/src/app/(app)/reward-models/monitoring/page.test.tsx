@@ -20,8 +20,9 @@ beforeEach(() => { vi.clearAllMocks(); api.overview.mockResolvedValue(overview);
 
 it("starts with agents, shows reward units and does not imply an accepted prompt", async () => {
   render(<MonitoringPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Codex" }));
   expect(await screen.findByText("+0.300")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText("No prompt optimization is connected to this agent yet.")).toBeVisible();
   expect(screen.getByText("Not tracked")).toBeVisible();
   expect(screen.getByText("No GEPA trials recorded yet.")).toBeVisible();
@@ -34,15 +35,17 @@ it("selects an agent anywhere on its row and clears stale rewards immediately", 
   let finish!: (data: RewardHistory) => void;
   api.history.mockImplementation(async (agent, model) => agent === "codex" && model === "one" ? history : new Promise((resolve) => { finish = resolve; }));
   render(<MonitoringPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Codex" }));
   expect(await screen.findByText("+0.300")).toBeVisible();
   const row = screen.getByRole("button", { name: "Support" }).closest("tr")!;
   fireEvent.click(within(row).getByRole("cell", { name: "10" }));
   await waitFor(() => expect(api.history).toHaveBeenCalledWith("support", "one", 20, undefined));
-  expect(screen.queryByText("+0.300")).not.toBeInTheDocument();
+  const supportPanel = within(screen.getByRole("region", { name: "Support monitoring" }));
+  expect(supportPanel.queryByText("+0.300")).not.toBeInTheDocument();
   await act(async () => finish({ ...history, agent: "support", current_n: 1, previous_n: 0, current_mean: -0.2, points: [] }));
   expect(screen.getByText("-0.200")).toBeVisible();
-  expect(screen.queryByText("+0.300")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("combobox", { name: "Reward model" }));
+  expect(supportPanel.queryByText("+0.300")).not.toBeInTheDocument();
+  fireEvent.click(supportPanel.getByRole("combobox", { name: "Reward model" }));
   fireEvent.click(await screen.findByRole("option", { name: "Model two" }));
   await waitFor(() => expect(api.history).toHaveBeenCalledWith("support", "two", 20, undefined));
   expect(screen.queryByText("-0.200")).not.toBeInTheDocument();
@@ -59,6 +62,7 @@ it("shows accepted and rejected trials, baseline diffs, outcomes, and prompt usa
     rounds: [{ id: "trial1", number: 1, baseline_id: "r1", candidate_id: "r2", status: "promoted", report: { reason: "Reward improved and business guardrail passed", arms: { baseline: { reward: { mean: 0.1 }, completed: 20, business: { mean: 0.8 } }, candidate: { reward: { mean: 0.4 }, completed: 20, business: { n: 20, mean: 0.95 } } }, reward_change: { mean: 0.3, low: 0.15, high: 0.45 } } }, { id: "trial2", number: 2, baseline_id: "r2", candidate_id: "r3", status: "rejected", report: { reason: "Reward did not improve", arms: {} } }], events: [],
   });
   render(<MonitoringPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Codex" }));
   expect((await screen.findAllByText("Require VIN confirmation"))[0]).toBeVisible();
   expect(screen.getByText("Reward improved and business guardrail passed")).toBeVisible();
   expect(screen.getByText("Reward did not improve")).toBeVisible();
@@ -81,4 +85,27 @@ it("keeps GEPA selection separate from accepted and delivered agent prompts", as
   expect(screen.queryByText("accepted", { exact: true })).not.toBeInTheDocument();
   expect(screen.getByText(/agent delivery and acceptance are not recorded here/)).toBeVisible();
   expect(api.gepa).toHaveBeenCalledWith("gepa");
+});
+
+it("expands each agent directly below its row and toggles from both the name and chevron", async () => {
+  render(<MonitoringPage />);
+  const codex = await screen.findByRole("button", { name: "Codex" });
+  expect(codex).toHaveAttribute("aria-expanded", "false");
+  expect(api.history).not.toHaveBeenCalled();
+  const codexRow = codex.closest("tr")!;
+  const supportRow = screen.getByRole("button", { name: "Support" }).closest("tr")!;
+  fireEvent.click(codex);
+  const panel = await screen.findByRole("region", { name: "Codex monitoring" });
+  const panelRow = panel.closest("tr")!;
+  expect(codexRow.nextElementSibling).toBe(panelRow);
+  expect(panelRow.nextElementSibling).toBe(supportRow);
+  expect(panel.closest("td")).toHaveAttribute("colspan", "5");
+  expect(screen.queryByText("Performance across recorded runs")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Support details" }));
+  expect(await screen.findByRole("region", { name: "Support monitoring" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "Codex monitoring" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Codex details" }));
+  expect(screen.queryByRole("region", { name: "Codex monitoring" })).not.toBeInTheDocument();
+  expect(codexRow.nextElementSibling).toBe(supportRow);
+  expect(screen.getByRole("region", { name: "Support monitoring" })).toBeVisible();
 });
