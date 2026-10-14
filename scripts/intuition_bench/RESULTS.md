@@ -12,39 +12,6 @@ Accuracy on a fixed held-out test set per task, with 95% Wilson intervals. Every
 | Negative emotions in comments (GoEmotions, multi-label) | multi-label: any of 5 emotions, or none | 60 | 10% <sub>[5%–20%]</sub> | 18% <sub>[11%–30%]</sub> | 27% <sub>[17%–39%]</sub> | 23% <sub>[14%–35%]</sub> | 20% <sub>[12%–32%]</sub> | 37% <sub>[26%–49%]</sub> |
 | Needs my action (Sam's inbox, self-supervised) | binary, personal, labels from behavior | 22 | 86% <sub>[67%–95%]</sub> | 82% <sub>[61%–93%]</sub> | 95% <sub>[78%–99%]</sub> | 86% <sub>[67%–95%]</sub> | 86% <sub>[67%–95%]</sub> | 82% <sub>[61%–93%]</sub> |
 
-## Run
-
-2026-10-14, one draw per budget, Jev `JEV_MODEL` as the judge, Claude Sonnet (the backend's QUALITY tier)
-for the baseline. Test sets are small (20–64): differences under ~15 points are within noise.
-Reproduce with `python -m scripts.intuition_bench.run --owner <user> --budgets 8,32`, then
-`python -m scripts.intuition_bench.report`.
-
-## What it says
-
-1. **The judge is the ceiling.** Where Jev alone is weak, the intuition stays weak: GSM8K grading
-   (Jev 67%, intuition 72%, Claude 90–93%) and AgentRewardBench (75% / 78% / 80–83%). Labels and
-   criteria add a few points over Jev but cannot close a gap in the judge's own reasoning. This is
-   the one clearly significant result.
-2. **At 8–32 labels the head mostly reproduces "Jev + references".** The combined model equals the
-   Jev-with-references signal on 5 of 7 tasks; the verdict prior is doing its job (never worse than
-   the judge) but rarely finds more.
-3. **Multi-label is where the learned head wins.** GoEmotions exact match: 37% at 32 labels vs
-   17–27% for everything else, with the best per-emotion accuracy on 4 of 5 emotions. Per-issue
-   thresholds learned from labels matter more than a better prompt.
-4. **Calibration is mixed:** best or near-best on support, Banking77, GoEmotions and the inbox task;
-   worse than Claude on GSM8K and AgentRewardBench, again where the judge is weak.
-5. **Subjective taste is hard for everyone:** one labeler's summary preferences sit at 58–67% for
-   all arms; neither prompting nor 32 labels learn that taste.
-6. **The probe only helps with more data** (AgentRewardBench 78%, Banking77 84% alone at 32 labels;
-   near chance at 8).
-
-## What to change
-
-- Let the judge be swappable or stacked: add a frontier-model verdict as one more signal, so the head
-  can weigh it against Jev. On GSM8K and AgentRewardBench that alone should close most of the gap.
-- Report cost and latency next to accuracy (Jev is the cheap, fast path; this run did not measure it).
-- Rerun with 3+ draws per budget and larger test sets before reading small differences.
-
 ## Calibration (expected calibration error, lower is better)
 
 | Task | Jev zero-shot | Claude, no examples | Claude + 8 examples | **Intuition, 8 labels** | Claude + 32 examples | **Intuition, 32 labels** |
