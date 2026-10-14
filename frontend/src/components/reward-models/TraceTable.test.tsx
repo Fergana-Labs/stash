@@ -201,3 +201,19 @@ it("keeps the range anchor attached to its trace after a background refresh", ()
   fireEvent.click(screen.getByRole("checkbox", { name: "Select Trace 20" }), { shiftKey: true });
   expect(change).toHaveBeenLastCalledWith(new Set(["10", "20"]));
 });
+
+it("shows search matches in relevance order with their quote and behavior chips", () => {
+  const result = (id: string, quote = "") => ({
+    trace_id: id, title: `Trace ${id}`, created_at: "2026-09-29T00:00:00Z", agent: null, input: null, output: null, score: null, outcome: "error",
+    segments: quote ? [{ start_idx: 2, end_idx: 3, score: 0.9, snippet: quote, quote }] : [],
+    behaviors: [{ id: `h${id}`, behavior_id: "b1", name: "Tool error", actor: "environment" as const, start_idx: 2, end_idx: 2, review: null, confidence: null }],
+  });
+  render(<TraceTable traces={traces} selected={new Set()} onSelectedChange={() => {}} mode="browse"
+    matches={{ results: [result("3", "the API timed out"), result("20")], mode: "semantic", query: "timed out", behaviors: [], loading: false }} />);
+  const rows = screen.getAllByRole("row").slice(1);
+  expect(rows.map((row) => within(row).getAllByRole("link")[0].textContent)).toEqual(["Trace 3", "Trace 20"]);
+  expect(within(rows[0]).getByText("steps 3–4")).toBeVisible();
+  expect(within(rows[0]).getByText("Tool error")).toBeVisible();
+  expect(within(rows[0]).getByText("Error")).toBeVisible();
+  expect(screen.getByText("2 traces · semantic")).toBeVisible();
+});

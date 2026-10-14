@@ -43,7 +43,7 @@ export default function BehaviorClient({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [confirmedWindows, setConfirmedWindows] = useState<{ trace_id: string; start_idx: number; end_idx: number }[]>([]);
-  useBreadcrumbs([{ label: "Behaviors", href: "/reward-models/behaviors" }, { label: behavior?.name ?? "Behavior" }], `behavior-${id}-${behavior?.name ?? ""}`);
+  useBreadcrumbs([{ label: "Traces", href: "/reward-models" }, { label: "Behaviors", href: `/reward-models?behavior=${encodeURIComponent(id)}` }, { label: behavior?.name ?? "Behavior" }], `behavior-${id}-${behavior?.name ?? ""}`);
 
   const load = useCallback(async () => {
     try {
@@ -94,7 +94,7 @@ export default function BehaviorClient({ id }: { id: string }) {
     if (!await confirm({ title: `Delete “${behavior.name}”?`, body: "Its hits and alert history are deleted too.", confirmLabel: "Delete" })) return;
     try {
       await deleteBehavior(id);
-      router.push("/reward-models/behaviors");
+      router.push("/reward-models");
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -256,6 +256,19 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
   const [rows, setRows] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // Reviewer reasons by hit ID. Search rows don't carry them, so they come from the hits list.
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [asking, setAsking] = useState<{ hitId: string; verdict: Verdict } | null>(null);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    // Notes are an annotation on the table; it works without them.
+    listBehaviorHits(behaviorId, { limit: 200 }).then(({ hits }) => {
+      if (!cancelled) setNotes(Object.fromEntries(hits.filter((h) => h.review_note).map((h) => [h.id, h.review_note!])));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [behaviorId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,6 +290,25 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
     try {
       await reviewHit(hit.id, verdict);
       setRows((cur) => cur?.map((r) => ({ ...r, behaviors: r.behaviors.map((b) => b.id === hit.id ? { ...b, review: verdict } : b) })) ?? cur);
+      setNotes((cur) => { const next = { ...cur }; delete next[hit.id]; return next; });
+      setDraft("");
+      setAsking(verdict ? { hitId: hit.id, verdict } : null);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** The optional reason after a verdict; the detector reads it as an example of where the line is. */
+  async function saveNote() {
+    const note = draft.trim();
+    if (!asking || !note) { setAsking(null); return; }
+    setBusy(asking.hitId);
+    try {
+      await reviewHit(asking.hitId, asking.verdict, note);
+      setNotes((cur) => ({ ...cur, [asking.hitId]: note }));
+      setAsking(null);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -297,7 +329,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
     </div>
     {error && <p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
     <div className="overflow-x-auto rounded border border-border"><table aria-label="Hits" className="w-full min-w-[860px] table-fixed text-left text-xs">
-      <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th className="w-32">Timestamp</th><th className="w-28">Agent</th><th>Input</th><th>Output</th><th className="w-64 text-right">Review</th></tr></thead>
+      <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th className="w-32">Timestamp</th><th className="w-28">Agent</th><th>Input</th><th>Output</th><th className="w-80 text-right">Review</th></tr></thead>
       <tbody>
         {shown.map((r) => {
           const hit = hitOf(r);
@@ -312,7 +344,14 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
               {hit.review !== "confirmed" && <Button size="xs" variant="outline" disabled={busy === hit.id} onClick={() => void review(hit, "confirmed")}><Check />Confirm</Button>}
               {hit.review !== "rejected" && <Button size="xs" variant="outline" disabled={busy === hit.id} onClick={() => void review(hit, "rejected")}><X />Reject</Button>}
               {hit.review && <Button size="xs" variant="ghost" disabled={busy === hit.id} onClick={() => void review(hit, null)}>Undo</Button>}
-            </div>}</td>
+            </div>}
+            {hit && asking?.hitId === hit.id && <form className="mt-1.5 flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); void saveNote(); }}>
+              <input autoFocus aria-label="Why? (teaches the detector)" placeholder="Why? (teaches the detector)" value={draft} onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setAsking(null); }} className="h-6 min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 text-[11px] outline-none focus-visible:border-ring" />
+              <Button type="submit" size="xs" disabled={busy === hit.id || !draft.trim()}>Save</Button>
+              <Button type="button" size="xs" variant="ghost" onClick={() => setAsking(null)}>Skip</Button>
+            </form>}
+            {hit?.review && notes[hit.id] && asking?.hitId !== hit.id && <p className="mt-1 text-left text-[11px] text-muted-foreground" title="Reviewer’s reason">“{notes[hit.id]}”</p>}</td>
           </tr>;
         })}
         {!rows && !error && <tr><td colSpan={5} className="px-3 py-6"><span role="status" className="text-muted-foreground">Loading hits…</span></td></tr>}

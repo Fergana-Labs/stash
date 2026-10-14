@@ -35,14 +35,14 @@ export function SeverityTag({ severity }: { severity: Severity }) {
 
 export function BehaviorChip({ name, actor, count, onClick, title }: { name: string; actor: Actor; count?: number; onClick?: () => void; title?: string }) {
   const body = <><span className={cn("size-1.5 shrink-0 rounded-full", ACTOR_COLOR[actor].dot)} /><span className="truncate">{name}</span>{count !== undefined && count > 1 && <span className="shrink-0 tabular-nums text-muted-foreground">×{count}</span>}</>;
-  const cls = "inline-flex max-w-48 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]";
+  const cls = "inline-flex min-w-0 max-w-48 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-[11px]";
   return onClick
     ? <button type="button" title={title} onClick={onClick} className={cn(cls, "hover:border-foreground/30")}>{body}</button>
     : <span title={title} className={cls}>{body}</span>;
 }
 
 /** One chip per behavior (×count), at most `max`, then "+N". Each links to the behavior's first window. */
-export function BehaviorChips({ traceId, behaviors, max = 3 }: { traceId: string; behaviors: SearchBehavior[]; max?: number }) {
+export function BehaviorChips({ traceId, behaviors, max = 3, className }: { traceId: string; behaviors: SearchBehavior[]; max?: number; className?: string }) {
   const byBehavior = new Map<string, { first: SearchBehavior; windows: SearchBehavior[] }>();
   for (const b of [...behaviors].sort((x, y) => x.start_idx - y.start_idx)) {
     const entry = byBehavior.get(b.behavior_id);
@@ -51,11 +51,11 @@ export function BehaviorChips({ traceId, behaviors, max = 3 }: { traceId: string
   const all = [...byBehavior.values()];
   const shown = all.slice(0, max);
   const rest = all.slice(max);
-  return <div className="flex flex-wrap gap-1">
-    {shown.map(({ first, windows }) => <Link key={first.behavior_id} href={traceStepHref(traceId, first.start_idx)} title={windows.map((w) => stepWindow(w.start_idx, w.end_idx)).join(", ")}>
+  return <div className={cn("flex flex-wrap gap-1", className)}>
+    {shown.map(({ first, windows }) => <Link key={first.behavior_id} className="flex min-w-0" href={traceStepHref(traceId, first.start_idx)} title={windows.map((w) => stepWindow(w.start_idx, w.end_idx)).join(", ")}>
       <BehaviorChip name={first.name} actor={first.actor} count={windows.length} />
     </Link>)}
-    {rest.length > 0 && <span title={rest.map((r) => r.first.name).join(", ")} className="inline-flex items-center rounded border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">+{rest.length}</span>}
+    {rest.length > 0 && <span title={rest.map((r) => r.first.name).join(", ")} className="inline-flex shrink-0 items-center rounded border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">+{rest.length}</span>}
   </div>;
 }
 
@@ -204,7 +204,7 @@ export function BehaviorMultiSelect({ behaviors, selected, onChange }: { behavio
   const names = behaviors.filter((b) => selected.has(b.id)).map((b) => b.name);
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <button type="button" aria-label="Behavior filter" className={cn("inline-flex h-8 max-w-64 items-center gap-1.5 rounded-md border border-border px-2 text-xs", selected.size ? "text-foreground" : "text-muted-foreground")}>
+      <button type="button" aria-label="Behavior filter" className={cn("inline-flex h-7 max-w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[12px]", selected.size ? "text-foreground" : "text-muted-foreground")}>
         <span className="truncate">{!selected.size ? "Behavior: any" : names.length === 1 ? names[0] : `${names.length} behaviors`}</span><ChevronDown className="size-3 shrink-0" />
       </button>
     </DropdownMenuTrigger>
@@ -336,6 +336,15 @@ export function ReleaseDialog({ open, onOpenChange, agents, onCreated }: { open:
 }
 
 export interface TraceWindow { trace_id: string; start_idx: number; end_idx: number }
+
+/** The window a search row stands for: the best matching segment, else its first (filtered) behavior hit, else the trace start. */
+export function searchResultWindow(r: SearchResult, filter: Set<string> = new Set()): TraceWindow {
+  const seg = r.segments[0];
+  if (seg) return { trace_id: r.trace_id, start_idx: seg.start_idx, end_idx: seg.end_idx };
+  const hit = r.behaviors.find((b) => filter.has(b.behavior_id)) ?? r.behaviors[0];
+  if (hit) return { trace_id: r.trace_id, start_idx: hit.start_idx, end_idx: hit.end_idx };
+  return { trace_id: r.trace_id, start_idx: 0, end_idx: 0 };
+}
 
 /** Add trace windows to an existing eval as labeled examples. */
 export function SaveToEvalDialog({ open, onOpenChange, windows, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; windows: TraceWindow[]; onSaved?: () => void }) {

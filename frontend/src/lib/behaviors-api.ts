@@ -45,6 +45,8 @@ export interface Evidence { idx: number; quote: string }
 export interface BehaviorHit {
   id: string; behavior_id: string; trace_id: string; start_idx: number; end_idx: number; confidence: number | null;
   evidence: Evidence[] | null; note: string | null; source: string; review: Verdict | null; created_at: string;
+  /** Why the reviewer confirmed or rejected it; the detector learns from it. */
+  review_note?: string | null;
   behavior_name?: string; actor?: Actor; severity?: Severity; trace_title?: string | null; trace_created_at?: string;
 }
 
