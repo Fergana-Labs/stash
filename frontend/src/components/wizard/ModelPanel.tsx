@@ -39,7 +39,7 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
           <p className="m-0 mt-2 text-[13px] font-semibold">{detail.model.name}</p>
           <p className="m-0 mt-0.5 line-clamp-4 text-[11.5px] text-muted-foreground">{v.description}</p>
           <div className="mt-2 flex flex-wrap gap-1">
-            {(detail.model.output_type === "choice" ? v.labels.map((l) => l.id) : ["good", "bad"]).map((l) => <span key={l} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10.5px]">{l}</span>)}
+            {(detail.model.output_type === "preference" ? ["good", "bad"] : v.labels.map((l) => l.id)).map((l) => <span key={l} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10.5px]">{l}</span>)}
           </div>
           <ul className="m-0 mt-4 list-none space-y-2.5 p-0">
             <Step done label="Goal and labels" />

@@ -1,6 +1,6 @@
-import JudgeWorkspace from "@/components/judge/JudgeWorkspace";
+import Studio from "@/components/judge/Studio";
 
-export default async function EvalPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function IntuitionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <JudgeWorkspace key={id} id={id} />;
+  return <Studio key={id} modelId={id} />;
 }

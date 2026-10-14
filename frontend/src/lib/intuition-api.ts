@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api";
 /** Client for /api/v1/intuitions (backend/routers/intuitions.py). */
 const IM = "/api/v1/intuitions";
 
-export type OutputType = "choice" | "preference";
+export type OutputType = "choice" | "preference" | "multi";
 export type QuestionType = "noul" | "choice" | "score" | "eval" | "probe";
 export type ExampleSource = "human" | "agent" | "generated" | "production";
 export type Split = "train" | "eval";
@@ -198,7 +198,8 @@ export const imRestore = (id: string, versionId: string) => post<ModelDetail>(`$
 export const imExamples = (id: string) => apiFetch<Example[]>(`${IM}/${id}/examples`);
 export const imAddExamples = (id: string, examples: NewExample[], source: ExampleSource = "human") =>
   post<Example[]>(`${IM}/${id}/examples`, { examples, source });
-export const imGenerate = (id: string, body: { count?: number; guidance?: string }) => post<Example[]>(`${IM}/${id}/examples/generate`, body);
+export const imGenerate = (id: string, body: { count?: number; guidance?: string; propose?: boolean }) => post<Example[]>(`${IM}/${id}/examples/generate`, body);
+export const imAcceptSuggestions = (id: string) => post<{ accepted: number }>(`${IM}/${id}/examples/accept-suggestions`);
 export const imEditExample = (id: string, exampleId: string, body: { label?: string | null; split?: Split; needs_review?: boolean; note?: string; pinned?: boolean; calibration?: boolean }) =>
   apiFetch<Example>(`${IM}/${id}/examples/${exampleId}`, { method: "PATCH", body: JSON.stringify(body) });
 export const imDeleteExample = (id: string, exampleId: string) => apiFetch<void>(`${IM}/${id}/examples/${exampleId}`, { method: "DELETE" });

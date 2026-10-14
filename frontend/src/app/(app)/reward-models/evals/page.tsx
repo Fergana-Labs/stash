@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Wand2 } from "lucide-react";
+import { Search, Wand2 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
@@ -11,7 +11,7 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
 
 export default function EvalsPage() {
-  useBreadcrumbs([{ label: "Evals" }], "evals");
+  useBreadcrumbs([{ label: "Intuitions" }], "evals");
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -19,18 +19,18 @@ export default function EvalsPage() {
   const load = useCallback(async () => { try { setModels((await imList()).models); setError(""); } catch (e) { setError(errorMessage(e)); } }, []);
   useEffect(() => { void load(); }, [load]);
   const visible = models?.filter((model) => `${model.name} ${model.active_description ?? model.draft_description ?? ""}`.toLowerCase().includes(query.toLowerCase())) ?? [];
-  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href="/reward-models/wizard"><Wand2 />Build with the wizard</Link></Button><Button size="sm" asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
+  return <EvalPageFrame title="Intuitions" description="Classifiers that decide the way you would: check an agent's work, monitor production, gate regressions, score prompts or reward training." actions={<Button size="sm" asChild><Link href="/reward-models/evals/new"><Wand2 />New intuition</Link></Button>}>
     {error && <p role="alert" className="text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p>}
-    <div className="mb-3 flex items-center justify-between gap-3"><label className="flex h-8 w-64 items-center gap-2 rounded-md border border-border px-2"><Search className="size-3 text-muted-foreground" /><input aria-label="Search evals" placeholder="Search evals…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><span className="text-xs text-muted-foreground">{models ? `${visible.length} evals` : ""}</span></div>
-    <div className="overflow-x-auto rounded border border-border"><table aria-label="Evals" className="w-full min-w-[640px] text-left text-xs"><thead className="border-y border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Eval</th><th>Status</th><th className="text-right">Examples</th><th className="text-right">Holdout agreement</th></tr></thead><tbody>
+    <div className="mb-3 flex items-center justify-between gap-3"><label className="flex h-8 w-64 items-center gap-2 rounded-md border border-border px-2"><Search className="size-3 text-muted-foreground" /><input aria-label="Search intuitions" placeholder="Search intuitions…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><span className="text-xs text-muted-foreground">{models ? `${visible.length} intuitions` : ""}</span></div>
+    <div className="overflow-x-auto rounded border border-border"><table aria-label="Intuitions" className="w-full min-w-[640px] text-left text-xs"><thead className="border-y border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Intuition</th><th>Status</th><th className="text-right">Examples</th><th className="text-right">Agreement (held out)</th></tr></thead><tbody>
       {visible.map((model) => <tr key={model.id} className="h-11 cursor-pointer border-b border-border hover:bg-surface/60 [&>td]:px-3" onClick={(event) => {
         if ((event.target as HTMLElement).closest("a")) return;
         router.push(`/reward-models/evals/${model.id}`);
       }}>
-        <td><Link href={`/reward-models/evals/${model.id}`} className="block py-2 text-left font-medium">{model.name}</Link></td><td><span className="inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 text-[11px]"><span className={`size-1.5 rounded-full ${model.active_number === null ? "bg-muted-foreground/50" : "bg-success"}`} />{model.active_number === null ? "Not saved" : "Saved"}</span></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.active_metrics?.eval.accuracy == null ? "—" : `${Math.round(model.active_metrics.eval.accuracy * 100)}% · ${model.active_metrics.eval.n} checked`}</td>
+        <td><Link href={`/reward-models/evals/${model.id}`} className="block py-2 text-left font-medium">{model.name}</Link></td><td><span className="inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 text-[11px]"><span className={`size-1.5 rounded-full ${model.active_number === null ? "bg-muted-foreground/50" : "bg-success"}`} />{model.active_number === null ? "Not live" : `Live v${model.active_number}`}</span></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.active_metrics?.eval.accuracy == null ? "—" : `${Math.round(model.active_metrics.eval.accuracy * 100)}% · ${model.active_metrics.eval.n} checked`}</td>
       </tr>)}
-      {!models && !error && <tr><td colSpan={4} className="py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
-      {models && !visible.length && <tr><td colSpan={4} className="py-8 text-muted-foreground">{models.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}
+      {!models && !error && <tr><td colSpan={4} className="py-6"><span role="status" className="text-muted-foreground">Loading intuitions…</span></td></tr>}
+      {models && !visible.length && <tr><td colSpan={4} className="py-8 text-muted-foreground">{models.length ? "No matching intuitions." : <>Describe a judgment call and the wizard builds it with you. <Link href="/reward-models/evals/new" className="underline">Start one</Link>.</>}</td></tr>}
     </tbody></table></div>
   </EvalPageFrame>;
 }

@@ -1,23 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, Tags } from "lucide-react";
+import { ChevronLeft, Pin, Sparkles, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ItemView from "@/components/intuitions/ItemView";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { imEditExample, imExamples, imGet, type Example, type OutputLabel } from "@/lib/intuition-api";
+import { imEditExample, imExamples, imGet, type Example } from "@/lib/intuition-api";
 import { wzReport } from "@/lib/wizard-api";
 import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
+import { LabelPicker, labelSpace, showLabel, type LabelSpace } from "../labels";
 
 type Which = "needs_review" | "all" | "mistakes";
+const SUGGESTED = /^Suggested [^:]+: ?([\s\S]*)$/;
 
-/** One item at a time, a button (and number key) per label. Pairs get A / B. */
+/**
+ * One item at a time: pick a label (number keys work), optionally say why, and
+ * pin it if it must never be gotten wrong. Generated items arrive with a
+ * suggested label and the reason for it; accept or change it.
+ */
 export default function LabelerCard({ which = "needs_review" }: { which?: Which }) {
   const { modelId, send, refresh } = useWizard();
   const [queue, setQueue] = useState<Example[] | null>(null);
-  const [labels, setLabels] = useState<OutputLabel[]>([]);
+  const [space, setSpace] = useState<LabelSpace | null>(null);
+  const [pairSpace, setPairSpace] = useState<LabelSpace | null>(null);
   const [index, setIndex] = useState(0);
   const [done, setDone] = useState<Record<string, string>>({});
+  const [value, setValue] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [pin, setPin] = useState(false);
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
 
@@ -26,8 +36,7 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
     (async () => {
       try {
         const [detail, examples] = await Promise.all([imGet(modelId), imExamples(modelId)]);
-        const v = detail.draft ?? detail.active;
-        setLabels(detail.model.output_type === "choice" ? v?.labels ?? [] : [{ id: "good", description: "A good output" }, { id: "bad", description: "A poor output" }]);
+        setSpace(labelSpace(detail)); setPairSpace(labelSpace(detail, true));
         let picked = examples;
         if (which === "needs_review") picked = examples.filter((e) => e.needs_review);
         if (which === "mistakes") {
@@ -41,56 +50,58 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
   }, [modelId, which]);
 
   const current = queue?.[index];
-  const options = useMemo(() => (current?.kind === "pair" ? [{ id: "a", description: "A is better" }, { id: "b", description: "B is better" }] : labels), [current, labels]);
+  const suggestion = useMemo(
+    () => (current?.needs_review && current.label ? { label: current.label, reason: SUGGESTED.exec(current.note)?.[1] ?? "" } : null),
+    [current],
+  );
+  useEffect(() => {
+    setValue(current?.label ?? null);
+    setNote(current && !current.needs_review ? current.note : "");
+    setPin(!!current?.pinned);
+  }, [current]);
 
   const finish = useCallback((labeled: Record<string, string>) => {
     if (finished) return;
     setFinished(true);
     refresh();
     const counts = Object.values(labeled).reduce<Record<string, number>>((acc, l) => ({ ...acc, [l]: (acc[l] ?? 0) + 1 }), {});
-    const summary = Object.entries(counts).map(([l, n]) => `${n} ${l}`).join(", ");
+    const summary = Object.entries(counts).map(([l, n]) => `${n} ${showLabel(l)}`).join(", ");
     send(Object.keys(labeled).length ? `Labeled ${Object.keys(labeled).length} example${Object.keys(labeled).length === 1 ? "" : "s"}: ${summary}.` : "Closed the labeler without labeling.", "event");
   }, [finished, refresh, send]);
 
-  const label = useCallback(async (value: string) => {
+  const commit = useCallback(async (label: string) => {
     if (!modelId || !current || !queue) return;
     setError("");
     try {
-      await imEditExample(modelId, current.id, { label: value, needs_review: false });
-      const next = { ...done, [current.id]: value };
+      const body: Parameters<typeof imEditExample>[2] = { label, needs_review: false };
+      if (note.trim() && note.trim() !== current.note) body.note = note.trim();
+      else if (suggestion) body.note = ""; // the suggestion's reason was Claude's, not the person's
+      if (pin !== !!current.pinned) body.pinned = pin;
+      await imEditExample(modelId, current.id, body);
+      const next = { ...done, [current.id]: label };
       setDone(next);
       if (index + 1 >= queue.length) finish(next); else setIndex(index + 1);
     } catch (e) { setError(errorMessage(e)); }
-  }, [modelId, current, queue, done, index, finish]);
-
-  useEffect(() => {
-    if (finished || !current) return;
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && /input|textarea|select/i.test(target.tagName)) return;
-      const n = Number(e.key);
-      if (n >= 1 && n <= options.length) { e.preventDefault(); void label(options[n - 1].id); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [finished, current, options, label]);
+  }, [modelId, current, queue, done, index, finish, note, pin, suggestion]);
 
   if (!modelId) return <CardShell icon={Tags} title="Label examples"><NeedsModel /></CardShell>;
   const total = queue?.length ?? 0;
   const labeledCount = Object.keys(done).length;
+  const options = current?.kind === "pair" ? pairSpace : space;
+  const keysHint = options?.kind === "multi" ? `1–${options.options.length} toggle · 0 none · ↵ save` : `press 1–${options?.options.length ?? 0}`;
 
   return (
     <CardShell
       icon={Tags}
       title="Label examples"
-      subtitle={queue ? (finished ? `Done — ${labeledCount} labeled` : `${Math.min(index + 1, total)} of ${total} · press 1–${options.length}`) : "Loading…"}
+      subtitle={queue ? (finished ? `Done — ${labeledCount} labeled` : `${Math.min(index + 1, total)} of ${total} · ${keysHint}`) : "Loading…"}
       actions={!finished && queue && total > 0 ? <Button size="xs" variant="ghost" onClick={() => finish(done)}>Done</Button> : undefined}
     >
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
       {queue && total === 0 && <p className="m-0 text-[12px] text-muted-foreground">{which === "mistakes" ? "No held-out mistakes to review." : "Nothing needs a label right now."}</p>}
-      {queue && total > 0 && !finished && current && (
-        <>
-          <div className="mb-3 h-1 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(labeledCount / total) * 100}%` }} /></div>
+      {queue && total > 0 && !finished && current && options && (
+        <div className="space-y-3">
+          <div className="h-1 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(labeledCount / total) * 100}%` }} /></div>
           <div className="max-h-80 overflow-y-auto rounded-md border border-border bg-surface/30 p-3">
             {current.kind === "pair" && current.item_b ? (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -99,20 +110,22 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
               </div>
             ) : <ItemView item={current.item} clamp={false} />}
           </div>
-          {current.note && <p className="m-0 mt-1.5 text-[11px] text-muted-foreground">{current.note}</p>}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {options.map((o, i) => (
-              <Button key={o.id} size="sm" variant={current.label === o.id ? "secondary" : "outline"} title={o.description} onClick={() => void label(o.id)}>
-                <kbd className="mr-1 rounded border border-border px-1 font-mono text-[10px] text-muted-foreground">{i + 1}</kbd>{o.id}
-              </Button>
-            ))}
-            <span className="flex-1" />
+          {suggestion && (
+            <p className="m-0 flex items-start gap-1.5 rounded-md bg-brand-500/8 px-2.5 py-1.5 text-[12px]">
+              <Sparkles className="mt-0.5 size-3 shrink-0 text-brand-500" />
+              <span>Suggested <b>{showLabel(suggestion.label, options.kind)}</b>{suggestion.reason && <span className="text-muted-foreground"> — {suggestion.reason}</span>}. Accept it or pick another.</span>
+            </p>
+          )}
+          <LabelPicker space={options} value={value} suggested={suggestion?.label} onPick={(label, go) => { setValue(label); if (go) void commit(label); }} />
+          <div className="flex flex-wrap items-center gap-2">
+            <input aria-label="Why (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why? (optional — reasons teach the model more than labels)" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-[12px] outline-none focus:border-foreground/40" />
+            <label className="flex items-center gap-1 text-[11.5px] text-muted-foreground" title="A pinned example is a regression test: no version can ship if it gets it wrong"><input type="checkbox" checked={pin} onChange={(e) => setPin(e.target.checked)} /><Pin className="size-3" />Must get right</label>
             <Button size="sm" variant="ghost" disabled={index === 0} aria-label="Previous" onClick={() => setIndex(index - 1)}><ChevronLeft /></Button>
             <Button size="sm" variant="ghost" onClick={() => (index + 1 >= total ? finish(done) : setIndex(index + 1))}>Skip</Button>
           </div>
-        </>
+        </div>
       )}
-      {finished && <p className="m-0 text-[12px] text-muted-foreground">Thanks — the wizard has your labels.</p>}
+      {finished && <p className="m-0 text-[12px] text-muted-foreground">Thanks — your labels are saved.</p>}
     </CardShell>
   );
 }

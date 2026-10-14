@@ -21,6 +21,12 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE intuition_wizard_sessions ADD COLUMN brief jsonb NOT NULL DEFAULT '{}'::jsonb"
     )
+    # Multi-issue models: any subset of the labels can apply to one item.
+    op.execute("ALTER TABLE intuition_models DROP CONSTRAINT intuition_models_output_type_check")
+    op.execute(
+        "ALTER TABLE intuition_models ADD CONSTRAINT intuition_models_output_type_check "
+        "CHECK (output_type IN ('choice', 'preference', 'multi'))"
+    )
     # Topics cluster recent traffic and examples; recomputed on demand.
     op.execute("ALTER TABLE intuition_models ADD COLUMN topics jsonb")
 
@@ -77,5 +83,10 @@ def downgrade() -> None:
         "CHECK (status IN ('unreviewed', 'labeled', 'dismissed'))"
     )
     op.execute("ALTER TABLE intuition_wizard_sessions DROP COLUMN brief")
+    op.execute("ALTER TABLE intuition_models DROP CONSTRAINT intuition_models_output_type_check")
+    op.execute(
+        "ALTER TABLE intuition_models ADD CONSTRAINT intuition_models_output_type_check "
+        "CHECK (output_type IN ('choice', 'preference'))"
+    )
     op.execute("ALTER TABLE intuition_models DROP COLUMN topics")
     op.execute("ALTER TABLE intuition_models DROP COLUMN brief")

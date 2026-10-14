@@ -11,11 +11,11 @@ beforeEach(() => {
   api.list.mockResolvedValue({ models: [{ id: "reply-eval", name: "Replies", active_number: 2, examples: 6, active_metrics: null }] });
 });
 
-it("opens the dedicated eval page from the whole row and provides a keyboard-accessible link", async () => {
+it("opens the intuition from the whole row and provides a keyboard-accessible link", async () => {
   render(<EvalsPage />);
   const link = await screen.findByRole("link", { name: "Replies" });
   expect(link).toHaveAttribute("href", "/reward-models/evals/reply-eval");
-  fireEvent.click(screen.getByRole("cell", { name: "Saved" }));
+  fireEvent.click(screen.getByRole("cell", { name: "Live v2" }));
   expect(api.push).toHaveBeenCalledWith("/reward-models/evals/reply-eval");
   expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   expect(screen.queryByRole("region")).not.toBeInTheDocument();

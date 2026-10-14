@@ -95,7 +95,7 @@ export interface ReviewView {
 const M = (id: string) => `${MW}/models/${id}`;
 export const wzBrief = (id: string) => apiFetch<BriefState>(`${M(id)}/brief`);
 export const wzSaveBrief = (id: string, changes: Partial<Record<keyof Brief, unknown>>) => apiFetch<BriefState>(`${M(id)}/brief`, { method: "PATCH", body: JSON.stringify(changes) });
-export const wzQueue = (id: string, which: "triage" | "expert", topic?: string | null) => apiFetch<{ items: QueueRow[] }>(`${M(id)}/queue/${which}${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`);
+export const wzQueue = (id: string, which: "all" | "triage" | "expert", topic?: string | null) => apiFetch<{ items: QueueRow[] }>(`${M(id)}/queue/${which}${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`);
 export const wzTriage = (id: string, predictionId: string, action: "looks_right" | "escalate" | "ignore", note = "") => post<{ status: string; example: Example | null }>(`${M(id)}/predictions/${predictionId}/triage`, { action, note });
 export const wzResolve = (id: string, predictionId: string, body: { label: string; note?: string; pin?: boolean }) => post<{ status: string; example: Example | null }>(`${M(id)}/predictions/${predictionId}/resolve`, body);
 export const wzCalibration = (id: string, body: { example_ids?: string[] | null; on?: boolean } = {}) => post<{ calibration: number }>(`${M(id)}/calibration`, body);

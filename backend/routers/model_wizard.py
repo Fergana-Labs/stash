@@ -158,7 +158,7 @@ async def save_brief(model_id: UUID, req: Brief, user: User):
 
 @router.get("/models/{model_id}/queue/{which}")
 async def queue(
-    model_id: UUID, which: Literal["triage", "expert"], user: User, topic: str | None = None
+    model_id: UUID, which: Literal["all", "triage", "expert"], user: User, topic: str | None = None
 ):
     return {"items": await checked(curation.queue(user["id"], model_id, which, topic))}
 

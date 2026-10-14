@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, CircleAlert, Loader2, Paperclip, Sparkles, Wand2 } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, Sparkles, Square, Wand2 } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { evalReadFile, imAddExamples, type NewExample } from "@/lib/intuition-ap
 import { applyEvent, streamWizard, wzGet, type AssistantPart, type Card, type TranscriptEntry } from "@/lib/wizard-api";
 import { WizardProvider, type WizardCtx } from "./wizard-ui";
 import ModelPanel from "./ModelPanel";
+import { useDictation } from "./useDictation";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
 import ChoicesCard from "./cards/ChoicesCard";
@@ -21,16 +22,14 @@ import InboxCard from "./cards/InboxCard";
 import LabelerCard from "./cards/LabelerCard";
 import PlaygroundCard from "./cards/PlaygroundCard";
 import ReportCard from "./cards/ReportCard";
-import ReviewCard from "./cards/ReviewCard";
 import RobustnessCard from "./cards/RobustnessCard";
-import TopicsCard from "./cards/TopicsCard";
 import UploaderCard from "./cards/UploaderCard";
 
 const STARTERS = [
-  "Route incoming support tickets to billing, bugs, or how-to",
+  "Check my coding agent's PRs before it opens them",
   "Grade my AI assistant's answers as good or bad",
-  "Flag product photos that break our brand guidelines",
-  "Pick the better of two marketing email drafts",
+  "Flag which brand guidelines a product photo breaks",
+  "Route incoming support tickets to billing, bugs, or how-to",
 ];
 
 const TITLES: Record<Card["kind"], string> = {
@@ -49,14 +48,14 @@ function CardView({ card }: { card: Card }) {
     case "criteria": return <CriteriaCard proposals={p.proposals} />;
     case "report": return <ReportCard />;
     case "playground": return <PlaygroundCard item={p.item} prediction={p.prediction} />;
-    case "review": return <ReviewCard />;
+    case "review": return <InboxCard />; // the review queue is the inbox now
     case "robustness": return <RobustnessCard result={p.result} />;
     case "examples": return <ExamplesCard />;
     case "brief": return <BriefCard />;
-    case "inbox": return <InboxCard queue={p.queue} topic={p.topic} />;
+    case "inbox": return <InboxCard />;
     case "golden": return <GoldenCard />;
     case "agreement": return <AgreementCard invited={p.invited} />;
-    case "topics": return <TopicsCard />;
+    case "topics": return <InboxCard />; // topics now live in the inbox
   }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -88,7 +87,7 @@ export interface Injected { id: number; text: string; kind: "message" | "event" 
  * header and model panel, takes messages from the page via `inject`, and tells
  * the page to reload via `onRefresh`.
  */
-export default function WizardChat({ sessionId, embedded = false, inject = null, onRefresh }: { sessionId: string; embedded?: boolean; inject?: Injected | null; onRefresh?: () => void }) {
+export default function WizardChat({ sessionId, embedded = false, inject = null, onRefresh, onModel }: { sessionId: string; embedded?: boolean; inject?: Injected | null; onRefresh?: () => void; onModel?: (modelId: string, title: string) => void }) {
   const [entries, setEntries] = useState<TranscriptEntry[] | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
   const [title, setTitle] = useState("New model");
@@ -120,7 +119,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     });
     try {
       await streamWizard(sessionId, text, kind, (e) => {
-        if (e.type === "model") { setModelId(e.model_id); setTitle(e.title); }
+        if (e.type === "model") { setModelId(e.model_id); setTitle(e.title); onModel?.(e.model_id, e.title); }
         else if (e.type === "error") setError(e.message);
         else if (e.type === "done") refresh();
         patch((parts) => applyEvent(parts, e));
@@ -133,7 +132,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
       const next = queued.current.shift();
       if (next) void run(next.text, next.kind);
     }
-  }, [sessionId, refresh]);
+  }, [sessionId, refresh, onModel]);
 
   const send = useCallback((text: string, kind: "message" | "event" = "message") => {
     if (!text.trim()) return;
@@ -141,6 +140,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     void run(text, kind);
   }, [run]);
 
+  const dictation = useDictation(setInput);
+  const submit = () => { if (dictation.listening) dictation.stop(); send(input); setInput(""); };
   const injected = useRef(0);
   useEffect(() => {
     if (!inject || inject.id === injected.current || entries === null) return;
@@ -182,8 +183,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
               {entries && entries.length === 0 && (
                 <div className="py-10 text-center">
                   <div className="mx-auto mb-3 grid size-11 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400"><Wand2 className="size-5" /></div>
-                  <h2 className="m-0 text-lg font-semibold tracking-tight">What should your model decide?</h2>
-                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Describe the judgment call. The wizard sets up labels and criteria with you, helps you label a handful of examples — text, images, or documents — and trains a calibrated model you can test, harden, and ship.</p>
+                  <h2 className="m-0 text-lg font-semibold tracking-tight">What judgment call should it make?</h2>
+                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would.</p>
                   <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
                     {STARTERS.map((s) => <button key={s} type="button" disabled={busy} onClick={() => send(s)} className="rounded-lg border border-border px-3 py-2.5 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
                   </div>
@@ -206,7 +207,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
               <div ref={bottom} />
             </div>
           </div>
-          <form className="border-t border-border px-5 py-3" onSubmit={(e) => { e.preventDefault(); send(input); setInput(""); }}>
+          <form className="border-t border-border px-5 py-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5 focus-within:border-foreground/30">
               <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title={modelId ? "Attach files as examples (images, PDFs, docs)" : "Describe your model first"} disabled={!!attaching} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
               <input ref={fileInput} type="file" multiple hidden accept=".txt,.md,.json,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => { if (e.target.files?.length) void attach(e.target.files); e.target.value = ""; }} />
@@ -216,12 +217,17 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                 value={input}
                 placeholder={modelId ? "Ask for anything: label more, add a criterion, train, try an input, ship…" : "Describe the decision your model should make…"}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(input); setInput(""); } }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
                 className="max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-[13px] outline-none"
               />
+              {dictation.supported && (
+                <Button type="button" size="icon-sm" variant={dictation.listening ? "default" : "ghost"} aria-label={dictation.listening ? "Stop voice input" : "Talk instead of typing"} aria-pressed={dictation.listening} title={dictation.listening ? "Listening… click to stop" : "Talk instead of typing"} onClick={() => (dictation.listening ? dictation.stop() : dictation.start(input))} className={dictation.listening ? "animate-pulse" : undefined}>
+                  {dictation.listening ? <Square /> : <Mic />}
+                </Button>
+              )}
               <Button type="submit" size="icon-sm" aria-label="Send" disabled={!input.trim()}><ArrowUp /></Button>
             </div>
-            {(attaching || (busy && queued.current.length > 0)) && <p role="status" className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">{attaching || "Queued until the wizard finishes."}</p>}
+            {(attaching || dictation.listening || dictation.error || (busy && queued.current.length > 0)) && <p role="status" className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">{attaching || dictation.error || (dictation.listening ? "Listening — talk it through; press Enter or the arrow to send." : "Queued until the wizard finishes.")}</p>}
           </form>
         </div>
         {!embedded && <ModelPanel modelId={modelId} version={version} />}

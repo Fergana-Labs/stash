@@ -31,6 +31,9 @@ RUN_CREDIT_BONUS = 0.6
 
 def _uncertainty(output: dict) -> float:
     """0 when certain, 1 at a uniform guess across the eval's labels."""
+    if output.get("kind") == "multi":
+        # Independent per-issue probabilities: uncertainty is how unsure the whole set is.
+        return float(min(1.0, max(0.0, 1 - output.get("confidence", 1.0))))
     probabilities = output.get("probabilities") or {}
     if "p_a_wins" in output:
         probabilities = {"a": output["p_a_wins"], "b": 1 - output["p_a_wins"]}

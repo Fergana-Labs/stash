@@ -27,6 +27,8 @@ def _slug(name: str) -> str:
 
 
 def _options(version: dict) -> dict[str, str]:
+    if version["output_type"] == "multi":
+        raise ValueError("Multi-issue evals cannot be used as a signal in another eval yet")
     if version["output_type"] == "choice":
         return {label["id"]: label["description"] or label["id"] for label in version["labels"]}
     return {"good": "The eval judged it good", "bad": "The eval judged it bad"}

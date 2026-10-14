@@ -41,6 +41,7 @@ from .routers import (
     mcp_servers,
     memory,
     mini_programs,
+    intuition_mcp,
     model_wizard,
     optimization,
     pins,
@@ -91,7 +92,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("seed_demo failed at startup")
     try:
-        yield
+        async with intuition_mcp.mcp.session_manager.run():
+            yield
     finally:
         await close_db()
 
@@ -163,6 +165,8 @@ app.include_router(workbench.router)
 app.include_router(intuitions.router)
 app.include_router(model_wizard.router)
 app.include_router(model_wizard.public_router)
+# MCP over streamable HTTP at /mcp/intuitions (see routers/intuition_mcp.py).
+app.mount("/mcp", intuition_mcp.app)
 app.include_router(mcp_servers.router)
 app.include_router(publish.router)
 app.include_router(security_audit.router)
