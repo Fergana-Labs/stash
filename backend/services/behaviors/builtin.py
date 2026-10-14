@@ -153,13 +153,36 @@ def unsupported_claim(labels: dict[str, dict], steps: list[dict]) -> list[Window
 
 
 def repeated_tool_call(labels: dict[str, dict], steps: list[dict]) -> list[Window]:
-    return [
-        _window(
-            idx, idx, [_quote(idx, label.get("evidence"))], f"Same call as {label['duplicate_of']}"
+    """The same call again with nothing in between that could change its answer.
+
+    Retrying after an error or a rate limit is recovery, and re-running a check
+    after editing something is verification; neither is a wasted repeat."""
+    ordered = _ordered(labels)
+    by_chunk = {label.get("chunk_id"): (idx, label) for idx, label in ordered}
+    out = []
+    for idx, label in ordered:
+        duplicate_of = label.get("duplicate_of") if label.get("type") == "tool_call" else None
+        first = by_chunk.get(duplicate_of) if duplicate_of else None
+        if first is None:
+            continue
+        first_idx, first_label = first
+        if first_label.get("result") == "error":
+            continue
+        changed = any(
+            first_idx < other_idx < idx and other.get("effect") == "side_effect"
+            for other_idx, other in ordered
         )
-        for idx, label in _ordered(labels)
-        if label.get("type") == "tool_call" and label.get("duplicate_of")
-    ]
+        if changed:
+            continue
+        out.append(
+            _window(
+                first_idx,
+                idx,
+                [_quote(idx, label.get("evidence"))],
+                f"Same call as step {first_idx + 1}",
+            )
+        )
+    return out
 
 
 # kind -> (rule, needs step labels)

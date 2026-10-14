@@ -416,3 +416,30 @@ async def test_promote_and_export_make_eval_examples(client, pool):
     examples = (await client.get(f"/api/v1/intuitions/{eval_id}/examples", headers=auth)).json()
     assert sorted(e["label"] for e in examples) == ["no", "yes", "yes"]
     assert (await client.post(f"{B}/{behavior['id']}/promote", headers=auth)).status_code == 422
+
+
+def test_repeated_tool_call_ignores_retries_and_rechecks():
+    call = {"actor": "agent", "type": "tool_call", "tool": "get_order"}
+    labels = {
+        "1": {**call, "chunk_id": "a1", "result": "data"},
+        "3": {**call, "chunk_id": "a2", "result": "data", "duplicate_of": "a1"},  # wasted repeat
+        "5": {**call, "chunk_id": "a3", "result": "error", "tool": "run_tests"},
+        "7": {
+            **call,
+            "chunk_id": "a4",
+            "result": "data",
+            "tool": "run_tests",
+            "duplicate_of": "a3",
+        },  # retry after error
+        "9": {**call, "chunk_id": "a5", "result": "data", "tool": "lint"},
+        "11": {**call, "chunk_id": "a6", "effect": "side_effect", "tool": "edit_file"},
+        "13": {
+            **call,
+            "chunk_id": "a7",
+            "result": "data",
+            "tool": "lint",
+            "duplicate_of": "a5",
+        },  # re-check after edit
+    }
+    windows = builtin.detect({"kind": "repeated_tool_call"}, labels, [])
+    assert [(w["start_idx"], w["end_idx"]) for w in windows] == [(1, 3)]
