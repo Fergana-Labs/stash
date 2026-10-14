@@ -204,14 +204,18 @@ async def grade(version: dict, questions: list[dict], seeds: list[dict], item) -
     """Answer the given questions about one item. Callers own caching."""
     if version["provider"] != "jev":
         raise ProviderError(f"Unknown judge provider {version['provider']!r}")
-    # Questions answered by another eval never reach the judge.
-    judged = [q for q in questions if q["type"] != "eval"]
+    # Questions answered by another eval or by a fitted probe never reach the judge.
+    judged = [q for q in questions if q["type"] not in ("eval", "probe")]
     answers = await _grade_jev(version, judged, seeds, item) if judged else {}
     for q in questions:
         if q["type"] == "eval":
             from . import composition
 
             answers[q["id"]] = await composition.answer(version, q, item)
+        elif q["type"] == "probe":
+            from . import probe
+
+            answers[q["id"]] = await probe.answer(version, q, item)
     return answers
 
 

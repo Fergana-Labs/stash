@@ -9,6 +9,12 @@ preference: score = w . f + b. Pairs use P(a beats b) = sigmoid(score_a - score_
             (Bradley-Terry; b cancels); good/bad items use sigmoid(score).
 
 All fitting is L-BFGS on a few dozen parameters, so it runs inline in the API.
+
+Verdict prior. When the rubric has a `verdict` question (Jev asked the task
+itself, zero-shot), L2 shrinks the weights toward "trust the verdict" instead
+of toward zero. With no data the head reproduces zero-shot Jev; every labeled
+example moves it away only as far as the evidence supports. This is what makes
+a handful of labels enough to start.
 """
 
 from __future__ import annotations
@@ -21,13 +27,15 @@ from scipy.special import expit, log_softmax
 
 GATE_LOG_LOSS_SLACK = 0.02
 MIN_GATE_EXAMPLES = 4
+VERDICT_ID = "verdict"
+PRIOR_STRENGTH = 4.0
 
 
 def answers_to_features(rubric: list[dict], answers: dict[str, dict]) -> list[float]:
     values = []
     for q in rubric:
         probabilities = answers[q["id"]]["probabilities"]
-        if q["type"] in ("choice", "eval"):
+        if q["type"] in ("choice", "eval", "probe"):
             values.extend(probabilities[option] for option in q["criteria"])
         elif q["type"] == "noul":
             values.append(probabilities["true"])
@@ -128,23 +136,36 @@ def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str
 # ── Fitting ──────────────────────────────────────────────────────────────
 
 
-def _choice_loss(theta, X, y, n_cls, l2):
+def verdict_prior(output_type: str, feature_names: list[str], classes: list[str]) -> np.ndarray:
+    """Weights that reproduce the zero-shot verdict; zeros when there is no verdict question."""
+    prior = np.zeros((len(classes) if output_type == "choice" else 1, len(feature_names)))
+    index = {name: i for i, name in enumerate(feature_names)}
+    if output_type == "choice":
+        for c, cls in enumerate(classes):
+            if f"{VERDICT_ID}={cls}" in index:
+                prior[c, index[f"{VERDICT_ID}={cls}"]] = PRIOR_STRENGTH
+    elif VERDICT_ID in index:
+        prior[0, index[VERDICT_ID]] = PRIOR_STRENGTH
+    return prior
+
+
+def _choice_loss(theta, X, y, n_cls, l2, W0):
     n_feat = X.shape[1]
     W = theta[: n_cls * n_feat].reshape(n_cls, n_feat)
     b = theta[n_cls * n_feat :]
     logp = log_softmax(X @ W.T + b, axis=1)
-    loss = -logp[np.arange(len(y)), y].mean() + 0.5 * l2 * np.sum(W * W)
+    loss = -logp[np.arange(len(y)), y].mean() + 0.5 * l2 * np.sum((W - W0) ** 2)
     p = np.exp(logp)
     p[np.arange(len(y)), y] -= 1
-    grad_W = p.T @ X / len(y) + l2 * W
+    grad_W = p.T @ X / len(y) + l2 * (W - W0)
     grad_b = p.mean(axis=0)
     return loss, np.concatenate([grad_W.ravel(), grad_b])
 
 
-def _preference_loss(theta, D, Xi, yi, l2):
+def _preference_loss(theta, D, Xi, yi, l2, w0):
     w, b = theta[:-1], theta[-1]
     n = len(D) + len(Xi)
-    loss, grad_w, grad_b = 0.5 * l2 * w @ w, l2 * w, 0.0
+    loss, grad_w, grad_b = 0.5 * l2 * (w - w0) @ (w - w0), l2 * (w - w0), 0.0
     if len(D):
         m = D @ w  # pairs are oriented so the winner is first
         loss += np.logaddexp(0, -m).sum() / n
@@ -165,14 +186,15 @@ def fit(
     if not rows:
         raise ValueError("No labeled, graded examples to fit")
     n_feat = len(feature_names)
+    prior = verdict_prior(output_type, feature_names, classes)
     if output_type == "choice":
         index = {c: i for i, c in enumerate(classes)}
         X = np.asarray([r["f"] for r in rows], dtype=float)
         y = np.asarray([index[r["label"]] for r in rows])
         result = minimize(
             _choice_loss,
-            np.zeros(len(classes) * (n_feat + 1)),
-            args=(X, y, len(classes), l2),
+            np.concatenate([prior.ravel(), np.zeros(len(classes))]),
+            args=(X, y, len(classes), l2, prior),
             jac=True,
             method="L-BFGS-B",
         )
@@ -190,8 +212,8 @@ def fit(
         yi = np.asarray([1 if r["label"] == "good" else 0 for r in items])
         result = minimize(
             _preference_loss,
-            np.zeros(n_feat + 1),
-            args=(D, Xi, yi, l2),
+            np.concatenate([prior[0], [-PRIOR_STRENGTH / 2 if prior.any() else 0.0]]),
+            args=(D, Xi, yi, l2, prior[0]),
             jac=True,
             method="L-BFGS-B",
         )

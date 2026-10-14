@@ -192,10 +192,10 @@ async def _candidates(owner_id: UUID, model_id: UUID, active: dict) -> list[dict
             )
         except service.Conflict:
             pass  # No mistakes to learn from.
-    # Questions answered by other evals are kept as they are; only judge
-    # questions are rewritten or redrafted.
-    signals = [q for q in rubric if q["type"] == "eval"]
-    judged = [q for q in rubric if q["type"] != "eval"]
+    # Questions answered by other evals or by a fitted probe are kept as they
+    # are; only judge questions are rewritten or redrafted.
+    signals = [q for q in rubric if q["type"] in ("eval", "probe")]
+    judged = [q for q in rubric if q["type"] not in ("eval", "probe")]
     if len(judged) >= 2:
         weakest = sorted(judged, key=lambda q: shares.get(q["id"], 0))[: max(1, len(judged) // 4)]
         rewritten, why = await _rewrite(active, weakest)
