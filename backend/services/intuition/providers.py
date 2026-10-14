@@ -1,8 +1,10 @@
-"""Rubric answers from the Jev judge, cached per (item, question context).
+"""Rubric answers from a judge, cached per (item, question context).
 
-Jev (TypeSafe) is the only judge. Versions record the provider and model that
-produced their features, and the cache key includes both, so upgrading the
-Jev model never mixes answers from different judges.
+Two judges: Jev (TypeSafe), one call per item, and the Agent Judge
+(services/agent_judge), which investigates long trajectories with tool-using
+workers and verifies claims against sources of truth. Versions record the
+provider and model that produced their features, and the cache key includes
+both, so switching or upgrading a judge never mixes their answers.
 
 Every answer is stored as {"type", "probabilities": {option: p}} regardless of
 question type, which keeps features (spec.feature_names) provider-independent.
@@ -36,12 +38,34 @@ class ProviderError(ValueError):
         self.retryable = retryable
 
 
+PROVIDERS = ("jev", "agent_judge")
+
+
 def status() -> dict:
+    from ..agent_judge import grading as agent_judge
+
     return {
         "provider": "jev",
         "configured": bool(settings.TYPESAFE_API_KEY),
         "model": settings.JEV_MODEL,
+        "providers": {
+            "jev": {"configured": bool(settings.TYPESAFE_API_KEY), "model": settings.JEV_MODEL},
+            "agent_judge": {
+                "configured": agent_judge.configured(),
+                "model": agent_judge.model_name(),
+            },
+        },
     }
+
+
+def provider_model(provider: str) -> str:
+    if provider == "jev":
+        return settings.JEV_MODEL
+    if provider == "agent_judge":
+        from ..agent_judge import grading as agent_judge
+
+        return agent_judge.model_name()
+    raise ProviderError(f"Unknown judge provider {provider!r}")
 
 
 def _json(value) -> str:
@@ -202,11 +226,18 @@ async def _grade_jev(version: dict, questions: list[dict], seeds: list[dict], it
 
 async def grade(version: dict, questions: list[dict], seeds: list[dict], item) -> dict[str, dict]:
     """Answer the given questions about one item. Callers own caching."""
-    if version["provider"] != "jev":
+    if version["provider"] not in PROVIDERS:
         raise ProviderError(f"Unknown judge provider {version['provider']!r}")
     # Questions answered by another eval or by a fitted probe never reach the judge.
     judged = [q for q in questions if q["type"] not in ("eval", "probe")]
-    answers = await _grade_jev(version, judged, seeds, item) if judged else {}
+    answers = {}
+    if judged and version["provider"] == "agent_judge":
+        from ..agent_judge import grading as agent_judge
+
+        raw = await agent_judge.grade(version, judged, seeds, item)
+        answers = {q["id"]: _checked(raw[q["id"]]["probabilities"], q) for q in judged}
+    elif judged:
+        answers = await _grade_jev(version, judged, seeds, item)
     for q in questions:
         if q["type"] == "eval":
             from . import composition

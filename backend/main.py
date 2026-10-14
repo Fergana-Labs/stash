@@ -21,6 +21,7 @@ from .routers import (
     agent_chat,
     agent_credentials,
     agent_docs,
+    agent_judge,
     agents,
     aggregate,
     analytics,
@@ -163,6 +164,7 @@ app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
 app.include_router(behaviors.router)
+app.include_router(agent_judge.router)
 app.include_router(model_wizard.router)
 app.include_router(model_wizard.public_router)
 app.include_router(mcp_servers.router)

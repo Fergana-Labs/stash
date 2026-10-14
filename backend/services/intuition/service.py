@@ -275,7 +275,10 @@ async def ensure_draft(owner_id: UUID, model_id: UUID) -> dict:
 
 
 async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
-    """Edit any of description, labels, rubric, seed_example_ids on the draft."""
+    """Edit any of description, labels, rubric, seed_example_ids, provider on the draft.
+
+    Switching the judge (jev <-> agent_judge) invalidates the head: its features
+    came from the other judge's answers."""
     model = await _model(owner_id, model_id)
     draft = await ensure_draft(owner_id, model_id)
     merged = {k: changes.get(k, draft[k]) for k in ("description", "labels", "rubric")}
@@ -286,6 +289,12 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     spec = _validate(
         model["output_type"], merged["description"], merged["labels"], merged["rubric"]
     )
+    provider = changes.get("provider") or draft["provider"]
+    if provider not in providers.PROVIDERS:
+        raise ValueError(f"Judge must be one of {', '.join(providers.PROVIDERS)}")
+    provider_model = (
+        providers.provider_model(provider) if provider != draft["provider"] else draft["provider_model"]
+    )
     seeds = changes.get("seed_example_ids", draft["seed_example_ids"])
     if len(seeds) > MAX_SEEDS or len(set(seeds)) != len(seeds):
         raise ValueError(f"Choose at most {MAX_SEEDS} distinct seed examples")
@@ -295,13 +304,15 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     await get_pool().execute(
         """UPDATE intuition_versions
               SET description = $2, labels = $3, rubric = $4, seed_example_ids = $5::uuid[],
-                  head = NULL, metrics = NULL, gate = NULL
+                  provider = $6, provider_model = $7, head = NULL, metrics = NULL, gate = NULL
             WHERE id = $1""",
         draft["id"],
         spec["description"],
         spec["labels"],
         spec["rubric"],
         [UUID(s) for s in seeds],
+        provider,
+        provider_model,
     )
     await _touch(model_id)
     return await get_detail(owner_id, model_id)

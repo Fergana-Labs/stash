@@ -111,8 +111,31 @@ def upgrade() -> None:
         "USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL"
     )
 
+    # Agent Judge investigations: the claims ledger, findings with step citations,
+    # and cost, kept so a verdict can be inspected rather than taken on faith.
+    op.execute("""CREATE TABLE agent_judge_reports (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        model_id uuid REFERENCES intuition_models(id) ON DELETE CASCADE,
+        version_id uuid REFERENCES intuition_versions(id) ON DELETE SET NULL,
+        trace_id uuid REFERENCES rm_traces(id) ON DELETE CASCADE,
+        item_hash text NOT NULL,
+        status text NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'failed')),
+        error text,
+        report jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        finished_at timestamptz
+    )""")
+    op.execute(
+        "CREATE INDEX agent_judge_reports_trace ON agent_judge_reports (trace_id, created_at DESC)"
+    )
+    op.execute(
+        "CREATE INDEX agent_judge_reports_model ON agent_judge_reports (model_id, item_hash)"
+    )
+
 
 def downgrade() -> None:
+    op.execute("DROP TABLE agent_judge_reports")
     op.execute("DROP TABLE rm_trace_segments")
     op.execute("DROP TABLE behavior_alerts")
     op.execute("DROP TABLE behavior_scans")

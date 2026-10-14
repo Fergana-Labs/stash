@@ -156,7 +156,11 @@ def _choice_loss(theta, X, y, n_cls, l2, W0, bias_l2):
     W = theta[: n_cls * n_feat].reshape(n_cls, n_feat)
     b = theta[n_cls * n_feat :]
     logp = log_softmax(X @ W.T + b, axis=1)
-    loss = -logp[np.arange(len(y)), y].mean() + 0.5 * l2 * np.sum((W - W0) ** 2) + 0.5 * bias_l2 * b @ b
+    loss = (
+        -logp[np.arange(len(y)), y].mean()
+        + 0.5 * l2 * np.sum((W - W0) ** 2)
+        + 0.5 * bias_l2 * b @ b
+    )
     p = np.exp(logp)
     p[np.arange(len(y)), y] -= 1
     grad_W = p.T @ X / len(y) + l2 * (W - W0)
@@ -278,6 +282,56 @@ def calibration(confidences: list[float], correct: list[bool]) -> tuple[float, l
     return float(ece), reliability
 
 
+def classification(truth: list[str], predicted: list[str], classes: list[str]) -> dict:
+    """Precision, recall and F1 per class, their macro average, and Cohen's kappa.
+
+    Accuracy hides a judge that never flags the rare class; per-class recall and
+    precision show it, and kappa discounts the agreement chance alone would give."""
+    per = {}
+    for c in classes:
+        tp = sum(t == c and p == c for t, p in zip(truth, predicted))
+        fp = sum(t != c and p == c for t, p in zip(truth, predicted))
+        fn = sum(t == c and p != c for t, p in zip(truth, predicted))
+        precision = tp / (tp + fp) if tp + fp else None
+        recall = tp / (tp + fn) if tp + fn else None
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision is not None and recall is not None and precision + recall
+            else (0.0 if precision is not None and recall is not None else None)
+        )
+        per[c] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
+    scored = [v["f1"] for v in per.values() if v["f1"] is not None and v["support"]]
+    n = len(truth)
+    kappa = None
+    if n:
+        observed = sum(t == p for t, p in zip(truth, predicted)) / n
+        expected = sum((truth.count(c) / n) * (predicted.count(c) / n) for c in classes)
+        kappa = 1.0 if expected == 1 else (observed - expected) / (1 - expected)
+    return {
+        "per_class": per,
+        "macro_f1": float(np.mean(scored)) if scored else None,
+        "kappa": kappa,
+    }
+
+
+def by_difficulty(correct: list[bool], difficulty: list[float], bins: int = 10) -> list[dict]:
+    """Accuracy per difficulty bucket (deciles by default), easiest first."""
+    order = sorted(range(len(correct)), key=lambda i: difficulty[i])
+    out = []
+    for b in range(bins):
+        idx = order[b * len(order) // bins : (b + 1) * len(order) // bins]
+        if idx:
+            out.append(
+                {
+                    "bucket": b + 1,
+                    "n": len(idx),
+                    "difficulty": [difficulty[idx[0]], difficulty[idx[-1]]],
+                    "accuracy": float(np.mean([correct[i] for i in idx])),
+                }
+            )
+    return out
+
+
 def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
     if not rows:
         return {
@@ -286,6 +340,7 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
             "log_loss": None,
             "ece": None,
             "confusion": None,
+            "classification": None,
             "rows": [],
         }
     scored = []
@@ -312,6 +367,13 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
         "ece": float(ece),
         "reliability": reliability,
         "confusion": confusion,
+        "classification": classification(
+            [r["label"] for r, _, _ in scored],
+            [predicted for _, _, predicted in scored],
+            head["classes"]
+            if output_type == "choice"
+            else sorted({r["label"] for r, _, _ in scored} | {p for _, _, p in scored}),
+        ),
         "rows": [
             {
                 "example_id": r["example_id"],

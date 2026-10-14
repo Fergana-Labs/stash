@@ -57,6 +57,7 @@ class EditDraft(Body):
     labels: list[dict] | None = None
     rubric: list[dict] | None = None
     seed_example_ids: list[str] | None = None
+    provider: Literal["jev", "agent_judge"] | None = None
 
 
 class Grade(Body):
