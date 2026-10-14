@@ -6,7 +6,8 @@ import { Loader2, Sparkles, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { imEditDraft, imGet, type ModelDetail } from "@/lib/intuition-api";
+import { imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
+import { Select } from "@/components/ui/select";
 import { wzCreate, wzFromCorrections, wzReport, wzSessions, wzTrain, type TrainingReport } from "@/lib/wizard-api";
 import { cn } from "@/lib/utils";
 import WizardChat, { type Injected } from "@/components/wizard/WizardChat";
@@ -49,6 +50,41 @@ function Instructions({ id, detail, onSaved }: { id: string; detail: ModelDetail
       <textarea aria-label="Instructions the judge reads" rows={6} maxLength={6000} value={text} onChange={(e) => setText(e.target.value)} className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[12.5px] leading-5 outline-none focus:border-foreground/40" />
       <p className="m-0 mt-1 text-[11px] text-muted-foreground">Carry the label boundaries, the costly mistake and the must-never cases from the brief here; the wizard can write it for you.</p>
       {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+const PROVIDERS: { value: JudgeProvider; label: string }[] = [
+  { value: "jev", label: "Jev (single call)" },
+  { value: "agent_judge", label: "Agent Judge (investigates traces)" },
+];
+
+/** Which judge answers the criteria. Switching clears the fitted head, so every example is graded again. */
+function JudgeProviderPicker({ id, detail, onSaved }: { id: string; detail: ModelDetail; onSaved: () => void }) {
+  const current = ((detail.draft ?? detail.active)?.provider ?? "jev") as JudgeProvider;
+  const status = detail.judge.providers;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function change(next: string) {
+    if (next === current) return;
+    if (status && !status[next as JudgeProvider]?.configured) { setError("That judge isn’t configured on this server."); return; }
+    setBusy(true); setError("");
+    try { await imEditDraft(id, { provider: next as JudgeProvider }); onSaved(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  }
+  const options = PROVIDERS.map((p) => ({ ...p, label: status && !status[p.value]?.configured ? `${p.label} — not configured` : p.label }));
+  const unavailable = status ? PROVIDERS.every((p) => p.value === current || !status[p.value]?.configured) : false;
+  return (
+    <section aria-label="Judge" className="rounded-lg border border-border p-3.5">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <h3 className="m-0 text-[13px] font-semibold">Judge</h3>
+        <Select aria-label="Judge" value={current} onChange={(v) => void change(v)} options={options} disabled={busy || unavailable} className="h-7 w-64 text-xs" />
+      </div>
+      <p className="m-0 text-[11px] text-muted-foreground">
+        {current === "agent_judge" ? "Investigates each trace with sub-agents, verifies claims step by step and keeps a report per verdict. Slower and costlier." : "Answers each criterion in one model call."}
+        {" "}Switching judges re-grades every example and needs a retrain.
+        {status?.[current]?.model && <span className="font-mono"> · {status[current].model}</span>}
+      </p>
+      {error && <p role="alert" className="m-0 mt-1 text-[11.5px] text-destructive">{error}</p>}
     </section>
   );
 }
@@ -171,6 +207,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                   <div className="min-w-0 flex flex-col gap-4 [&>section]:my-0">
                     <BriefCard />
                     <Instructions id={id} detail={detail} onSaved={refresh} />
+                    <JudgeProviderPicker id={id} detail={detail} onSaved={refresh} />
                   </div>
                   <div className="min-w-0 flex flex-col gap-4 [&>section]:my-0">
                     <CriteriaCard key={proposals?.key ?? "criteria"} proposals={proposals?.items.map((i) => ({ ...i.question, insight: i.insight }))} />

@@ -29,7 +29,9 @@ import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import TraceEval from "@/components/evals/TraceEval";
-import TraceBehaviorStrip from "@/components/behaviors/TraceBehaviorStrip";
+import TraceBehaviorStrip, { stepRange } from "@/components/behaviors/TraceBehaviorStrip";
+import TraceJudgePanel from "@/components/agent-judge/TraceJudgePanel";
+import type { BehaviorHit } from "@/lib/behaviors-api";
 import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
@@ -75,6 +77,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
+  const [selectedHit, setSelectedHit] = useState<BehaviorHit | null>(null);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -262,7 +265,29 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     document.getElementById(`annotation-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  /** Trace step index (as the backend stores it) → the number this page shows. */
+  const numberOfIndex = (index: number) => {
+    const step = trace.steps.find((s) => s.index === index);
+    return (step && presentation.numberById.get(step.id)) ?? index + 1;
+  };
+  function jumpToIndex(index: number) {
+    const step = trace!.steps.find((s) => s.index === index) ?? trace!.steps.find((s) => s.index >= index);
+    if (step) revealStep(step.id);
+  }
+  const inSelectedHit = (step: RmStep) => {
+    if (!selectedHit) return false;
+    const row = rows.find((r) => r.key === step.id);
+    return (row ? rowSteps(row) : [step]).some((s) => s.index >= selectedHit.start_idx && s.index <= selectedHit.end_idx);
+  };
+  const firstMarkedId = selectedHit ? trace.steps.find((s) => s.index >= selectedHit.start_idx && s.index <= selectedHit.end_idx)?.id : undefined;
+
   const ann: StepAnnotations = {
+    mark: (step) => {
+      if (!selectedHit || !inSelectedHit(step)) return null;
+      const row = rows.find((r) => r.key === step.id);
+      const first = (row ? rowSteps(row) : [step]).some((s) => s.id === firstMarkedId);
+      return { label: first ? `${selectedHit.behavior_name ?? "Behavior"} · ${stepRange(selectedHit.start_idx, selectedHit.end_idx, numberOfIndex)}` : null };
+    },
     contextHref: (step) => `/reward-models/traces/${traceId}/context?step=${encodeURIComponent(step.id)}`,
     stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
@@ -331,7 +356,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} completion={taskCompletion(completion.tasks, presentation.numberById)} completionLoading={completion.loading} focusedRange={browsingSections && focusedSection ? { first: (presentation.numberById.get(focusedSection.firstStepId) ?? 1) - 1, last: (presentation.numberById.get(focusedSection.lastStepId) ?? 1) - 1 } : undefined} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
-          <TraceBehaviorStrip traceId={traceId} steps={trace.steps} onReveal={revealStep} />
+          <TraceBehaviorStrip traceId={traceId} steps={trace.steps} numberOf={numberOfIndex} onReveal={revealStep} selectedId={selectedHit?.id ?? null} onSelect={setSelectedHit} />
+          <TraceJudgePanel traceId={traceId} numberOf={numberOfIndex} onJump={jumpToIndex} />
 
 
         </div>

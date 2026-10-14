@@ -34,7 +34,10 @@ export interface Evaluation {
   reliability?: { bin: number; n: number; confidence: number; accuracy: number }[];
   confusion: Record<string, Record<string, number>> | null;
   rows: EvalRow[];
+  classification?: Classification | null;
 }
+export interface ClassMetrics { precision: number | null; recall: number | null; f1: number | null; support: number }
+export interface Classification { per_class: Record<string, ClassMetrics>; macro_f1: number | null; kappa: number | null }
 export interface FitOptions { l2: number; train_on: "train" | "all"; sources: ExampleSource[] | null; calibrate: boolean; rows: number }
 export interface Metrics { train: Evaluation; eval: Evaluation; ungraded_examples: number; fit_options: FitOptions | null }
 /** Blocking checks are regressions; advisory ones (e.g. a small held-out set) never stop a save. */
@@ -81,7 +84,11 @@ export interface VersionSummary {
   parent_version_id: string | null; has_head: boolean;
 }
 
-export interface JudgeStatus { provider: "jev"; configured: boolean; model: string }
+export type JudgeProvider = "jev" | "agent_judge";
+export interface JudgeStatus {
+  provider: "jev"; configured: boolean; model: string;
+  providers?: Record<JudgeProvider, { configured: boolean; model: string }>;
+}
 
 export interface ModelSummary {
   id: string; name: string; output_type: OutputType;
@@ -179,7 +186,7 @@ export const imGet = (id: string) => apiFetch<ModelDetail>(`${IM}/${id}`);
 export const imRename = (id: string, name: string) => apiFetch<ModelDetail>(`${IM}/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
 export const imDelete = (id: string) => apiFetch<void>(`${IM}/${id}`, { method: "DELETE" });
 
-export const imEditDraft = (id: string, body: { description?: string; labels?: OutputLabel[]; rubric?: RubricQuestion[]; seed_example_ids?: string[] }) =>
+export const imEditDraft = (id: string, body: { description?: string; labels?: OutputLabel[]; rubric?: RubricQuestion[]; seed_example_ids?: string[]; provider?: JudgeProvider }) =>
   apiFetch<ModelDetail>(`${IM}/${id}/draft`, { method: "PATCH", body: JSON.stringify(body) });
 export const imDiscardDraft = (id: string) => apiFetch<ModelDetail>(`${IM}/${id}/draft`, { method: "DELETE" });
 export const imGrade = (id: string, limit = 12) => post<GradeResult>(`${IM}/${id}/draft/grade`, { limit });

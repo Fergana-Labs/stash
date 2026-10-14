@@ -2,14 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BehaviorChip } from "@/components/behaviors/behavior-ui";
-import { stepWindow, traceBehaviorHits, type BehaviorHit } from "@/lib/behaviors-api";
+import { traceBehaviorHits, type BehaviorHit } from "@/lib/behaviors-api";
+import { cn } from "@/lib/utils";
 import type { RmStep } from "@/lib/types";
 
+/** "step 3" / "steps 3–5", numbered the way the viewer numbers steps. */
+export function stepRange(start: number, end: number, numberOf: (index: number) => number) {
+  const a = numberOf(start), b = numberOf(end);
+  return a === b ? `step ${a}` : `steps ${a}–${b}`;
+}
+
 /**
- * Behavior hits on this trace as chips; clicking one jumps to the first step of its window.
+ * Behavior hits on this trace as chips; clicking one selects it (the viewer tints its
+ * steps) and jumps to its first step. Clicking the selected chip clears it.
  * Also honors `?step=<index>` (links from the Behaviors page) by jumping there once the trace loads.
  */
-export default function TraceBehaviorStrip({ traceId, steps, onReveal }: { traceId: string; steps: RmStep[]; onReveal: (stepId: string) => void }) {
+export default function TraceBehaviorStrip({ traceId, steps, numberOf, onReveal, selectedId, onSelect }: {
+  traceId: string;
+  steps: RmStep[];
+  numberOf: (index: number) => number;
+  onReveal: (stepId: string) => void;
+  selectedId: string | null;
+  onSelect: (hit: BehaviorHit | null) => void;
+}) {
   const [hits, setHits] = useState<BehaviorHit[]>([]);
   const jumped = useRef(false);
 
@@ -30,7 +45,9 @@ export default function TraceBehaviorStrip({ traceId, steps, onReveal }: { trace
     onReveal(step.id);
   }, [steps, onReveal]);
 
-  function jump(hit: BehaviorHit) {
+  function choose(hit: BehaviorHit) {
+    if (hit.id === selectedId) { onSelect(null); return; }
+    onSelect(hit);
     const step = steps.find((s) => s.index === hit.start_idx) ?? steps.find((s) => s.index >= hit.start_idx);
     if (step) onReveal(step.id);
   }
@@ -38,7 +55,9 @@ export default function TraceBehaviorStrip({ traceId, steps, onReveal }: { trace
   if (!hits.length) return null;
   return <div aria-label="Behaviors" className="flex flex-wrap items-center gap-1.5 text-[11px]">
     <span className="mr-1 text-muted-foreground">Behaviors</span>
-    {hits.map((hit) => <BehaviorChip key={hit.id} name={`${hit.behavior_name ?? "Behavior"} · ${stepWindow(hit.start_idx, hit.end_idx)}`} actor={hit.actor ?? "agent"}
-      title={hit.evidence?.map((e) => `“${e.quote}”`).join("\n") || undefined} onClick={() => jump(hit)} />)}
+    {hits.map((hit) => <span key={hit.id} className={cn("rounded", hit.id === selectedId && "ring-1 ring-brand-500")}>
+      <BehaviorChip name={`${hit.behavior_name ?? "Behavior"} · ${stepRange(hit.start_idx, hit.end_idx, numberOf)}`} actor={hit.actor ?? "agent"}
+        title={hit.evidence?.map((e) => `“${e.quote}”`).join("\n") || undefined} onClick={() => choose(hit)} />
+    </span>)}
   </div>;
 }

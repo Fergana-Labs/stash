@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BarChart3, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReliabilityChart from "@/components/intuitions/ReliabilityChart";
+import ClassificationTable, { classificationFromRows } from "@/components/intuitions/ClassificationTable";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { imPromote } from "@/lib/intuition-api";
 import { wzReport, wzTrain, type TrainingReport } from "@/lib/wizard-api";
@@ -82,6 +83,8 @@ export default function ReportCard() {
   const zeroShot = report?.leaderboard.find((r) => r.name === "Jev zero-shot")?.accuracy ?? null;
   const fused = report?.holdout.accuracy ?? null;
   const lift = fused != null && zeroShot != null ? fused - zeroShot : null;
+  // The report may carry head.classification; otherwise derive it from the held-out rows.
+  const classification = report ? report.holdout.classification ?? classificationFromRows(report.holdout.rows, Object.keys(report.counts.labels)) : null;
 
   return (
     <CardShell
@@ -137,6 +140,13 @@ export default function ReportCard() {
               {report.holdout.reliability.length ? <ReliabilityChart bins={report.holdout.reliability} /> : <p className="m-0 text-[12px] text-muted-foreground">No held-out predictions yet.</p>}
             </section>
           </div>
+
+          {classification && (
+            <section>
+              <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Per-class agreement (held-out)</h4>
+              <ClassificationTable classification={classification} />
+            </section>
+          )}
 
           <section>
             <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">What drives decisions</h4>
