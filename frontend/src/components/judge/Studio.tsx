@@ -21,12 +21,12 @@ import UseIt from "./UseIt";
 
 type Tab = "setup" | "golden" | "inbox" | "try" | "results" | "how";
 const TABS: { id: Tab; label: string }[] = [
+  { id: "how", label: "How it works" },
   { id: "setup", label: "Setup" },
   { id: "golden", label: "Golden set" },
   { id: "inbox", label: "Inbox" },
   { id: "try", label: "Try it" },
   { id: "results", label: "Results" },
-  { id: "how", label: "How it works" },
 ];
 
 function Placeholder() {
@@ -52,7 +52,8 @@ export default function Studio({ modelId: initialModel = null, sessionId: initia
   const [sessionId, setSessionId] = useState<string | null>(initialSession);
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
-  const [tab, setTab] = useState<Tab>("setup");
+  // A brand-new intuition opens on How it works; an existing one on Setup.
+  const [tab, setTab] = useState<Tab>(initialModel ? "setup" : "how");
   const [version, setVersion] = useState(0);
   const [inject, setInject] = useState<Injected | null>(null);
   const [mobile, setMobile] = useState<"wizard" | "model">("wizard");

@@ -39,12 +39,12 @@ const TITLES: Record<Card["kind"], string> = {
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- card props are validated server-side by the tool schemas */
-function CardView({ card }: { card: Card }) {
+function CardView({ card, fresh = false }: { card: Card; fresh?: boolean }) {
   const p = card.props as any;
   switch (card.kind) {
     case "choices": return <ChoicesCard question={p.question} options={p.options ?? []} multi={p.multi} />;
     case "uploader": return <UploaderCard prompt={p.prompt} />;
-    case "labeler": return <LabelerCard which={p.which} />;
+    case "labeler": return <LabelerCard which={p.which} fresh={fresh} />;
     case "criteria": return <CriteriaCard proposals={p.proposals} />;
     case "report": return <ReportCard />;
     case "playground": return <PlaygroundCard item={p.item} prediction={p.prediction} />;
@@ -61,9 +61,9 @@ function CardView({ card }: { card: Card }) {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Older cards of a kind collapse to one line (so only one labeler listens to the keyboard); reopen on demand. */
-function CardSlot({ card, latest }: { card: Card; latest: boolean }) {
+function CardSlot({ card, latest, fresh }: { card: Card; latest: boolean; fresh: boolean }) {
   const [open, setOpen] = useState(false);
-  if (latest || open || card.kind === "robustness") return <CardView card={card} />;
+  if (latest || open || card.kind === "robustness") return <CardView card={card} fresh={fresh && latest} />;
   return (
     <button type="button" onClick={() => setOpen(true)} className="my-1 flex w-full items-center gap-2 rounded-md border border-dashed border-border px-3 py-1.5 text-left text-[12px] text-muted-foreground hover:bg-surface/60">
       <Sparkles className="size-3" />{TITLES[card.kind]} <span className="ml-auto underline">Reopen</span>
@@ -98,6 +98,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const [attaching, setAttaching] = useState("");
   const queued = useRef<{ text: string; kind: "message" | "event" }[]>([]);
   const busyRef = useRef(false);
+  // Cards that arrived live (not loaded from history): a labeler opens itself only then.
+  const streamed = useRef(new Set<string>());
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -119,6 +121,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     });
     try {
       await streamWizard(sessionId, text, kind, (e) => {
+        if (e.type === "card") streamed.current.add(e.id);
         if (e.type === "model") { setModelId(e.model_id); setTitle(e.title); onModel?.(e.model_id, e.title); }
         else if (e.type === "error") setError(e.message);
         else if (e.type === "done") refresh();
@@ -199,7 +202,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                   {entry.parts.map((part, j) => part.type === "text"
                     ? <div key={j} className="prose prose-sm max-w-none text-[13.5px] leading-relaxed dark:prose-invert [&_p]:my-1.5"><Markdown remarkPlugins={[remarkGfm]}>{part.text}</Markdown></div>
                     : part.type === "activity" ? <ActivityRow key={j} part={part} />
-                      : <CardSlot key={part.id} card={part} latest={lastCardIds.get(part.kind) === part.id} />)}
+                      : <CardSlot key={part.id} card={part} latest={lastCardIds.get(part.kind) === part.id} fresh={streamed.current.has(part.id)} />)}
                   {busy && i === entries.length - 1 && entry.parts.length === 0 && <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Thinking…</div>}
                 </div>
               ))}

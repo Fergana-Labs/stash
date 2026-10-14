@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Pin, Sparkles, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ItemView from "@/components/intuitions/ItemView";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { imEditExample, imExamples, imGet, type Example } from "@/lib/intuition-api";
@@ -18,7 +19,7 @@ const SUGGESTED = /^Suggested [^:]+: ?([\s\S]*)$/;
  * pin it if it must never be gotten wrong. Generated items arrive with a
  * suggested label and the reason for it; accept or change it.
  */
-export default function LabelerCard({ which = "needs_review" }: { which?: Which }) {
+export function Labeler({ which = "needs_review", onDone }: { which?: Which; onDone?: () => void }) {
   const { modelId, send, refresh } = useWizard();
   const [queue, setQueue] = useState<Example[] | null>(null);
   const [space, setSpace] = useState<LabelSpace | null>(null);
@@ -67,7 +68,8 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
     const counts = Object.values(labeled).reduce<Record<string, number>>((acc, l) => ({ ...acc, [l]: (acc[l] ?? 0) + 1 }), {});
     const summary = Object.entries(counts).map(([l, n]) => `${n} ${showLabel(l)}`).join(", ");
     send(Object.keys(labeled).length ? `Labeled ${Object.keys(labeled).length} example${Object.keys(labeled).length === 1 ? "" : "s"}: ${summary}.` : "Closed the labeler without labeling.", "event");
-  }, [finished, refresh, send]);
+    onDone?.();
+  }, [finished, refresh, send, onDone]);
 
   const commit = useCallback(async (label: string) => {
     if (!modelId || !current || !queue) return;
@@ -84,25 +86,24 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
     } catch (e) { setError(errorMessage(e)); }
   }, [modelId, current, queue, done, index, finish, note, pin, suggestion]);
 
-  if (!modelId) return <CardShell icon={Tags} title="Label examples"><NeedsModel /></CardShell>;
+  if (!modelId) return <NeedsModel />;
   const total = queue?.length ?? 0;
   const labeledCount = Object.keys(done).length;
   const options = current?.kind === "pair" ? pairSpace : space;
   const keysHint = options?.kind === "multi" ? `1–${options.options.length} toggle · 0 none · ↵ save` : `press 1–${options?.options.length ?? 0}`;
 
   return (
-    <CardShell
-      icon={Tags}
-      title="Label examples"
-      subtitle={queue ? (finished ? `Done — ${labeledCount} labeled` : `${Math.min(index + 1, total)} of ${total} · ${keysHint}`) : "Loading…"}
-      actions={!finished && queue && total > 0 ? <Button size="xs" variant="ghost" onClick={() => finish(done)}>Done</Button> : undefined}
-    >
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
+        <span>{queue ? (finished ? `Done — ${labeledCount} labeled` : total ? `${Math.min(index + 1, total)} of ${total} · ${keysHint}` : "") : "Loading…"}</span>
+        {!finished && queue && total > 0 && <Button size="xs" variant="ghost" onClick={() => finish(done)}>{labeledCount ? "Done for now" : "Not now"}</Button>}
+      </div>
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
       {queue && total === 0 && <p className="m-0 text-[12px] text-muted-foreground">{which === "mistakes" ? "No held-out mistakes to review." : "Nothing needs a label right now."}</p>}
       {queue && total > 0 && !finished && current && options && (
         <div className="space-y-3">
           <div className="h-1 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(labeledCount / total) * 100}%` }} /></div>
-          <div className="max-h-80 overflow-y-auto rounded-md border border-border bg-surface/30 p-3">
+          <div className="max-h-[45vh] overflow-y-auto rounded-md border border-border bg-surface/30 p-3">
             {current.kind === "pair" && current.item_b ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div><div className="mb-1 text-[10.5px] font-semibold text-muted-foreground">A</div><ItemView item={current.item} clamp={false} /></div>
@@ -126,6 +127,40 @@ export default function LabelerCard({ which = "needs_review" }: { which?: Which 
         </div>
       )}
       {finished && <p className="m-0 text-[12px] text-muted-foreground">Thanks — your labels are saved.</p>}
+    </div>
+  );
+}
+
+
+/** Labeling is its own focused step: a modal, so it is clear what is being asked. */
+export function LabelerModal({ open, onOpenChange, which = "needs_review" }: { open: boolean; onOpenChange: (open: boolean) => void; which?: Which }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{which === "mistakes" ? "Check the examples it got wrong" : "Label examples"}</DialogTitle>
+          <DialogDescription>Pick the right answer for each one, the way you would on the job. Add a reason when it is a close call: reasons teach it more than labels. Suggested labels are only guesses until you accept them.</DialogDescription>
+        </DialogHeader>
+        {open && <Labeler which={which} onDone={() => onOpenChange(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** In the chat: what is waiting to be labeled, and a button into the labeling modal (opened right away when the wizard asks). */
+export default function LabelerCard({ which = "needs_review", fresh = false }: { which?: Which; fresh?: boolean }) {
+  const { modelId, version } = useWizard();
+  const [open, setOpen] = useState(fresh);
+  const [waiting, setWaiting] = useState<number | null>(null);
+  useEffect(() => {
+    if (!modelId) return;
+    imExamples(modelId).then((ex) => setWaiting(ex.filter((e) => e.needs_review).length)).catch(() => setWaiting(null));
+  }, [modelId, version, open]);
+  if (!modelId) return <CardShell icon={Tags} title="Label examples"><NeedsModel /></CardShell>;
+  return (
+    <CardShell icon={Tags} title="Label examples" subtitle={which === "mistakes" ? "Held-out examples it got wrong" : waiting == null ? "Loading…" : waiting ? `${waiting} waiting for your label` : "Nothing waiting"}>
+      <Button size="sm" disabled={which === "needs_review" && waiting === 0} onClick={() => setOpen(true)}>{which === "mistakes" ? "Review mistakes" : waiting ? `Label ${waiting}` : "All labeled"}</Button>
+      <LabelerModal open={open} onOpenChange={setOpen} which={which} />
     </CardShell>
   );
 }

@@ -153,8 +153,10 @@ async def add_examples(ctx: Context, intuition_id: str, examples: list[dict]) ->
 async def generate_examples(
     ctx: Context, intuition_id: str, count: int = 8, guidance: str = "", propose: bool = True
 ) -> list[dict]:
-    """Draft borderline example inputs; with propose, each has a suggested label and reason.
-    They stay unconfirmed until a person labels them or calls accept_suggestions."""
+    """Draft borderline example inputs. Use only when the person has no real examples to give, or
+    their real data lacks a kind of case (aim guidance at that gap): real data first, always.
+    With propose, each has a suggested label and reason; they stay unconfirmed until a person
+    labels them or calls accept_suggestions."""
     user = await _user(ctx)
     created = await service.generate_examples(
         user["id"], _id(intuition_id), min(count, 20), guidance, propose

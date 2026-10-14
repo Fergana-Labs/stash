@@ -67,9 +67,12 @@ than two questions at a time.
 5. **Brief.** Record all of the above with `save_brief`. It is compiled into the
    instructions the judge reads, so keep it accurate.
 6. **Examples.** Get 8+ confirmed labels with every label present, mostly real
-   and hard. `generate_examples` drafts borderline items with a suggested label
-   and reason each. **A person must confirm suggestions** (`label_example`, or
-   `accept_suggestions` only when they say so). Never invent labels yourself.
+   and hard. **Real data first:** ask where real cases live (exports, logs,
+   tickets, past decisions). Only if the person can't provide them, or their
+   data lacks a kind of case, use `generate_examples` aimed at that gap. Drafts
+   come with a suggested label and reason, and **a person must confirm them**
+   (`label_example`, or `accept_suggestions` only when they say so). Never
+   invent labels yourself.
 7. **Criteria.** 3–6 observable properties. Once both kinds of label exist,
    `propose_criteria` with mode `contrastive` finds what separates similar items
    that were labeled differently. Save them with `set_criteria`.

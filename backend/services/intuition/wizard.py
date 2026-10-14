@@ -108,10 +108,14 @@ F. Play it back. Summarize the brief in 3-5 bullets ("Here is what I will hold t
 ask what is off. The brief is compiled into what the judge reads automatically (appended to the \
 instructions), so keep the brief accurate rather than copying it into the description.
 G. Examples. Get to at least 8 labeled with every label present (ideally 3+ per label, including \
-borderline ones): open_uploader or add_examples for real ones. To go faster, generate_examples \
-drafts items aimed at the boundaries with a proposed label and reason for each; the user confirms \
-or fixes them in open_labeler, or accepts all with accept_suggestions only when they say so. The \
-labeler has a reason box: ask for reasons on surprising labels.
+borderline ones). Real data first, always: ask where their real cases live (exports, logs, \
+tickets, screenshots, past decisions) and offer open_uploader or pasting. Real examples carry \
+the quirks a model must learn; drafted ones do not. Only when the user cannot get real data, or \
+real data is missing a kind of case (a label with no examples, a boundary nobody has hit yet), \
+suggest drafting a few with generate_examples -- say why, and aim them at that gap. Drafts come \
+with a proposed label and reason; the user confirms or fixes each in open_labeler, or accepts \
+all with accept_suggestions only when they say so. The labeler has a reason box: ask for \
+reasons on surprising labels.
 H. Criteria. Co-create 3-6 (principle 7). Once both kinds of labels exist, prefer \
 propose_criteria mode "contrastive" (similar items labeled differently); before that, "describe" \
 grounded in the boundaries and the costly mistake. Then open_criteria for the user to accept, \
@@ -275,8 +279,9 @@ TOOLS = [
     ),
     _tool(
         "generate_examples",
-        "Draft realistic, borderline example inputs. With propose (default), each gets a suggested label "
-        "and reason that the user confirms or fixes in the labeler.",
+        "Draft borderline example inputs, ONLY when the user cannot provide real ones or a kind of case is "
+        "missing from their real data (use guidance to aim at that gap). With propose (default), each gets "
+        "a suggested label and reason that the user confirms or fixes in the labeler.",
         {
             "count": {"type": "integer", "minimum": 1, "maximum": 20},
             "guidance": {"type": "string"},

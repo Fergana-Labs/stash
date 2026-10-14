@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { WizardProvider } from "../wizard-ui";
-import LabelerCard from "./LabelerCard";
+import LabelerCard, { Labeler } from "./LabelerCard";
 
 const api = vi.hoisted(() => ({ imGet: vi.fn(), imExamples: vi.fn(), imEditExample: vi.fn() }));
 vi.mock("@/lib/intuition-api", () => api);
@@ -21,7 +21,7 @@ it("labels with number keys, shows images, and reports back to the wizard", asyn
   ]);
   api.imEditExample.mockResolvedValue({});
   const send = vi.fn();
-  render(<WizardProvider value={{ modelId: "m", send, refresh: vi.fn(), version: 0, busy: false }}><LabelerCard which="needs_review" /></WizardProvider>);
+  render(<WizardProvider value={{ modelId: "m", send, refresh: vi.fn(), version: 0, busy: false }}><Labeler which="needs_review" /></WizardProvider>);
   expect(await screen.findByRole("img", { name: "shot.png" })).toBeVisible();
   expect(screen.getByText("1 of 2 · press 1–2")).toBeVisible();
   fireEvent.keyDown(window, { key: "2" });
@@ -29,4 +29,15 @@ it("labels with number keys, shows images, and reports back to the wizard", asyn
   fireEvent.click(screen.getByRole("button", { name: /send/ }));
   await waitFor(() => expect(send).toHaveBeenCalledWith("Labeled 2 examples: 1 rewrite, 1 send.", "event"));
   expect(api.imEditExample).toHaveBeenNthCalledWith(1, "m", "e1", { label: "rewrite", needs_review: false });
+});
+
+it("opens labeling in a modal from the chat, by itself when the wizard just asked", async () => {
+  api.imGet.mockResolvedValue(detail);
+  api.imExamples.mockResolvedValue([example("e2", "please send")]);
+  render(<WizardProvider value={{ modelId: "m", send: vi.fn(), refresh: vi.fn(), version: 0, busy: false }}><LabelerCard fresh /></WizardProvider>);
+  expect(await screen.findByRole("dialog", { name: "Label examples" })).toBeVisible();
+  expect(await screen.findByText("please send")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Label 1" })).toBeVisible();
 });

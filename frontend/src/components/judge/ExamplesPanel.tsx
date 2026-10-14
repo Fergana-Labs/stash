@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pin, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { imAcceptSuggestions, imDeleteExample, imEditExample, imExamples, imGenerate, imGet, type Example } from "@/lib/intuition-api";
+import { imAcceptSuggestions, imDeleteExample, imEditExample, imExamples, imGet, type Example } from "@/lib/intuition-api";
 import { issuesOf, LabelChip, LabelPicker, labelSpace, PAIR_SPACE, type LabelSpace } from "@/components/wizard/labels";
 import { useWizard } from "@/components/wizard/wizard-ui";
 import UploaderCard from "@/components/wizard/cards/UploaderCard";
 import GoldenCard from "@/components/wizard/cards/GoldenCard";
-import LabelerCard from "@/components/wizard/cards/LabelerCard";
+import { LabelerModal } from "@/components/wizard/cards/LabelerCard";
 import { Badge, FilterChips, ItemRow } from "./ItemRow";
 
 type Filter = "all" | "todo" | "held" | "pinned" | `label:${string}`;
@@ -46,10 +46,7 @@ export default function ExamplesPanel() {
   const [space, setSpace] = useState<LabelSpace | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
-  const [adding, setAdding] = useState<"" | "upload" | "generate" | "label">("");
-  const [count, setCount] = useState(8);
-  const [guidance, setGuidance] = useState("");
-  const [propose, setPropose] = useState(true);
+  const [adding, setAdding] = useState<"" | "upload" | "label">("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -74,16 +71,6 @@ export default function ExamplesPanel() {
     }
     return true;
   }), [examples, filter, space]);
-
-  async function generate() {
-    if (!modelId) return;
-    setBusy("Drafting examples…"); setError("");
-    try {
-      const made = await imGenerate(modelId, { count, guidance: guidance.trim(), propose });
-      await load(); refresh(); setAdding("label");
-      send(`Generated ${made.length} examples${propose ? " with suggested labels" : ""} to label.`, "event");
-    } catch (e) { setError(errorMessage(e)); } finally { setBusy(""); }
-  }
 
   async function acceptAll() {
     if (!modelId) return;
@@ -111,30 +98,13 @@ export default function ExamplesPanel() {
         <p className="m-0 max-w-xl text-[12.5px] text-muted-foreground">Your labeled examples: what the intuition learns from, and (held out) what it is measured on. Real, hard cases teach the most.</p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={adding === "upload" ? "secondary" : "outline"} onClick={() => setAdding(adding === "upload" ? "" : "upload")}><Plus />Add real examples</Button>
-          <Button size="sm" variant={adding === "generate" ? "secondary" : "outline"} onClick={() => setAdding(adding === "generate" ? "" : "generate")}><Sparkles />Generate</Button>
           {todo.length > 0 && <Button size="sm" onClick={() => setAdding("label")}>Label {todo.length}</Button>}
+          {suggestions.length > 0 && <Button size="sm" variant="outline" disabled={!!busy} onClick={() => void acceptAll()} title="Confirm every pending suggestion as is">Accept all {suggestions.length} suggestions</Button>}
         </div>
       </div>
 
       {adding === "upload" && <UploaderCard prompt="Add real examples, especially hard and borderline ones." />}
-      {adding === "generate" && (
-        <section aria-label="Generate examples" className="space-y-2.5 rounded-lg border border-border p-3.5">
-          <p className="m-0 text-[12.5px]">Draft realistic, borderline inputs aimed at the boundaries between labels.</p>
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            <label className="flex items-center gap-1.5">How many <input aria-label="How many" type="number" min={1} max={20} value={count} onChange={(e) => setCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} className="w-14 rounded-md border border-border bg-background px-2 py-1" /></label>
-            <input aria-label="Focus (optional)" value={guidance} onChange={(e) => setGuidance(e.target.value)} placeholder="Focus (optional), e.g. refunds that mention a bug" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1" />
-          </div>
-          <label className="flex items-start gap-2 text-[12px]"><input type="checkbox" className="mt-0.5" checked={propose} onChange={(e) => setPropose(e.target.checked)} /><span>Suggest a label for each, with a reason. You still confirm each one (or accept them all at once).</span></label>
-          <Button size="sm" disabled={!!busy} onClick={() => void generate()}>{busy || "Generate"}</Button>
-        </section>
-      )}
-      {adding === "label" && todo.length > 0 && (
-        <div className="space-y-2">
-          <LabelerCard key={todo.length} which="needs_review" />
-          {suggestions.length > 0 && <Button size="sm" variant="outline" disabled={!!busy} onClick={() => void acceptAll()} title="Confirm every pending suggestion as is">Accept all {suggestions.length} suggestions</Button>}
-        </div>
-      )}
-
+      <LabelerModal open={adding === "label"} onOpenChange={(o) => { setAdding(o ? "label" : ""); if (!o) void load(); }} />
       {(examples?.length ?? 0) >= 4 && (
         <details className="rounded-lg border border-border [&>summary]:px-3.5 [&>summary]:py-2 [&[open]>summary]:border-b [&[open]>summary]:border-border">
           <summary className="cursor-pointer text-[12.5px]">Health check <span className="text-muted-foreground">— coverage per label, near-duplicates, look-alikes labeled differently</span></summary>
