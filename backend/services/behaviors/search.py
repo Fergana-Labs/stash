@@ -10,6 +10,7 @@ An optional rerank asks Claude to keep only the traces that answer the query.
 
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -74,16 +75,62 @@ async def _browse(owner_id: UUID, agent, days, behaviors, limit: int) -> list[di
     return [{"trace_id": r["trace_id"], "score": None} for r in rows]
 
 
+async def _finals(traces) -> dict[UUID, dict]:
+    """The outcome of each trace's last answer, and that answer's text, from its step labels."""
+    wanted: dict[UUID, tuple[int, str | None]] = {}
+    for r in traces:
+        # The answer that counts is the last one given to an actual request, not
+        # the "you're welcome" after a thank-you.
+        last_user, chosen = None, None
+        for idx, label in sorted(((int(k), v) for k, v in (r["labels"] or {}).items()), key=lambda kv: kv[0]):
+            if label.get("actor") == "user":
+                last_user = label.get("intent")
+            elif label.get("is_output") and last_user != "acknowledgment":
+                chosen = (idx, label.get("outcome"))
+        if chosen:
+            wanted[r["id"]] = chosen
+    if not wanted:
+        return {}
+    rows = await get_pool().fetch(
+        """SELECT s.trace_id, left(s.content, 300) AS content FROM rm_trace_steps s
+           JOIN unnest($1::uuid[], $2::int[]) AS w(trace_id, idx) ON w.trace_id = s.trace_id AND w.idx = s.idx""",
+        list(wanted),
+        [v[0] for v in wanted.values()],
+    )
+    text = {r["trace_id"]: r["content"] for r in rows}
+    return {
+        tid: {"outcome": outcome, "final_output": text.get(tid)}
+        for tid, (_, outcome) in wanted.items()
+    }
+
+
+PREFIX = re.compile(r"^\[\d+\] [A-Z]+(?: tool call \S+(?: \{.*?\})?)?\s*", re.M)
+
+
+def quote(text: str, q: str, cap: int = 240) -> str:
+    """The sentence of a segment that best matches the query, without render prefixes."""
+    clean = PREFIX.sub("", text)
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", clean) if len(x.strip()) > 3]
+    if not sentences:
+        return clean[:cap]
+    terms = {t for t in re.findall(r"[a-z0-9]+", q.lower()) if len(t) > 2}
+    best = max(sentences, key=lambda x: len(terms & set(re.findall(r"[a-z0-9]+", x.lower()))))
+    return best if len(best) <= cap else best[: cap - 1] + "…"
+
+
 async def _decorate(owner_id: UUID, ids: list[UUID]) -> dict[UUID, dict]:
     pool = get_pool()
     traces = await pool.fetch(
         f"""SELECT t.id, t.title, t.created_at, {AGENT_SQL} AS agent,
               (SELECT left(content, 300) FROM rm_trace_steps WHERE trace_id = t.id AND role = 'user' ORDER BY idx LIMIT 1) AS input,
-              (SELECT left(content, 300) FROM rm_trace_steps WHERE trace_id = t.id AND role = 'assistant' AND tool_name IS NULL ORDER BY idx DESC LIMIT 1) AS output
-            FROM rm_traces t WHERE t.owner_user_id = $1 AND t.id = ANY($2::uuid[])""",
+              (SELECT left(content, 300) FROM rm_trace_steps WHERE trace_id = t.id AND role = 'assistant' AND tool_name IS NULL ORDER BY idx DESC LIMIT 1) AS output,
+              t.metadata->>'session_id' AS session_id, l.labels
+            FROM rm_traces t LEFT JOIN rm_step_labels l ON l.trace_id = t.id
+            WHERE t.owner_user_id = $1 AND t.id = ANY($2::uuid[])""",
         owner_id,
         ids,
     )
+    finals = await _finals(traces)
     hits = await pool.fetch(
         """SELECT h.id, h.trace_id, h.behavior_id, b.name, b.actor, h.start_idx, h.end_idx, h.review, h.confidence
            FROM behavior_hits h JOIN behaviors b ON b.id = h.behavior_id
@@ -91,7 +138,14 @@ async def _decorate(owner_id: UUID, ids: list[UUID]) -> dict[UUID, dict]:
            ORDER BY h.start_idx""",
         ids,
     )
-    out = {r["id"]: {**dict(r), "behaviors": []} for r in traces}
+    out = {
+        r["id"]: {
+            **{k: r[k] for k in r.keys() if k != "labels"},
+            **finals.get(r["id"], {}),
+            "behaviors": [],
+        }
+        for r in traces
+    }
     for h in hits:
         if h["trace_id"] in out:
             out[h["trace_id"]]["behaviors"].append({k: h[k] for k in h.keys() if k != "trace_id"})
@@ -141,7 +195,7 @@ async def search(
             if len(g["segments"]) < SEGMENTS_PER_TRACE:
                 g["segments"].append(
                     {"start_idx": m["start_idx"], "end_idx": m["end_idx"], "score": m["score"],
-                     "snippet": m["text"][:SNIPPET_CHARS]}
+                     "snippet": m["text"][:SNIPPET_CHARS], "quote": quote(m["text"], q)}
                 )  # fmt: skip
         ranked = list(grouped.values())[:limit]
     else:

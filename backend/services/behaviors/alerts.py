@@ -130,10 +130,19 @@ async def evaluate() -> int:
         window = behavior["alert"]["window_hours"]
         text = message(behavior, behavior["hits"], behavior["traces"], window)
         delivered = await deliver(behavior, text)
+        # Every firing starts a root-cause triage, so the alert arrives with a "why".
+        try:
+            from . import triage
+
+            triage_id = await triage.start(behavior["owner_user_id"], behavior["id"])
+        except Exception as exc:  # Triage is a bonus; the alert must still be recorded.
+            log.warning("Could not start triage for an alert: %s", type(exc).__name__)
+            triage_id = None
         await pool.execute(
-            "INSERT INTO behavior_alerts (behavior_id, owner_user_id, message, stats, delivered) VALUES ($1, $2, $3, $4, $5)",
+            """INSERT INTO behavior_alerts (behavior_id, owner_user_id, message, stats, delivered, triage_id)
+               VALUES ($1, $2, $3, $4, $5, $6)""",
             behavior["id"], behavior["owner_user_id"], text,
-            {"hits": behavior["hits"], "traces": behavior["traces"], "window_hours": window}, delivered,
+            {"hits": behavior["hits"], "traces": behavior["traces"], "window_hours": window}, delivered, triage_id,
         )  # fmt: skip
     return len(due)
 

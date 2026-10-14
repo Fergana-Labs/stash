@@ -16,7 +16,7 @@ from uuid import UUID
 from ...database import get_pool
 from ..rm.monitoring import AGENT_SQL
 
-DIMENSIONS = ("agent", "outcome", "satisfaction", "behavior", "tool_use")
+DIMENSIONS = ("agent", "outcome", "satisfaction", "behavior", "tool_use", "task_type")
 MAX_TRACES = 2_000
 SAMPLE = 5
 
@@ -61,10 +61,12 @@ def facts(labels: dict | None, tool_calls: int) -> dict:
 async def traces(owner_id: UUID, days: int) -> list[dict]:
     rows = await get_pool().fetch(
         f"""SELECT t.id, t.title, t.created_at, {AGENT_SQL} AS agent, l.labels,
+                   coalesce(tt.task_type, 'unclassified') AS task_type,
                    (SELECT count(*) FROM rm_trace_steps s WHERE s.trace_id = t.id AND s.tool_name IS NOT NULL)::int AS tool_calls,
                    coalesce((SELECT array_agg(DISTINCT b.name) FROM behavior_hits h JOIN behaviors b ON b.id = h.behavior_id
                              WHERE h.trace_id = t.id AND h.review IS DISTINCT FROM 'rejected'), '{{}}') AS behaviors
             FROM rm_traces t LEFT JOIN rm_step_labels l ON l.trace_id = t.id
+            LEFT JOIN rm_trace_task_types tt ON tt.trace_id = t.id
             WHERE t.owner_user_id = $1 AND t.created_at > now() - make_interval(days => $2)
             ORDER BY t.created_at DESC LIMIT $3""",
         owner_id,
@@ -83,6 +85,10 @@ def keys(trace: dict, by: str) -> list[str]:
 async def overview(owner_id: UUID, by: str = "outcome", days: int = 30) -> dict:
     if by not in DIMENSIONS:
         raise ValueError(f"Group by one of {', '.join(DIMENSIONS)}")
+    if by == "task_type":
+        from . import task_types
+
+        await task_types.refresh(owner_id, days)
     all_traces = await traces(owner_id, days)
     groups: dict[str, list[dict]] = {}
     for t in all_traces:

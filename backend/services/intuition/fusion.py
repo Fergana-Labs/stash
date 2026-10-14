@@ -453,6 +453,7 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
             "reliability": shipped.get("reliability") or [],
             "confusion": shipped.get("confusion"),
             "classification": shipped.get("classification"),
+            "by_difficulty": shipped.get("by_difficulty") or [],
             "rows": shipped["rows"],
         },
         "train_accuracy": fitted["metrics"]["train"]["accuracy"],

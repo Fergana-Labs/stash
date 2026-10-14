@@ -475,8 +475,33 @@ async def improve_status(model_id: UUID, user: User):
     return {"job": await checked(improve.latest(user["id"], model_id))}
 
 
+class EvalAlert(Body):
+    min_agreement: float = Field(default=0.8, gt=0, le=1)
+    min_feedback: int = Field(default=5, ge=1, le=10_000)
+    window_days: int = Field(default=7, ge=1, le=60)
+    cooldown_hours: int = Field(default=24, ge=1, le=720)
+    channels: list[Literal["slack", "email"]] = Field(default_factory=lambda: ["slack", "email"])
+
+
+@router.put("/{model_id}/alert")
+async def set_alert(model_id: UUID, user: User, req: EvalAlert | None = None):
+    """Alert when production agreement drops below a floor; send null to turn it off."""
+    from ..services.intuition import alerts as eval_alerts
+
+    try:
+        return {
+            "alert": await eval_alerts.set_rule(
+                user["id"], model_id, req.model_dump() if req else None
+            )
+        }
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 class MineProduction(Body):
-    by: Literal["agent", "outcome", "satisfaction", "behavior", "tool_use"] = "satisfaction"
+    by: Literal["agent", "outcome", "satisfaction", "behavior", "tool_use", "task_type"] = (
+        "satisfaction"
+    )
     key: str = Field(default="frustrated", min_length=1, max_length=200)
     days: int = Field(default=30, ge=1, le=180)
 

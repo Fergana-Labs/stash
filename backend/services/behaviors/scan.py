@@ -181,6 +181,9 @@ async def reconcile() -> dict:
     from . import alerts
 
     fired = await alerts.evaluate()
+    from ..intuition import alerts as eval_alerts
+
+    fired += await eval_alerts.evaluate()
     return {
         "segments": len(stale),
         **result,

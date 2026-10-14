@@ -3,6 +3,7 @@
 Owner-scoped like the rest of the reward-model surface; another owner's id is a 404.
 """
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -10,7 +11,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.behaviors import alerts, builtin, cohorts, monitoring, search, service
+from ..services.behaviors import (
+    alerts,
+    builtin,
+    cohorts,
+    monitoring,
+    releases,
+    search,
+    service,
+    templates,
+    triage,
+)
 from ..services.intuition import service as evals
 from .reward_models import require_reward_models
 
@@ -88,8 +99,15 @@ class Export(Body):
     windows: list[Window] = Field(min_length=1, max_length=200)
 
 
+class Release(Body):
+    label: str = Field(min_length=1, max_length=120)
+    agent: str | None = Field(default=None, max_length=200)
+    released_at: datetime | None = None
+    note: str = Field(default="", max_length=2000)
+
+
 def _errors(exc: Exception):
-    if isinstance(exc, service.NotFound | evals.NotFound):
+    if isinstance(exc, service.NotFound | evals.NotFound | releases.NotFound | LookupError):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(exc, ValueError):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -123,11 +141,44 @@ async def overview(
 
 @router.get("/cohorts")
 async def cohort_overview(
-    by: Literal["agent", "outcome", "satisfaction", "behavior", "tool_use"] = "outcome",
+    by: Literal[
+        "agent", "outcome", "satisfaction", "behavior", "tool_use", "task_type"
+    ] = "outcome",
     days: int = Query(default=30, ge=1, le=180),
     user: dict = Depends(get_current_user),
 ):
     return await cohorts.overview(user["id"], by, days)
+
+
+@router.get("/templates")
+async def list_templates(user: dict = Depends(get_current_user)):
+    return {"templates": templates.TEMPLATES}
+
+
+@router.post("/templates/{slug}", status_code=201)
+async def install_template(slug: str, user: dict = Depends(get_current_user)):
+    template = templates.BY_SLUG.get(slug)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return await service.create(user["id"], {**templates.as_behavior(template), "slug": slug})
+
+
+@router.get("/releases")
+async def list_releases(user: dict = Depends(get_current_user)):
+    return {"releases": await releases.list_releases(user["id"])}
+
+
+@router.post("/releases", status_code=201)
+async def create_release(body: Release, user: dict = Depends(get_current_user)):
+    return await releases.create(user["id"], body.label, body.agent, body.released_at, body.note)
+
+
+@router.delete("/releases/{release_id}", status_code=204)
+async def delete_release(release_id: UUID, user: dict = Depends(get_current_user)):
+    try:
+        await releases.delete(user["id"], release_id)
+    except Exception as exc:
+        _errors(exc)
 
 
 @router.get("/alerts")
@@ -227,6 +278,33 @@ async def add_hit(behavior_id: UUID, body: ManualHit, user: dict = Depends(get_c
         )
     except Exception as exc:
         _errors(exc)
+
+
+@router.get("/{behavior_id}/compare")
+async def compare_release(
+    behavior_id: UUID,
+    release_id: UUID,
+    window_days: int = Query(default=releases.DEFAULT_WINDOW_DAYS, ge=1, le=60),
+    user: dict = Depends(get_current_user),
+):
+    try:
+        await service.get(user["id"], behavior_id)
+        return await releases.compare(user["id"], behavior_id, release_id, window_days)
+    except Exception as exc:
+        _errors(exc)
+
+
+@router.post("/{behavior_id}/triage", status_code=202)
+async def start_triage(behavior_id: UUID, user: dict = Depends(get_current_user)):
+    try:
+        return {"id": await triage.start(user["id"], behavior_id), "status": "running"}
+    except Exception as exc:
+        _errors(exc)
+
+
+@router.get("/{behavior_id}/triage")
+async def latest_triage(behavior_id: UUID, user: dict = Depends(get_current_user)):
+    return {"triage": await triage.latest(user["id"], behavior_id)}
 
 
 @router.post("/{behavior_id}/promote", status_code=201)

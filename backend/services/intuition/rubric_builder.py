@@ -37,6 +37,7 @@ from ...database import get_pool
 from .. import llm
 from . import head as heads
 from . import improve, providers, service
+from .monitoring import _predicted
 from .spec import MAX_QUESTIONS, classes, feature_names
 
 log = logging.getLogger(__name__)
@@ -200,7 +201,7 @@ async def disagreements(model_id: UUID) -> list[dict]:
     )
     out = []
     for r in rows:
-        predicted = (r["output"] or {}).get("label") or (r["output"] or {}).get("winner")
+        predicted = _predicted(r["output"] or {})
         if predicted is not None and predicted != r["label"]:
             out.append(
                 {
@@ -226,6 +227,49 @@ async def environment_checks(model_id: UUID) -> list[str]:
             if claim.get("status") == "contradicted":
                 found.append(f"{claim['text']} (step {claim.get('step_idx')})")
     return found[:MAX_DISAGREEMENTS]
+
+
+async def judge_disagreements(model_id: UUID, version: dict, examples: list[dict]) -> list[dict]:
+    """Items both judges answered (Jev and the Agent Judge) where their answers differ, with the human label.
+
+    Where the quick judge and the investigating judge part ways is where a
+    question is ambiguous or needs evidence the item alone does not show."""
+    seeds = await service._seeds(version)
+    judged = [q for q in version["rubric"] if q["type"] not in ("eval", "probe")]
+    keys: dict[tuple, dict[str, str]] = {}
+    for e in examples:
+        if e["kind"] != "item":
+            continue
+        for q in judged:
+            for p in providers.PROVIDERS:
+                context = providers.question_context(
+                    {**version, "provider": p, "provider_model": providers.provider_model(p)},
+                    q,
+                    seeds,
+                )
+                keys.setdefault((e["id"], q["id"]), {})[p] = providers.grade_key(context, e["item"])
+    if not keys:
+        return []
+    cached = await service._cached(model_id, [k for pair in keys.values() for k in pair.values()])
+    by_id = {e["id"]: e for e in examples}
+    out = []
+    for (example_id, qid), pair in keys.items():
+        answers = {p: cached.get(k) for p, k in pair.items()}
+        if any(a is None for a in answers.values()):
+            continue
+        tops = {p: max(a["probabilities"], key=a["probabilities"].get) for p, a in answers.items()}
+        if len(set(tops.values())) > 1:
+            e = by_id[example_id]
+            out.append(
+                {
+                    "question": qid,
+                    "answers": tops,
+                    "label": e["label"],
+                    "note": e.get("note") or "",
+                    "item": _clip(e["item"]),
+                }
+            )
+    return out[:MAX_DISAGREEMENTS]
 
 
 # ── Refine ───────────────────────────────────────────────────────────────
@@ -272,6 +316,7 @@ async def propose(
     production: list[dict],
     contradicted: list[str],
     history: list[dict],
+    judges: list[dict] | None = None,
 ) -> Proposal:
     tried = (
         "\n".join(
@@ -289,6 +334,8 @@ async def propose(
         + ("\n".join(json.dumps(e, ensure_ascii=False) for e in errors) or "none")
         + "\n\nPRODUCTION DISAGREEMENTS (feedback source, right label, judge said, note, item):\n"
         + ("\n".join(json.dumps(d, ensure_ascii=False) for d in production) or "none")
+        + "\n\nWHERE THE QUICK JUDGE AND THE INVESTIGATING JUDGE DISAGREE (question, each judge's answer, human label, item):\n"
+        + ("\n".join(json.dumps(d, ensure_ascii=False) for d in judges or []) or "none")
         + "\n\nCLAIMS CONTRADICTED BY ENVIRONMENT CHECKS:\n"
         + ("\n".join(f"- {c}" for c in contradicted) or "none")
         + f"\n\nEDITS ALREADY TRIED:\n{tried}\n\nPropose the next edits and return the full rubric."
@@ -362,6 +409,7 @@ async def refine(job_id: UUID, owner_id: UUID, model_id: UUID) -> dict:
     items = [i for e in examples for i in service._items_of(e)]
     production = await disagreements(model_id)
     contradicted = await environment_checks(model_id)
+    judges = await judge_disagreements(model_id, active, examples)
 
     best_rubric = active["rubric"]
     best = out_of_fold(
@@ -381,7 +429,9 @@ async def refine(job_id: UUID, owner_id: UUID, model_id: UUID) -> dict:
             job_id, "refining", f"Pass {n}: analyzing mistakes and proposing edits…", curve
         )
         base = {**active, "rubric": best_rubric}
-        proposal = await propose(base, mistakes(best, examples), production, contradicted, curve)
+        proposal = await propose(
+            base, mistakes(best, examples), production, contradicted, curve, judges
+        )
         rubric = apply(best_rubric, proposal)
         edits = [e.model_dump() for e in proposal.edits]
         if rubric == best_rubric:
@@ -435,6 +485,7 @@ async def refine(job_id: UUID, owner_id: UUID, model_id: UUID) -> dict:
             "examples": len(examples),
             "production_disagreements": len(production),
             "contradicted_claims": len(contradicted),
+            "judge_disagreements": len(judges),
         },
         "gate": fitted["gate"] if fitted else None,
         "held_out": {k: fitted["metrics"]["eval"][k] for k in ("n", "accuracy", "log_loss")}

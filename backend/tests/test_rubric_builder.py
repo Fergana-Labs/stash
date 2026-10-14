@@ -76,7 +76,7 @@ async def test_refine_stops_when_edits_stop_helping(client, fakes, monkeypatch):
     model_id = await _shipped(client, auth)
     proposals = []
 
-    async def propose(version, errors, production, contradicted, history):
+    async def propose(version, errors, production, contradicted, history, judges=None):
         proposals.append(history)
         return _proposal(version["rubric"])
 
@@ -112,7 +112,7 @@ async def test_refine_keeps_a_better_rubric_and_drafts_it(client, fakes, monkeyp
     def judged(rubric):
         return [q["id"] for q in rubric if q["type"] not in ("eval", "probe")]
 
-    async def propose(version, errors, production, contradicted, history):
+    async def propose(version, errors, production, contradicted, history, judges=None):
         calls.append(judged(version["rubric"]))
         return _proposal(version["rubric"], add="mentions_reply" not in judged(version["rubric"]))
 

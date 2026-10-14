@@ -293,7 +293,9 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     if provider not in providers.PROVIDERS:
         raise ValueError(f"Judge must be one of {', '.join(providers.PROVIDERS)}")
     provider_model = (
-        providers.provider_model(provider) if provider != draft["provider"] else draft["provider_model"]
+        providers.provider_model(provider)
+        if provider != draft["provider"]
+        else draft["provider_model"]
     )
     seeds = changes.get("seed_example_ids", draft["seed_example_ids"])
     if len(seeds) > MAX_SEEDS or len(set(seeds)) != len(seeds):
@@ -666,6 +668,24 @@ def _oof_temperature(output_type, names, cls, train, l2) -> float:
     return round(math.exp(result.x), 4)
 
 
+async def _by_difficulty(evaluated: dict) -> list[dict]:
+    """Held-out accuracy by input size decile: whether the judge holds up on the long tail."""
+    rows = evaluated.get("rows") or []
+    if len(rows) < 10:
+        return []
+    sizes = {
+        str(r["id"]): r["size"]
+        for r in await get_pool().fetch(
+            "SELECT id, length(item::text) + coalesce(length(item_b::text), 0) AS size FROM intuition_examples WHERE id = ANY($1::uuid[])",
+            [UUID(str(r["example_id"])) for r in rows],
+        )
+    }
+    scored = [
+        (float(sizes.get(str(r["example_id"]), 0)), r["predicted"] == r["label"]) for r in rows
+    ]
+    return heads.by_difficulty([c for _, c in scored], [d for d, _ in scored])
+
+
 async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | None) -> dict:
     rows, missing = await _rows(model, draft)
     held = _held_out(rows)
@@ -677,6 +697,7 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
         "ungraded_examples": missing,
         "fit_options": fit_options,
     }
+    metrics["eval"]["by_difficulty"] = await _by_difficulty(metrics["eval"])
     pinned_rows = [r for r in rows if r["pinned"]]
     pinned = heads.evaluate(head, model["output_type"], pinned_rows)
     active = await _load_version(model["active_version_id"])

@@ -154,8 +154,9 @@ async def overview(owner_id: UUID, model_id: UUID, days: int = 30) -> dict:
             {"version": number, **{k: v for k, v in _summary(group).items() if k != "reliability"}}
             for number, group in sorted(by_version.items(), reverse=True)
         ],
-        "drift": await _drift(model, rows),
+        "drift": (drift := await _drift(model, rows)),
         "disagreements": disagreements,
+        **(await staleness(model, rows, drift)),
     }
 
 
@@ -226,3 +227,44 @@ async def _drift(model: dict, rows: list[dict]) -> dict | None:
         "labels": label_shift,
         "features": features[:TOP_SHIFTS],
     }
+
+
+STALE_AGREEMENT_DROP = 0.10
+STALE_LABEL_SHIFT = 0.25
+STALE_FEATURE_SHIFT = 0.30
+STALE_MIN_FEEDBACK = 8
+
+
+async def staleness(model: dict, rows: list[dict], drift: dict | None) -> dict:
+    """Whether production has moved away from what the rubric was built on, and why.
+
+    The rubric stays still while the agent does not: agreement with production
+    feedback falling below the held-out accuracy, the decision mix shifting,
+    or rubric answers moving far from their training values all say the
+    criteria were tuned for a different distribution and should be refined."""
+    reasons = []
+    active = await service._load_version(model["active_version_id"])
+    held_out = (((active or {}).get("metrics") or {}).get("eval") or {}).get("accuracy")
+    cutoff = datetime.now(UTC) - timedelta(days=DRIFT_DAYS)
+    graded = [
+        r for r in rows if r["truth"] is not None and r["created_at"] >= cutoff and not r["error"]
+    ]
+    if held_out is not None and len(graded) >= STALE_MIN_FEEDBACK:
+        recent = float(np.mean([r["predicted"] == r["truth"] for r in graded]))
+        if recent < held_out - STALE_AGREEMENT_DROP:
+            reasons.append(
+                f"agreement with production feedback is {recent:.0%} over the last {DRIFT_DAYS} days, "
+                f"against {held_out:.0%} on held-out examples"
+            )
+    for shift in (drift or {}).get("labels", []):
+        if abs(shift["recent_share"] - shift["train_share"]) >= STALE_LABEL_SHIFT:
+            reasons.append(
+                f"'{shift['label']}' is now {shift['recent_share']:.0%} of decisions, against {shift['train_share']:.0%} in its examples"
+            )
+            break
+    for feature in (drift or {}).get("features", [])[:1]:
+        if abs(feature["shift"]) >= STALE_FEATURE_SHIFT:
+            reasons.append(
+                f"answers to '{feature['feature']}' moved by {feature['shift']:+.2f} from its examples"
+            )
+    return {"refine_suggested": bool(reasons), "refine_reason": "; ".join(reasons) or None}

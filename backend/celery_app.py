@@ -84,6 +84,7 @@ celery.conf.update(
         "backend.tasks.intuitions.improve": {"queue": "heavy"},
         "backend.tasks.intuitions.refine": {"queue": "heavy"},
         "backend.tasks.behaviors.scan_models": {"queue": "heavy"},
+        "backend.tasks.behaviors.triage": {"queue": "heavy"},
         "backend.tasks.agent_judge.investigate": {"queue": "heavy"},
     },
     task_acks_late=True,
