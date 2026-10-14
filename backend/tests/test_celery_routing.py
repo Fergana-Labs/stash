@@ -13,6 +13,7 @@ from backend.tasks.agent_schedules import run_curator_now, run_scheduled_agent
 from backend.tasks.clips import process_url_imports
 from backend.tasks.drive_extraction import extract_drive_document
 from backend.tasks.extraction import extract_file_text
+from backend.tasks.behaviors import scan_models
 from backend.tasks.intuitions import improve
 from backend.tasks.optimization import score_run
 from backend.tasks.reward_models import (
@@ -39,6 +40,7 @@ HEAVY_TASKS = {
     run_curator_now.name,
     precompute.name,
     improve.name,
+    scan_models.name,
 }
 
 

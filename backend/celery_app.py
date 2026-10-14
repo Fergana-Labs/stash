@@ -44,6 +44,7 @@ celery = Celery(
         "backend.tasks.workbench",
         "backend.tasks.optimization",
         "backend.tasks.intuitions",
+        "backend.tasks.behaviors",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
         "backend.exports.pptx",
@@ -80,6 +81,7 @@ celery.conf.update(
         "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
         "backend.tasks.optimization.score_run": {"queue": "reward"},
         "backend.tasks.intuitions.improve": {"queue": "heavy"},
+        "backend.tasks.behaviors.scan_models": {"queue": "heavy"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
@@ -108,6 +110,10 @@ celery.conf.update(
         },
         "shared-evaluator-reconcile": {
             "task": "backend.tasks.reward_models.reconcile",
+            "schedule": 30.0,
+        },
+        "behaviors-reconcile": {
+            "task": "backend.tasks.behaviors.reconcile",
             "schedule": 30.0,
         },
         "embedding-reconcile": {

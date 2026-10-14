@@ -25,6 +25,7 @@ from .routers import (
     aggregate,
     analytics,
     batch,
+    behaviors,
     billing,
     bulk_export,
     clips,
@@ -161,6 +162,7 @@ app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
+app.include_router(behaviors.router)
 app.include_router(model_wizard.router)
 app.include_router(model_wizard.public_router)
 app.include_router(mcp_servers.router)
