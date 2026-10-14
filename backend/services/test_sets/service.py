@@ -272,7 +272,8 @@ async def start_run(
         baseline_run_id
         or s["baseline_run_id"]
         or await pool.fetchval(
-            "SELECT id FROM test_runs WHERE set_id = $1 AND status = 'done' ORDER BY created_at DESC LIMIT 1",
+            # The last run that passed its gate, so a regression never becomes the new normal.
+            "SELECT id FROM test_runs WHERE set_id = $1 AND status = 'done' AND summary->>'gate' = 'pass' ORDER BY created_at DESC LIMIT 1",
             set_id,
         )
     )

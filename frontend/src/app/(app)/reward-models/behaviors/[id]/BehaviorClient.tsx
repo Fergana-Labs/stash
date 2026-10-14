@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
+import { AddToTestSetDialog } from "@/components/test-sets/test-set-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import {
   ActorChip, EnabledSwitch, FieldLabel, HitsChart, OutcomeTag, ReleaseDialog, SaveToEvalDialog, SeverityTag, dailyBuckets, hourlyBuckets, inputCls,
@@ -259,6 +260,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
   // Reviewer reasons by hit ID. Search rows don't carry them, so they come from the hits list.
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [asking, setAsking] = useState<{ hitId: string; verdict: Verdict } | null>(null);
+  const [testing, setTesting] = useState<{ trace_id: string; end_idx: number; title?: string } | null>(null);
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
@@ -344,6 +346,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
               {hit.review !== "confirmed" && <Button size="xs" variant="outline" disabled={busy === hit.id} onClick={() => void review(hit, "confirmed")}><Check />Confirm</Button>}
               {hit.review !== "rejected" && <Button size="xs" variant="outline" disabled={busy === hit.id} onClick={() => void review(hit, "rejected")}><X />Reject</Button>}
               {hit.review && <Button size="xs" variant="ghost" disabled={busy === hit.id} onClick={() => void review(hit, null)}>Undo</Button>}
+              <Button size="xs" variant="ghost" title="Make this conversation a regression test" onClick={() => setTesting({ trace_id: r.trace_id, end_idx: hit.end_idx, title: r.title ?? undefined })}>Add to test set</Button>
             </div>}
             {hit && asking?.hitId === hit.id && <form className="mt-1.5 flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); void saveNote(); }}>
               <input autoFocus aria-label="Why? (teaches the detector)" placeholder="Why? (teaches the detector)" value={draft} onChange={(e) => setDraft(e.target.value)}
@@ -358,6 +361,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
         {rows && !shown.length && <tr><td colSpan={5} className="px-3 py-8 text-muted-foreground">{query.trim() ? "No traces match." : filter === "unreviewed" ? "Nothing to review." : filter === "confirmed" ? "No confirmed hits." : "No hits in this time range."}</td></tr>}
       </tbody>
     </table></div>
+    {testing && <AddToTestSetDialog open onOpenChange={(o) => { if (!o) setTesting(null); }} traceId={testing.trace_id} uptoIdx={testing.end_idx} title={testing.title} />}
   </section>;
 }
 

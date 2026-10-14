@@ -29,6 +29,7 @@ import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import TraceEval from "@/components/evals/TraceEval";
+import { AddToTestSetButton } from "@/components/test-sets/test-set-ui";
 import TraceFindings, { stepRange } from "@/components/behaviors/TraceFindings";
 import { ACTOR_COLOR, type BehaviorHit } from "@/lib/behaviors-api";
 import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
@@ -335,6 +336,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <TraceEval trace={trace} />
+              <AddToTestSetButton traceId={traceId} steps={trace.steps} title={trace.title} />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"
