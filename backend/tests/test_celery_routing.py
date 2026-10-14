@@ -28,6 +28,7 @@ from backend.tasks.reward_models import (
     train_reward_model,
 )
 from backend.tasks.sources import sync_source
+from backend.tasks.test_sets import score_run as score_test_run
 from backend.tasks.viz import precompute
 
 HEAVY_TASKS = {
@@ -45,6 +46,7 @@ HEAVY_TASKS = {
     scan_models.name,
     triage.name,
     investigate.name,
+    score_test_run.name,
 }
 
 

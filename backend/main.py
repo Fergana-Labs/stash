@@ -59,6 +59,7 @@ from .routers import (
     tables,
     tasks,
     telegram,
+    test_sets,
     transcripts,
     trash,
     user_knowledge,
@@ -165,6 +166,7 @@ app.include_router(workbench.router)
 app.include_router(intuitions.router)
 app.include_router(behaviors.router)
 app.include_router(agent_judge.router)
+app.include_router(test_sets.router)
 app.include_router(model_wizard.router)
 app.include_router(model_wizard.public_router)
 app.include_router(mcp_servers.router)

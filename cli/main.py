@@ -46,6 +46,7 @@ from .config import (
     streaming_stopped,
 )
 from .formatting import console, output_json, print_user
+from .test_cmd import test_app
 
 app = typer.Typer(
     name="stash",
@@ -1668,6 +1669,7 @@ skills_app = typer.Typer(
     )
 )
 app.add_typer(skills_app, name="skills")
+app.add_typer(test_app, name="test")
 
 
 @skills_app.command("add")
