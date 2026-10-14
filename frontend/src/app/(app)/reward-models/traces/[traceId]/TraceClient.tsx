@@ -29,6 +29,7 @@ import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import TraceEval from "@/components/evals/TraceEval";
+import TraceBehaviorStrip from "@/components/behaviors/TraceBehaviorStrip";
 import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
@@ -330,6 +331,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} completion={taskCompletion(completion.tasks, presentation.numberById)} completionLoading={completion.loading} focusedRange={browsingSections && focusedSection ? { first: (presentation.numberById.get(focusedSection.firstStepId) ?? 1) - 1, last: (presentation.numberById.get(focusedSection.lastStepId) ?? 1) - 1 } : undefined} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          <TraceBehaviorStrip traceId={traceId} steps={trace.steps} onReveal={revealStep} />
 
 
         </div>
