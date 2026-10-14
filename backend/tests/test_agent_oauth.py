@@ -80,7 +80,9 @@ def test_claude_credential_blob_shape():
     assert parsed["scopes"] == ["a", "b"] and parsed["subscriptionType"] == "max"
     assert parsed["expiresAt"] > 0
     # agent_auth materializes this verbatim into ~/.claude/.credentials.json.
-    run = agent_auth._byo_auth({"provider": "anthropic", "kind": "oauth", "secret": blob})
+    run = agent_auth._byo_auth(
+        {"user_id": uuid.uuid4(), "provider": "anthropic", "kind": "oauth", "secret": blob}
+    )
     assert "/home/sprite/.claude/.credentials.json" in run.files
     assert run.env["CLAUDE_CONFIG_DIR"] == "/home/sprite/.claude"
 
@@ -91,7 +93,9 @@ def test_codex_credential_blob_wraps_into_auth_json():
         {"access_token": "at", "id_token": None, "refresh_token": "rt"},
     )
     # agent_auth wraps a bare token set into a proper auth.json (adds `tokens`).
-    run = agent_auth._byo_auth({"provider": "openai", "kind": "oauth", "secret": blob})
+    run = agent_auth._byo_auth(
+        {"user_id": uuid.uuid4(), "provider": "openai", "kind": "oauth", "secret": blob}
+    )
     auth_json = json.loads(next(iter(run.files.values())))
     assert auth_json["OPENAI_API_KEY"] is None
     assert auth_json["tokens"]["access_token"] == "at"
