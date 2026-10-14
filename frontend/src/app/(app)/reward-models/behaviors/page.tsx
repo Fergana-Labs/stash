@@ -17,6 +17,7 @@ import {
   type Actor, type BehaviorTrend, type SearchResponse, type SearchResult,
 } from "@/lib/behaviors-api";
 import { cn } from "@/lib/utils";
+import CohortsSection from "@/components/behaviors/CohortsSection";
 
 const RANGES = [{ value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }];
 
@@ -36,6 +37,7 @@ export default function BehaviorsPage() {
   const [days, setDays] = useState(30);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<"monitors" | "cohorts">("monitors");
   const [installing, setInstalling] = useState(false);
 
   const [query, setQuery] = useState("");
@@ -108,6 +110,11 @@ export default function BehaviorsPage() {
       <Button size="sm" onClick={() => setCreating(true)}><Plus />New behavior</Button>
     </div>}>
     {error && <p role="alert" className="mb-3 text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p>}
+    <nav role="tablist" aria-label="Behaviors view" className="mb-4 flex gap-1 border-b border-border">
+      {([["monitors", "Monitors & traces"], ["cohorts", "Cohorts"]] as const).map(([value, label]) => <button key={value} role="tab" type="button" aria-selected={view === value} onClick={() => setView(value)}
+        className={cn("-mb-px border-b-2 px-3 py-2 text-[13px]", view === value ? "border-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{label}</button>)}
+    </nav>
+    {view === "cohorts" ? <CohortsSection /> : <>
 
     <div className="mb-3 flex items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">Monitors</h2>
@@ -166,6 +173,7 @@ export default function BehaviorsPage() {
       </tbody>
     </table></div>
 
+    </>}
     <NewBehaviorDialog open={creating} onOpenChange={setCreating} rules={rules} onCreated={() => void load()} />
     <SaveToEvalDialog open={saving} onOpenChange={setSaving} windows={windows} onSaved={() => setSelected(new Set())} />
   </EvalPageFrame>;

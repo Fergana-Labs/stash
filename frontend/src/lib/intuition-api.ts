@@ -251,6 +251,28 @@ export interface ImproveJob {
 export const imStartImprove = (id: string) => post<ImproveJob>(`${IM}/${id}/improve`);
 export const imImproveStatus = (id: string) => apiFetch<{ job: ImproveJob | null }>(`${IM}/${id}/improve`);
 
+export interface RefineEdit { kind: string; question_id: string; rationale: string }
+export interface RefinePoint { pass: number; cv_accuracy: number | null; cv_log_loss: number | null; macro_f1: number | null; questions: number; edits: RefineEdit[]; accepted: boolean; note?: string }
+export interface RefineResult {
+  base_version: number; changed: boolean; passes: number; curve: RefinePoint[]; rubric: RubricQuestion[];
+  signals: { examples: number; production_disagreements: number; contradicted_claims: number };
+  gate: Gate | null; held_out: { n: number; accuracy: number | null; log_loss: number | null } | null;
+}
+export interface RefineJob {
+  id: string; model_id: string; kind: "refine"; status: "queued" | "running" | "succeeded" | "failed";
+  progress: { stage?: string; message?: string; curve?: RefinePoint[] }; result: RefineResult | null; error: string | null;
+}
+export const imStartRefine = (id: string) => post<RefineJob>(`${IM}/${id}/refine`);
+export const imRefineStatus = (id: string) => apiFetch<{ job: RefineJob | null }>(`${IM}/${id}/refine`);
+
+export type CohortDimension = "agent" | "outcome" | "satisfaction" | "behavior" | "tool_use";
+export interface MinedCriteria {
+  cohort: { by: CohortDimension; key: string; traces: number }; votes: number;
+  examples: { reaction: string; agent_said: string; user_replied: string }[];
+  rationale: string; questions: RubricQuestion[];
+}
+export const imMineProduction = (id: string, body: { by: CohortDimension; key: string; days: number }) => post<MinedCriteria>(`${IM}/${id}/mine-production`, body);
+
 export interface Credit {
   decisions: string[]; runs: number; calls: number; success_rate: number | null; minimum_runs: number;
   by_decision: { decision: string; runs: number; success_rate: number | null }[];

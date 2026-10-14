@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Sparkles, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
+import RefinePanel from "@/components/evals/RefinePanel";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
 import { Select } from "@/components/ui/select";
@@ -228,7 +229,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                   </div>
                 </div>
               )}
-              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ReportCard /><AgreementCard /></div>}
+              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ReportCard /><RefinePanel id={id} detail={detail} onChanged={refresh} /><AgreementCard /></div>}
             </div>
           </div>
         </div>

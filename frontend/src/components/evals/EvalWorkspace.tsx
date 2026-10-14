@@ -14,6 +14,7 @@ import {
   type Example, type Gate, type Item, type LoggedPrediction, type ModelDetail, type Prediction,
 } from "@/lib/intuition-api";
 import { ImprovePanel, LabelQueue, promoteChecked, RegressionPanel, VersionsPanel } from "./EvalLearning";
+import RefinePanel from "./RefinePanel";
 import { EvalSignals } from "./EvalComposition";
 import EvalInput from "./EvalInput";
 import EvalEndpoint from "./EvalEndpoint";
@@ -162,6 +163,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
       {saveProgress && <SaveStatus progress={saveProgress} error={saveError} onTest={() => { setTestItem(null); setView("test"); }} />}
       <EvalSignals id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
       <ImprovePanel id={id} detail={detail} examples={examples} busy={!!busy} onChanged={() => { void load(); }} />
+      <RefinePanel id={id} detail={detail} examples={examples} busy={!!busy} onChanged={() => { void load(); }} />
       <VersionsPanel id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
         </aside>
         <div className="min-w-0 space-y-4">      {blocked && <RegressionPanel gate={blocked} examples={examples} busy={!!busy} action="Save anyway" onOverride={() => void saveAnyway()} />}

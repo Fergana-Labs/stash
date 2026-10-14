@@ -91,3 +91,15 @@ export const DETECTOR_LABEL: Record<Detector, string> = { llm: "Model-detected",
 /** Steps are stored 0-based; the trace viewer numbers them from 1. */
 export const stepWindow = (start: number, end: number) => start === end ? `step ${start + 1}` : `steps ${start + 1}–${end + 1}`;
 export const traceStepHref = (traceId: string, start: number) => `/reward-models/traces/${traceId}?step=${start}`;
+
+export type CohortBy = "outcome" | "satisfaction" | "agent" | "behavior" | "tool_use";
+export interface Cohort {
+  key: string; traces: number; share: number; frustrated_rate: number; correction_rate: number; avg_tool_calls: number;
+  outcomes: Record<string, number>; top_behaviors: [string, number][]; sample: { trace_id: string; title: string | null }[];
+}
+export interface CohortOverview { by: CohortBy; days: number; traces: number; cohorts: Cohort[] }
+export const getCohorts = (by: CohortBy, days: number) => apiFetch<CohortOverview>(`${BASE}/cohorts?by=${by}&days=${days}`);
+export const COHORT_DIMENSIONS: { value: CohortBy; label: string }[] = [
+  { value: "outcome", label: "Outcome" }, { value: "satisfaction", label: "Satisfaction" }, { value: "agent", label: "Agent" },
+  { value: "behavior", label: "Behavior" }, { value: "tool_use", label: "Tool use" },
+];
