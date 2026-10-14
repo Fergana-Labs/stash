@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.behaviors import alerts, builtin, monitoring, search, service
+from ..services.behaviors import alerts, builtin, cohorts, monitoring, search, service
 from ..services.intuition import service as evals
 from .reward_models import require_reward_models
 
@@ -119,6 +119,15 @@ async def overview(
     days: int = Query(default=30, ge=1, le=180), user: dict = Depends(get_current_user)
 ):
     return await monitoring.overview(user["id"], days)
+
+
+@router.get("/cohorts")
+async def cohort_overview(
+    by: Literal["agent", "outcome", "satisfaction", "behavior", "tool_use"] = "outcome",
+    days: int = Query(default=30, ge=1, le=180),
+    user: dict = Depends(get_current_user),
+):
+    return await cohorts.overview(user["id"], by, days)
 
 
 @router.get("/alerts")

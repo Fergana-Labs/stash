@@ -143,12 +143,18 @@ def _columns(names: list[str], keep: Callable[[str], bool]) -> list[int]:
 
 def _subset(rows: list[dict], idx: list[int]) -> list[dict]:
     return [
-        {**r, "f": [r["f"][i] for i in idx], "f_b": None if r["f_b"] is None else [r["f_b"][i] for i in idx]}
+        {
+            **r,
+            "f": [r["f"][i] for i in idx],
+            "f_b": None if r["f_b"] is None else [r["f_b"][i] for i in idx],
+        }
         for r in rows
     ]
 
 
-def signal_columns(output_type: str, names: list[str], classes: list[str], qid: str) -> list[int] | None:
+def signal_columns(
+    output_type: str, names: list[str], classes: list[str], qid: str
+) -> list[int] | None:
     """Feature indices of one signal question, aligned with `classes` (choice) or [P(good)].
 
     Looked up by name: stored rubric options come back from jsonb in key order,
@@ -211,14 +217,20 @@ def leaderboard(output_type, names, classes, train, held, shipped: dict, l2: flo
     verdict = signal_columns(output_type, names, classes, VERDICT_ID)
     if verdict:
         board.append(
-            {"name": "Jev zero-shot", "detail": "The judge asked the task directly, no training",
-             **direct_eval(output_type, classes, held, verdict)}
+            {
+                "name": "Jev zero-shot",
+                "detail": "The judge asked the task directly, no training",
+                **direct_eval(output_type, classes, held, verdict),
+            }
         )
     probe_cols = signal_columns(output_type, names, classes, probes.PROBE_ID)
     if probe_cols:
         board.append(
-            {"name": "Embedding probe", "detail": "Linear probe on embeddings of your labeled examples",
-             **direct_eval(output_type, classes, held, probe_cols)}
+            {
+                "name": "Embedding probe",
+                "detail": "Linear probe on embeddings of your labeled examples",
+                **direct_eval(output_type, classes, held, probe_cols),
+            }
         )
     criteria = _columns(names, lambda q: q not in SIGNAL_IDS)
     labels_ok = output_type != "choice" or len({r["label"] for r in train}) >= 2
@@ -227,12 +239,19 @@ def leaderboard(output_type, names, classes, train, held, shipped: dict, l2: flo
         fitted = heads.fit(output_type, sub, classes, _subset(train, criteria), l2)
         ev = heads.evaluate(fitted, output_type, _subset(held, criteria))
         board.append(
-            {"name": "Rubric criteria", "detail": "Logistic head over your criteria only",
-             **{k: ev[k] for k in ("n", "accuracy", "log_loss", "ece")}}
+            {
+                "name": "Rubric criteria",
+                "detail": "Logistic head over your criteria only",
+                **{k: ev[k] for k in ("n", "accuracy", "log_loss", "ece")},
+            }
         )
     board.append(
-        {"name": "Fused model", "detail": "Criteria + zero-shot prior + probe, calibrated", "shipping": True,
-         **{k: shipped[k] for k in ("n", "accuracy", "log_loss", "ece")}}
+        {
+            "name": "Fused model",
+            "detail": "Criteria + zero-shot prior + probe, calibrated",
+            "shipping": True,
+            **{k: shipped[k] for k in ("n", "accuracy", "log_loss", "ece")},
+        }
     )
     return board
 
@@ -259,7 +278,13 @@ def learning_curve(output_type, names, classes, train, held) -> list[dict]:
                 continue
             if output_type == "choice" and n == 1:
                 continue
-            fitted = heads.fit(output_type, sub_names, classes, draw, choose_l2(output_type, sub_names, classes, draw)[0])
+            fitted = heads.fit(
+                output_type,
+                sub_names,
+                classes,
+                draw,
+                choose_l2(output_type, sub_names, classes, draw)[0],
+            )
             accs.append(heads.evaluate(fitted, output_type, held_s)["accuracy"])
         if accs:
             curve.append({"n": n, "accuracy": float(np.mean(accs)), "draws": len(accs)})
@@ -282,8 +307,16 @@ def drivers(version: dict, head: dict, rows: list[dict]) -> list[dict]:
     total = sum(by_question.values()) or 1.0
     return sorted(
         (
-            {"question": qid, "prompt": prompts.get(qid, qid), "share": v / total,
-             "kind": "verdict" if qid == VERDICT_ID else "probe" if qid == probes.PROBE_ID else "criterion"}
+            {
+                "question": qid,
+                "prompt": prompts.get(qid, qid),
+                "share": v / total,
+                "kind": "verdict"
+                if qid == VERDICT_ID
+                else "probe"
+                if qid == probes.PROBE_ID
+                else "criterion",
+            }
             for qid, v in by_question.items()
         ),
         key=lambda d: -d["share"],
@@ -304,7 +337,8 @@ async def plan_holdout(owner_id: UUID, model_id: UUID) -> int:
     in training.
     """
     examples = [
-        e for e in await service._examples(model_id)
+        e
+        for e in await service._examples(model_id)
         if e["label"] and not e["needs_review"] and not e["note"].startswith("Adversarial repair")
     ]
     target = max(MIN_HOLDOUT, round(HOLDOUT_SHARE * len(examples))) if len(examples) >= 6 else 0
@@ -338,7 +372,11 @@ def oof_accuracy(output_type, names, classes, rows, l2) -> dict:
         if output_type == "choice" and len({r["label"] for r in train}) < 2:
             return {"n": 0, "accuracy": None}
         fitted = heads.fit(output_type, names, classes, train, l2)
-        correct += [heads.row_probability(fitted, output_type, r)[1] == r["label"] for i, r in enumerate(order) if i % folds == k]
+        correct += [
+            heads.row_probability(fitted, output_type, r)[1] == r["label"]
+            for i, r in enumerate(order)
+            if i % folds == k
+        ]
     return {"n": len(correct), "accuracy": float(np.mean(correct))}
 
 
@@ -352,12 +390,17 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
     # Half the training labels at most become judge reference examples; the rest stay
     # unseen by the judge so cross-validation and calibration have honest rows.
     train_examples = [
-        e for e in await service._examples(model_id)
+        e
+        for e in await service._examples(model_id)
         if e["split"] == "train" and e["label"] and not e["needs_review"]
     ]
-    seed_ids = [e["id"] for e in selection.seeds(train_examples, limit=max(2, len(train_examples) // 2))]
+    seed_ids = [
+        e["id"] for e in selection.seeds(train_examples, limit=max(2, len(train_examples) // 2))
+    ]
     criteria = user_questions(draft["rubric"])[: MAX_QUESTIONS - 2]
-    rubric = criteria + [verdict_question(model["output_type"], draft["description"], draft["labels"])]
+    rubric = criteria + [
+        verdict_question(model["output_type"], draft["description"], draft["labels"])
+    ]
     warnings = []
     probe_info = None
     progress("probe", "Fitting the embedding probe", 0, 0)
@@ -369,7 +412,9 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
     except probes.ProbeUnavailable as exc:
         warnings.append(f"Embedding probe skipped: {exc}")
     if not criteria:
-        warnings.append("No criteria yet: the model is zero-shot Jev plus the probe. Add criteria to explain decisions.")
+        warnings.append(
+            "No criteria yet: the model is zero-shot Jev plus the probe. Add criteria to explain decisions."
+        )
     await service.update_draft(owner_id, model_id, {"rubric": rubric, "seed_example_ids": seed_ids})
     await _grade_all(owner_id, model_id, progress)
 
@@ -388,7 +433,10 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
     t_shrunk = round(math.exp(math.log(t_fit) * n_cal / (n_cal + TEMPERATURE_PRIOR_ROWS)), 4)
     if t_shrunk != t_fit:
         fitted = await service._refresh(
-            model, draft, {**fitted["head"], "temperature": t_shrunk}, (fitted["metrics"] or {}).get("fit_options")
+            model,
+            draft,
+            {**fitted["head"], "temperature": t_shrunk},
+            (fitted["metrics"] or {}).get("fit_options"),
         )
     shipped = fitted["metrics"]["eval"]
     names, classes = draft["feature_names"], draft["classes"]
@@ -404,11 +452,14 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
             "accuracy_interval": wilson(shipped["accuracy"], shipped["n"]),
             "reliability": shipped.get("reliability") or [],
             "confusion": shipped.get("confusion"),
+            "classification": shipped.get("classification"),
             "rows": shipped["rows"],
         },
         "train_accuracy": fitted["metrics"]["train"]["accuracy"],
         "cross_validated": oof_accuracy(model["output_type"], names, classes, train_rows, l2),
-        "leaderboard": leaderboard(model["output_type"], names, classes, train_rows, held, shipped, l2),
+        "leaderboard": leaderboard(
+            model["output_type"], names, classes, train_rows, held, shipped, l2
+        ),
         "learning_curve": learning_curve(model["output_type"], names, classes, train_rows, held),
         "drivers": drivers(draft, fitted["head"], train_rows + held),
         "probe": probe_info and probe_info["metrics"],
@@ -416,7 +467,11 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
         "temperature": fitted["head"]["temperature"],
         "gate": fitted["gate"],
         "warnings": warnings
-        + ([] if len(held) >= 8 else [f"Only {len(held)} held-out examples: treat accuracy as a rough estimate."]),
+        + (
+            []
+            if len(held) >= 8
+            else [f"Only {len(held)} held-out examples: treat accuracy as a rough estimate."]
+        ),
     }
     await get_pool().execute(
         "UPDATE intuition_versions SET metrics = metrics || jsonb_build_object('report', $2::jsonb) WHERE id = $1",
@@ -448,18 +503,30 @@ class _Discovery(BaseModel):
 def _content_blocks(item, caption: str) -> list[dict]:
     """Text for any item; the actual image too when the item is an uploaded picture."""
     blocks: list[dict] = [{"type": "text", "text": caption}]
-    if isinstance(item, dict) and item.get("kind") == "image" and str(item.get("data_url", "")).startswith("data:"):
+    if (
+        isinstance(item, dict)
+        and item.get("kind") == "image"
+        and str(item.get("data_url", "")).startswith("data:")
+    ):
         header, data = item["data_url"].split(",", 1)
         media = header[5:].split(";", 1)[0]
-        blocks.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": data}})
+        blocks.append(
+            {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}
+        )
     text = probes.item_text(item)
     blocks.append({"type": "text", "text": text[:2500]})
     return blocks
 
 
-async def contrast_pairs(examples: list[dict], mistakes: set[str], limit: int) -> list[tuple[dict, dict, float]]:
+async def contrast_pairs(
+    examples: list[dict], mistakes: set[str], limit: int
+) -> list[tuple[dict, dict, float]]:
     """Nearest neighbors with different labels -- the hardest contrasts the user has drawn."""
-    items = [e for e in examples if e["kind"] == "item" and e["label"] and not e["needs_review"] and e["split"] == "train"]
+    items = [
+        e
+        for e in examples
+        if e["kind"] == "item" and e["label"] and not e["needs_review"] and e["split"] == "train"
+    ]
     if len(items) < 2:
         return []
     try:
@@ -485,7 +552,9 @@ async def contrast_pairs(examples: list[dict], mistakes: set[str], limit: int) -
     return unique[:limit]
 
 
-async def discover_criteria(owner_id: UUID, model_id: UUID, count: int = 4, guidance: str = "") -> dict:
+async def discover_criteria(
+    owner_id: UUID, model_id: UUID, count: int = 4, guidance: str = ""
+) -> dict:
     """Propose criteria that separate similar items the user labeled differently (not saved)."""
     model = await service._model(owner_id, model_id)
     version = await service._load_version(model["draft_version_id"] or model["active_version_id"])
@@ -542,7 +611,8 @@ async def discover_criteria(owner_id: UUID, model_id: UUID, count: int = 4, guid
             for i in response.parsed_output.insights[:count]
         ],
         "pairs": [
-            {"a": a["id"], "a_label": a["label"], "b": b["id"], "b_label": b["label"]} for a, b, _ in pairs
+            {"a": a["id"], "a_label": a["label"], "b": b["id"], "b_label": b["label"]}
+            for a, b, _ in pairs
         ],
     }
 
@@ -582,7 +652,11 @@ def apply_attack(item, attack: str):
     if isinstance(item, str):
         return f"{item}\n\n{attack}"
     if isinstance(item, dict):
-        text_keys = [k for k, v in item.items() if isinstance(v, str) and k not in ("kind", "name", "data_url", "extraction")]
+        text_keys = [
+            k
+            for k, v in item.items()
+            if isinstance(v, str) and k not in ("kind", "name", "data_url", "extraction")
+        ]
         if text_keys:
             key = max(text_keys, key=lambda k: len(item[k]))
             return {**item, key: f"{item[key]}\n\n{attack}"}
@@ -595,7 +669,9 @@ async def _attack_round(owner_id, model_id, parents, attacks, target) -> dict:
 
     async def label_of(item):
         async with gate:
-            out = await service.predict(owner_id, model_id, item, which="draft", caller="wizard:redteam", log=False)
+            out = await service.predict(
+                owner_id, model_id, item, which="draft", caller="wizard:redteam", log=False
+            )
             return out["label"], out["probabilities"].get(target, out.get("confidence"))
 
     clean = await asyncio.gather(*(label_of(p["item"]) for p in parents))
@@ -610,7 +686,14 @@ async def _attack_round(owner_id, model_id, parents, attacks, target) -> dict:
     for (parent, attack), (label, p_target) in zip(jobs, results):
         attempts += 1
         if label == target:
-            fooled.append({"example_id": parent["id"], "label": parent["label"], "attack": attack, "p_target": p_target})
+            fooled.append(
+                {
+                    "example_id": parent["id"],
+                    "label": parent["label"],
+                    "attack": attack,
+                    "p_target": p_target,
+                }
+            )
     parents_hit = len({f["example_id"] for f in fooled})
     eligible = len({p["id"] for p, _ in jobs})
     return {
@@ -624,7 +707,9 @@ async def _attack_round(owner_id, model_id, parents, attacks, target) -> dict:
     }
 
 
-async def harden(owner_id: UUID, model_id: UUID, target: str | None = None, progress: Progress = _quiet) -> dict:
+async def harden(
+    owner_id: UUID, model_id: UUID, target: str | None = None, progress: Progress = _quiet
+) -> dict:
     """Attack the draft, repair it with the attacks that worked, and re-measure on fresh ones."""
     model = await service._model(owner_id, model_id)
     draft = await service._load_version(model["draft_version_id"])
@@ -637,13 +722,23 @@ async def harden(owner_id: UUID, model_id: UUID, target: str | None = None, prog
     else:
         target = "good"
     examples = [
-        e for e in await service._examples(model_id)
-        if e["kind"] == "item" and e["label"] and not e["needs_review"] and e["label"] != target
+        e
+        for e in await service._examples(model_id)
+        if e["kind"] == "item"
+        and e["label"]
+        and not e["needs_review"]
+        and e["label"] != target
         and not e["note"].startswith("Adversarial repair")
     ]
     rng = random.Random(11)
-    train_parents = rng.sample([e for e in examples if e["split"] == "train"], min(MAX_ATTACK_PARENTS, sum(e["split"] == "train" for e in examples)))
-    held_parents = rng.sample([e for e in examples if e["split"] == "eval"], min(MAX_ATTACK_PARENTS, sum(e["split"] == "eval" for e in examples)))
+    train_parents = rng.sample(
+        [e for e in examples if e["split"] == "train"],
+        min(MAX_ATTACK_PARENTS, sum(e["split"] == "train" for e in examples)),
+    )
+    held_parents = rng.sample(
+        [e for e in examples if e["split"] == "eval"],
+        min(MAX_ATTACK_PARENTS, sum(e["split"] == "eval" for e in examples)),
+    )
     if not held_parents or not train_parents:
         raise service.Conflict(
             f"Hardening needs labeled examples that are not '{target}' in both training and held-out data"
@@ -660,7 +755,9 @@ async def harden(owner_id: UUID, model_id: UUID, target: str | None = None, prog
     found = await _attack_round(owner_id, model_id, train_parents, repair_set, target)
     repairs = [
         {
-            "item": apply_attack(next(p["item"] for p in train_parents if p["id"] == f["example_id"]), f["attack"]),
+            "item": apply_attack(
+                next(p["item"] for p in train_parents if p["id"] == f["example_id"]), f["attack"]
+            ),
             "label": f["label"],
             "split": "train",
             "note": "Adversarial repair: manipulation that fooled the model",

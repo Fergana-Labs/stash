@@ -133,8 +133,21 @@ def upgrade() -> None:
         "CREATE INDEX agent_judge_reports_model ON agent_judge_reports (model_id, item_hash)"
     )
 
+    # Rubric Builder runs are eval jobs too: iterative refinement against labels,
+    # production disagreements and environment checks.
+    op.execute("ALTER TABLE intuition_jobs DROP CONSTRAINT intuition_jobs_kind_check")
+    op.execute(
+        "ALTER TABLE intuition_jobs ADD CONSTRAINT intuition_jobs_kind_check "
+        "CHECK (kind IN ('improve', 'refine'))"
+    )
+
 
 def downgrade() -> None:
+    op.execute("DELETE FROM intuition_jobs WHERE kind = 'refine'")
+    op.execute("ALTER TABLE intuition_jobs DROP CONSTRAINT intuition_jobs_kind_check")
+    op.execute(
+        "ALTER TABLE intuition_jobs ADD CONSTRAINT intuition_jobs_kind_check CHECK (kind IN ('improve'))"
+    )
     op.execute("DROP TABLE agent_judge_reports")
     op.execute("DROP TABLE rm_trace_segments")
     op.execute("DROP TABLE behavior_alerts")

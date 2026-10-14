@@ -17,8 +17,10 @@ from ..services.intuition import (
     demo,
     feedback,
     improve,
+    mining,
     monitoring,
     providers,
+    rubric_builder,
     runs,
     selection,
     service,
@@ -471,6 +473,30 @@ async def start_improve(model_id: UUID, user: User):
 @router.get("/{model_id}/improve")
 async def improve_status(model_id: UUID, user: User):
     return {"job": await checked(improve.latest(user["id"], model_id))}
+
+
+class MineProduction(Body):
+    by: Literal["agent", "outcome", "satisfaction", "behavior", "tool_use"] = "satisfaction"
+    key: str = Field(default="frustrated", min_length=1, max_length=200)
+    days: int = Field(default=30, ge=1, le=180)
+
+
+@router.post("/{model_id}/mine-production")
+async def mine_production(model_id: UUID, req: MineProduction, user: User):
+    """Candidate criteria from users' corrections, repeats and pushback in a cohort's traces."""
+    return await checked(mining.suggest(user["id"], model_id, req.by, req.key, req.days))
+
+
+@router.post("/{model_id}/refine", status_code=202)
+async def start_refine(model_id: UUID, user: User):
+    """Refine the criteria pass by pass against mistakes, production feedback and
+    environment checks; the result becomes the draft."""
+    return await checked(rubric_builder.start(user["id"], model_id))
+
+
+@router.get("/{model_id}/refine")
+async def refine_status(model_id: UUID, user: User):
+    return {"job": await checked(rubric_builder.latest(user["id"], model_id))}
 
 
 @router.get("/{model_id}/credit")

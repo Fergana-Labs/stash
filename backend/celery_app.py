@@ -82,6 +82,7 @@ celery.conf.update(
         "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
         "backend.tasks.optimization.score_run": {"queue": "reward"},
         "backend.tasks.intuitions.improve": {"queue": "heavy"},
+        "backend.tasks.intuitions.refine": {"queue": "heavy"},
         "backend.tasks.behaviors.scan_models": {"queue": "heavy"},
         "backend.tasks.agent_judge.investigate": {"queue": "heavy"},
     },
