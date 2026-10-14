@@ -98,7 +98,7 @@ export default function ReportCard() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="Held-out accuracy" value={pct(fused)} hint={report.holdout.accuracy_interval ? `95% CI ${pct(report.holdout.accuracy_interval[0])}–${pct(report.holdout.accuracy_interval[1])}` : `${report.holdout.n} examples`} />
             <Stat label="vs. zero-shot" value={lift == null ? "—" : `${lift >= 0 ? "+" : ""}${Math.round(lift * 100)} pts`} tone={lift == null ? undefined : lift > 0 ? "good" : lift < 0 ? "bad" : undefined} hint={zeroShot != null ? `Jev alone: ${pct(zeroShot)}` : undefined} />
-            <Stat label="Calibration error" value={pct(report.holdout.ece, 1)} hint="lower is better" />
+            <Stat label="Cross-validated" value={pct(report.cross_validated?.accuracy)} hint={report.cross_validated?.n ? `on ${report.cross_validated.n} training labels` : "needs more labels"} />
             <Stat label="Gate" value={report.gate.passed ? "Pass" : "Blocked"} tone={report.gate.passed ? "good" : "bad"} hint={report.gate.active_version ? `vs. live v${report.gate.active_version}` : "first version"} />
           </div>
 
@@ -123,7 +123,7 @@ export default function ReportCard() {
               <LearningCurve curve={report.learning_curve} baseline={zeroShot} />
             </section>
             <section>
-              <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Calibration</h4>
+              <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Calibration <span className="font-normal normal-case">· error {pct(report.holdout.ece, 1)}</span></h4>
               {report.holdout.reliability.length ? <ReliabilityChart bins={report.holdout.reliability} /> : <p className="m-0 text-[12px] text-muted-foreground">No held-out predictions yet.</p>}
             </section>
           </div>

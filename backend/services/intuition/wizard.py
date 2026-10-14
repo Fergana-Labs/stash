@@ -91,8 +91,10 @@ accuracy vs. zero-shot Jev, how sure we can be given the held-out size, the top 
 When the user asks to do something that a card does (label, upload, edit criteria, see results, \
 try it, review predictions, see examples, robustness), open that card. Cards report back with a \
 message starting with "[card]". Keep replies short and warm, no jargon unless asked, never \
-fabricate numbers -- quote only what tools returned. If a tool fails, say what happened and \
-what to do next."""
+fabricate numbers -- quote only what tools returned. Whenever you quote accuracy, say on how many \
+held-out examples (and the interval when it is wide); with fewer than ~20, call it an early \
+estimate. Robustness results are evidence, not guarantees: say "0 of 18 attempts got through", \
+never "manipulation-proof". If a tool fails, say what happened and what to do next."""
 
 
 def _tool(name: str, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:

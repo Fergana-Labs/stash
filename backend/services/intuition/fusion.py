@@ -28,6 +28,7 @@ probe alone, plus a learning curve showing accuracy per labeled example.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import math
@@ -41,7 +42,7 @@ from pydantic import BaseModel, Field
 
 from ...database import get_pool
 from .. import llm
-from . import builder, providers, service
+from . import builder, providers, selection, service
 from . import head as heads
 from . import probe as probes
 from .spec import MAX_QUESTIONS
@@ -56,6 +57,9 @@ L2_GRID = (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 CV_FOLDS = 4
 CURVE_DRAWS = 6
 GRADE_BATCH = 24
+TEMPERATURE_PRIOR_ROWS = 20
+HOLDOUT_SHARE = 0.3
+MIN_HOLDOUT = 3
 MAX_ATTACK_PARENTS = 8
 ATTACKS_PER_SET = 6
 
@@ -286,12 +290,72 @@ def drivers(version: dict, head: dict, rows: list[dict]) -> list[dict]:
     )
 
 
+def _stable(example_id: str) -> str:
+    return hashlib.sha256(example_id.encode()).hexdigest()
+
+
+async def plan_holdout(owner_id: UUID, model_id: UUID) -> int:
+    """Hold out ~30% of labeled examples, stratified by label; returns how many moved.
+
+    Wizard models start from a handful of labels, and the generic hash split can
+    leave one held-out example -- a meaningless report. Examples only ever move
+    from train to held-out, so the gate keeps comparing versions on a stable set;
+    every label keeps at least two training examples, and adversarial repairs stay
+    in training.
+    """
+    examples = [
+        e for e in await service._examples(model_id)
+        if e["label"] and not e["needs_review"] and not e["note"].startswith("Adversarial repair")
+    ]
+    target = max(MIN_HOLDOUT, round(HOLDOUT_SHARE * len(examples))) if len(examples) >= 6 else 0
+    held = sum(e["split"] == "eval" for e in examples)
+    by_label: dict[str, list[dict]] = {}
+    for e in sorted((e for e in examples if e["split"] == "train"), key=lambda e: _stable(e["id"])):
+        by_label.setdefault(e["label"], []).append(e)
+    moved = 0
+    while held + moved < target:
+        # Take from the label with the most training examples left, if it can spare one.
+        label = max(by_label, key=lambda k: len(by_label[k]), default=None)
+        if label is None or len(by_label[label]) <= 2:
+            break
+        example = by_label[label].pop()
+        await service.update_example(owner_id, model_id, UUID(example["id"]), {"split": "eval"})
+        moved += 1
+    return moved
+
+
+def oof_accuracy(output_type, names, classes, rows, l2) -> dict:
+    """Cross-validated accuracy over non-seed training rows (seeds always train)."""
+    scored = [r for r in rows if not r.get("seed")]
+    if len(scored) < 4:
+        return {"n": 0, "accuracy": None}
+    seeds = [r for r in rows if r.get("seed")]
+    folds = min(CV_FOLDS, len(scored))
+    order = sorted(scored, key=lambda r: str(r["example_id"]))
+    correct = []
+    for k in range(folds):
+        train = seeds + [r for i, r in enumerate(order) if i % folds != k]
+        if output_type == "choice" and len({r["label"] for r in train}) < 2:
+            return {"n": 0, "accuracy": None}
+        fitted = heads.fit(output_type, names, classes, train, l2)
+        correct += [heads.row_probability(fitted, output_type, r)[1] == r["label"] for i, r in enumerate(order) if i % folds == k]
+    return {"n": len(correct), "accuracy": float(np.mean(correct))}
+
+
 async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> dict:
     """Fit the fused model on the current labels and return a held-out report."""
     progress("preparing", "Reserving held-out examples", 0, 0)
+    await plan_holdout(owner_id, model_id)
     await builder.prepare(owner_id, model_id)
     model = await service._model(owner_id, model_id)
     draft = await service.ensure_draft(owner_id, model_id)
+    # Half the training labels at most become judge reference examples; the rest stay
+    # unseen by the judge so cross-validation and calibration have honest rows.
+    train_examples = [
+        e for e in await service._examples(model_id)
+        if e["split"] == "train" and e["label"] and not e["needs_review"]
+    ]
+    seed_ids = [e["id"] for e in selection.seeds(train_examples, limit=max(2, len(train_examples) // 2))]
     criteria = user_questions(draft["rubric"])[: MAX_QUESTIONS - 2]
     rubric = criteria + [verdict_question(model["output_type"], draft["description"], draft["labels"])]
     warnings = []
@@ -306,7 +370,7 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
         warnings.append(f"Embedding probe skipped: {exc}")
     if not criteria:
         warnings.append("No criteria yet: the model is zero-shot Jev plus the probe. Add criteria to explain decisions.")
-    await service.update_draft(owner_id, model_id, {"rubric": rubric})
+    await service.update_draft(owner_id, model_id, {"rubric": rubric, "seed_example_ids": seed_ids})
     await _grade_all(owner_id, model_id, progress)
 
     draft = await service.ensure_draft(owner_id, model_id)
@@ -316,6 +380,16 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
     progress("fitting", "Choosing regularization by cross-validation", 0, 0)
     l2, cv = choose_l2(model["output_type"], draft["feature_names"], draft["classes"], train_rows)
     fitted = await service.fit(owner_id, model_id, l2=l2, calibrate=True)
+    # A temperature fitted on a handful of out-of-fold rows swings to extremes (a few
+    # lucky folds give T=0.07: certainty). Shrink log T toward 1 by how little
+    # calibration data there was, so small models stay humble about their mistakes.
+    n_cal = sum(1 for r in train_rows if not r["seed"])
+    t_fit = fitted["head"]["temperature"]
+    t_shrunk = round(math.exp(math.log(t_fit) * n_cal / (n_cal + TEMPERATURE_PRIOR_ROWS)), 4)
+    if t_shrunk != t_fit:
+        fitted = await service._refresh(
+            model, draft, {**fitted["head"], "temperature": t_shrunk}, (fitted["metrics"] or {}).get("fit_options")
+        )
     shipped = fitted["metrics"]["eval"]
     names, classes = draft["feature_names"], draft["classes"]
     report = {
@@ -333,6 +407,7 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
             "rows": shipped["rows"],
         },
         "train_accuracy": fitted["metrics"]["train"]["accuracy"],
+        "cross_validated": oof_accuracy(model["output_type"], names, classes, train_rows, l2),
         "leaderboard": leaderboard(model["output_type"], names, classes, train_rows, held, shipped, l2),
         "learning_curve": learning_curve(model["output_type"], names, classes, train_rows, held),
         "drivers": drivers(draft, fitted["head"], train_rows + held),

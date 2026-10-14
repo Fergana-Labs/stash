@@ -174,6 +174,33 @@ async def test_train_fuses_verdict_probe_and_criteria_with_held_out_report(clien
     assert rubric2[2]["version_id"] != rubric[2]["version_id"]
 
 
+async def test_wizard_holds_out_a_stratified_share_and_caps_seeds(client, fakes):
+    auth = await _auth(client)
+    resp = await client.post(
+        "/api/v1/intuitions",
+        headers=auth,
+        json={"name": "Few", "output_type": "choice", "description": "Would I send it?", "labels": LABELS, "rubric": CRITERIA},
+    )
+    model_id = resp.json()["model"]["id"]
+    examples = [
+        {"item": f"please {i}" if i % 2 else f"no {i}", "label": "send" if i % 2 else "rewrite", "split": "train"}
+        for i in range(12)
+    ]
+    await client.post(f"/api/v1/intuitions/{model_id}/examples", headers=auth, json={"examples": examples})
+    report = (await client.post(f"/api/v1/model-wizard/models/{model_id}/train", headers=auth)).json()
+    rows = (await client.get(f"/api/v1/intuitions/{model_id}/examples", headers=auth)).json()
+    held = [e for e in rows if e["split"] == "eval"]
+    assert len(held) == 4 and {e["label"] for e in held} == {"send", "rewrite"}
+    draft = (await client.get(f"/api/v1/intuitions/{model_id}", headers=auth)).json()["draft"]
+    assert len(draft["seed_example_ids"]) == 4  # half of the 8 training labels
+    assert report["cross_validated"]["n"] == 4 and report["holdout"]["n"] == 4
+
+    # Retraining never moves examples back, so versions are compared on the same held-out set.
+    await client.post(f"/api/v1/model-wizard/models/{model_id}/train", headers=auth)
+    again = (await client.get(f"/api/v1/intuitions/{model_id}/examples", headers=auth)).json()
+    assert {e["id"] for e in again if e["split"] == "eval"} == {e["id"] for e in held}
+
+
 async def test_probe_questions_cannot_read_another_models_probe(client, fakes):
     auth = await _auth(client)
     mine = await _model_with_examples(client, auth)

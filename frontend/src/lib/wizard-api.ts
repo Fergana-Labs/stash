@@ -24,6 +24,8 @@ export interface TrainingReport {
   counts: { train: number; held_out: number; labels: Record<string, number> };
   holdout: Pick<Evaluation, "n" | "accuracy" | "log_loss" | "ece" | "confusion" | "rows"> & { accuracy_interval: [number, number] | null; reliability: NonNullable<Evaluation["reliability"]> };
   train_accuracy: number | null;
+  /** Out-of-fold accuracy on training labels the judge never saw as references. */
+  cross_validated: { n: number; accuracy: number | null };
   leaderboard: LeaderboardRow[];
   learning_curve: { n: number; accuracy: number; draws: number }[];
   drivers: { question: string; prompt: string; share: number; kind: "verdict" | "probe" | "criterion" }[];
