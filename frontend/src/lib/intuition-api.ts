@@ -47,6 +47,8 @@ export interface Gate {
   active_version: number | null;
   forced?: boolean;
   flips?: Flip[];
+  /** Held-out or pinned examples the live version got wrong and this one gets right. */
+  fixes?: Flip[];
   pinned?: { n: number; accuracy: number | null; rows: EvalRow[] };
 }
 
@@ -91,12 +93,12 @@ export interface ModelSummary {
 }
 
 export interface ModelDetail {
-  model: { id: string; name: string; output_type: OutputType; active_version_id: string | null; draft_version_id: string | null; created_at: string; updated_at: string };
+  model: { id: string; name: string; output_type: OutputType; active_version_id: string | null; draft_version_id: string | null; created_at: string; updated_at: string; brief?: Record<string, unknown> };
   active: Version | null;
   draft: Version | null;
   versions: VersionSummary[];
   /** ungraded: items the draft needs before fitting; ungraded_total also includes the active version's. */
-  counts: { total: number; labeled: number; needs_review: number; eval: number; inbox: number; ungraded: number; ungraded_total: number };
+  counts: { total: number; labeled: number; needs_review: number; eval: number; inbox: number; escalated?: number; pinned?: number; calibration?: number; ungraded: number; ungraded_total: number };
   judge: JudgeStatus;
 }
 
@@ -105,8 +107,9 @@ export interface Example {
   item: Item; item_b: Item | null; label: string | null;
   source: ExampleSource; split: Split; needs_review: boolean; note: string; created_at: string;
   pinned?: boolean;
+  calibration?: boolean;
 }
-export interface NewExample { item: Item; item_b?: Item | null; label?: string | null; split?: Split; needs_review?: boolean; note?: string }
+export interface NewExample { item: Item; item_b?: Item | null; label?: string | null; split?: Split; needs_review?: boolean; note?: string; pinned?: boolean }
 
 /** Rubric answers keyed by question id, then option -> probability. */
 export type RubricAnswers = Record<string, Record<string, number>>;
@@ -131,7 +134,7 @@ export interface Comparison {
 export interface LoggedPrediction {
   id: string; kind: "predict" | "compare"; input: { item: Item; item_b?: Item };
   output: (Prediction | Comparison) & Record<string, unknown>;
-  confidence: number | null; caller: string; status: "unreviewed" | "labeled" | "dismissed";
+  confidence: number | null; caller: string; status: "unreviewed" | "escalated" | "labeled" | "dismissed";
   example_id: string | null; created_at: string; version: number;
   ref?: string | null; metadata?: Record<string, unknown>; feedback?: FeedbackRow[];
 }
@@ -196,7 +199,7 @@ export const imExamples = (id: string) => apiFetch<Example[]>(`${IM}/${id}/examp
 export const imAddExamples = (id: string, examples: NewExample[], source: ExampleSource = "human") =>
   post<Example[]>(`${IM}/${id}/examples`, { examples, source });
 export const imGenerate = (id: string, body: { count?: number; guidance?: string }) => post<Example[]>(`${IM}/${id}/examples/generate`, body);
-export const imEditExample = (id: string, exampleId: string, body: { label?: string | null; split?: Split; needs_review?: boolean; note?: string; pinned?: boolean }) =>
+export const imEditExample = (id: string, exampleId: string, body: { label?: string | null; split?: Split; needs_review?: boolean; note?: string; pinned?: boolean; calibration?: boolean }) =>
   apiFetch<Example>(`${IM}/${id}/examples/${exampleId}`, { method: "PATCH", body: JSON.stringify(body) });
 export const imDeleteExample = (id: string, exampleId: string) => apiFetch<void>(`${IM}/${id}/examples/${exampleId}`, { method: "DELETE" });
 

@@ -94,13 +94,23 @@ export default function ReportCard() {
       {report === undefined && <p className="m-0 text-[12px] text-muted-foreground">Loading…</p>}
       {report === null && <p className="m-0 text-[12px] text-muted-foreground">Not trained yet. Ask the wizard to train, or press Retrain.</p>}
       {report && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="Held-out accuracy" value={pct(fused)} hint={report.holdout.accuracy_interval ? `95% CI ${pct(report.holdout.accuracy_interval[0])}–${pct(report.holdout.accuracy_interval[1])}` : `${report.holdout.n} examples`} />
             <Stat label="vs. zero-shot" value={lift == null ? "—" : `${lift >= 0 ? "+" : ""}${Math.round(lift * 100)} pts`} tone={lift == null ? undefined : lift > 0 ? "good" : lift < 0 ? "bad" : undefined} hint={zeroShot != null ? `Jev alone: ${pct(zeroShot)}` : undefined} />
             <Stat label="Cross-validated" value={pct(report.cross_validated?.accuracy)} hint={report.cross_validated?.n ? `on ${report.cross_validated.n} training labels` : "needs more labels"} />
             <Stat label="Gate" value={report.gate.passed ? "Pass" : "Blocked"} tone={report.gate.passed ? "good" : "bad"} hint={report.gate.active_version ? `vs. live v${report.gate.active_version}` : "first version"} />
           </div>
+
+          {report.gate.active_version != null && (
+            <p className="m-0 text-[12px]">
+              Compared with live v{report.gate.active_version}: <b className="text-emerald-700 dark:text-emerald-400">fixed {report.gate.fixes?.length ?? 0}</b>, <b className={(report.gate.flips?.length ?? 0) ? "text-red-600 dark:text-red-400" : undefined}>broke {report.gate.flips?.length ?? 0}</b>
+              {report.gate.pinned && report.gate.pinned.n > 0 && <>, pinned cases {Math.round((report.gate.pinned.accuracy ?? 0) * report.gate.pinned.n)}/{report.gate.pinned.n} pass</>}.
+            </p>
+          )}
+          {report.gate.active_version == null && report.gate.pinned && report.gate.pinned.n > 0 && (
+            <p className="m-0 text-[12px]">Pinned cases: {Math.round((report.gate.pinned.accuracy ?? 0) * report.gate.pinned.n)}/{report.gate.pinned.n} pass.</p>
+          )}
 
           {report.warnings.map((w) => <p key={w} className="m-0 rounded-md border border-yellow-500/30 bg-yellow-500/8 px-2.5 py-1.5 text-[11.5px] text-yellow-900 dark:text-yellow-200">{w}</p>)}
 

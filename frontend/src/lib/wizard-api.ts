@@ -1,11 +1,11 @@
 import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
 import { getScopeUserId, SCOPE_HEADER } from "@/lib/scope-store";
-import type { Evaluation, Gate, Item, Prediction, RubricQuestion } from "@/lib/intuition-api";
+import type { Evaluation, Example, Gate, Item, LoggedPrediction, Prediction, RubricQuestion } from "@/lib/intuition-api";
 
 /** Client for /api/v1/model-wizard (backend/routers/model_wizard.py). */
 const MW = "/api/v1/model-wizard";
 
-export type CardKind = "choices" | "uploader" | "labeler" | "criteria" | "report" | "playground" | "review" | "robustness" | "examples";
+export type CardKind = "choices" | "uploader" | "labeler" | "criteria" | "report" | "playground" | "review" | "robustness" | "examples" | "brief" | "inbox" | "golden" | "agreement" | "topics";
 export interface Card { id: string; kind: CardKind; props: Record<string, unknown> }
 export interface Activity { id: string; tool: string; label: string; status: "running" | "done" | "error"; error?: string | null; progress?: string }
 export type AssistantPart = ({ type: "text"; text: string }) | ({ type: "card" } & Card) | ({ type: "activity" } & Activity);
@@ -54,6 +54,73 @@ export const wzTrain = (modelId: string) => post<TrainingReport>(`${MW}/models/$
 export const wzReport = (modelId: string) => apiFetch<{ report: TrainingReport | null }>(`${MW}/models/${modelId}/report`);
 export const wzDiscover = (modelId: string, body: { count?: number; guidance?: string } = {}) => post<Discovery>(`${MW}/models/${modelId}/discover`, body);
 export const wzHarden = (modelId: string, target_label?: string) => post<HardenResult>(`${MW}/models/${modelId}/harden`, { target_label: target_label ?? null });
+
+// ── Curation: brief, queues, calibration, topics, golden-set health ───────
+
+export interface BriefLabel { id: string; means: string; not?: string }
+export interface Brief {
+  decision?: string; input?: string; labels?: BriefLabel[]; costly_mistake?: string; must_never?: string[];
+  edge_cases?: string[]; context?: string; success?: string; reviewers?: string[];
+}
+export interface BriefState { brief: Brief; fields: Record<keyof Brief, string>; complete: boolean; missing: (keyof Brief)[]; optional_missing: (keyof Brief)[] }
+export type QueueRow = LoggedPrediction & { escalation_note?: string };
+export interface ReviewLink { token: string; reviewer: string; created_at: string; rated: number }
+export interface AgreementStats { agreement: number; kappa: number | null; n: number }
+export interface Agreement {
+  calibration_items: number;
+  reviewers: { token: string; name: string }[];
+  pairs: ({ a: string; b: string } & AgreementStats)[];
+  human: AgreementStats | null;
+  judge: AgreementStats | null;
+  verdict: string | null;
+  disagreements: { example_id: string; item: Item; labels: { rater: string; label: string; note: string }[] }[];
+}
+export interface Topic {
+  id: string; name: string; description: string; served: number; unreviewed: number; reviewed: number; overturned: number;
+  overturn_rate: number | null; examples: Record<string, number>; held_out: { n: number; accuracy: number | null };
+}
+export interface Topics { computed_at: string | null; topics: Topic[] }
+export interface SimilarPair { a: string; b: string; a_label: string; b_label: string; similarity: number }
+export interface Health {
+  labeled: number; needs_label: number; pinned: number; calibration: number; by_source: Record<string, number>;
+  coverage: { label: string; total: number; held_out: number; pinned: number }[];
+  duplicates: SimilarPair[]; lookalikes: SimilarPair[]; issues: string[];
+}
+export interface ReviewView {
+  model: string; reviewer: string; instructions: string; label_boundaries: BriefLabel[] | null;
+  labels: { id: string; description: string }[];
+  items: { id: string; item: Item; item_b: Item | null; my_label: string | null; my_note: string | null }[];
+}
+
+const M = (id: string) => `${MW}/models/${id}`;
+export const wzBrief = (id: string) => apiFetch<BriefState>(`${M(id)}/brief`);
+export const wzSaveBrief = (id: string, changes: Partial<Record<keyof Brief, unknown>>) => apiFetch<BriefState>(`${M(id)}/brief`, { method: "PATCH", body: JSON.stringify(changes) });
+export const wzQueue = (id: string, which: "triage" | "expert", topic?: string | null) => apiFetch<{ items: QueueRow[] }>(`${M(id)}/queue/${which}${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`);
+export const wzTriage = (id: string, predictionId: string, action: "looks_right" | "escalate" | "ignore", note = "") => post<{ status: string; example: Example | null }>(`${M(id)}/predictions/${predictionId}/triage`, { action, note });
+export const wzResolve = (id: string, predictionId: string, body: { label: string; note?: string; pin?: boolean }) => post<{ status: string; example: Example | null }>(`${M(id)}/predictions/${predictionId}/resolve`, body);
+export const wzCalibration = (id: string, body: { example_ids?: string[] | null; on?: boolean } = {}) => post<{ calibration: number }>(`${M(id)}/calibration`, body);
+export const wzAgreement = (id: string) => apiFetch<Agreement>(`${M(id)}/agreement`);
+export const wzLinks = (id: string) => apiFetch<{ links: ReviewLink[] }>(`${M(id)}/review-links`);
+export const wzCreateLink = (id: string, reviewer: string) => post<ReviewLink>(`${M(id)}/review-links`, { reviewer });
+export const wzRevokeLink = (id: string, token: string) => apiFetch<void>(`${M(id)}/review-links/${token}`, { method: "DELETE" });
+export const wzTopics = (id: string) => apiFetch<Topics>(`${M(id)}/topics`);
+export const wzRefreshTopics = (id: string) => post<Topics>(`${M(id)}/topics`);
+export const wzHealth = (id: string) => apiFetch<Health>(`${M(id)}/health`);
+export const wzFromCorrections = (id: string, count = 3) => post<Discovery & { reasons: number }>(`${M(id)}/criteria-from-corrections`, { count });
+export const reviewLinkUrl = (token: string) => `${typeof window === "undefined" ? "" : window.location.origin}/review/${token}`;
+
+/** Invited reviewers have no account; these calls carry only the link's token. */
+async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}/api/v1/review-links/${path}`, { ...init, headers: { "Content-Type": "application/json" } });
+  if (!res.ok) {
+    const detail = await res.json().then((b) => b?.detail as string | undefined).catch(() => undefined);
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.json() as Promise<T>;
+}
+export const reviewView = (token: string) => publicFetch<ReviewView>(token);
+export const reviewRate = (token: string, exampleId: string, label: string, note = "") =>
+  publicFetch<{ rated: boolean }>(`${token}/items/${exampleId}`, { method: "POST", body: JSON.stringify({ label, note }) });
 
 export type WizardEvent =
   | { type: "text"; delta: string }

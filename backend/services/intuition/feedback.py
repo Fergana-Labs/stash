@@ -97,7 +97,7 @@ async def record(
         if learn
         else None
     )
-    if source == "human" and prediction["status"] == "unreviewed":
+    if source == "human" and prediction["status"] in ("unreviewed", "escalated"):
         await get_pool().execute(
             "UPDATE intuition_predictions SET status = 'labeled' WHERE id = $1", prediction["id"]
         )

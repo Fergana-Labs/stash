@@ -215,7 +215,11 @@ async def get_detail(owner_id: UUID, model_id: UUID) -> dict:
                   count(*) FILTER (WHERE needs_review) AS needs_review,
                   count(*) FILTER (WHERE split = 'eval') AS eval,
                   (SELECT count(*) FROM intuition_predictions p
-                    WHERE p.model_id = $1 AND p.status = 'unreviewed') AS inbox
+                    WHERE p.model_id = $1 AND p.status = 'unreviewed') AS inbox,
+                  (SELECT count(*) FROM intuition_predictions p
+                    WHERE p.model_id = $1 AND p.status = 'escalated') AS escalated,
+                  count(*) FILTER (WHERE pinned) AS pinned,
+                  count(*) FILTER (WHERE calibration) AS calibration
              FROM intuition_examples WHERE model_id = $1""",
         model_id,
     )
@@ -225,6 +229,7 @@ async def get_detail(owner_id: UUID, model_id: UUID) -> dict:
     # before fitting. `ungraded_total` also counts active-version answers the gate needs.
     primary = await _pending_jobs(model, [draft or active] if (draft or active) else [])
     total = await _pending_jobs(model, [v for v in (draft, active) if v])
+    model.pop("topics", None)
     return {
         "model": model,
         "active": active,
@@ -367,14 +372,15 @@ async def add_examples(
                 e.get("split") or _split_for(e["item"], e.get("item_b")),
                 needs_review,
                 e.get("note", ""),
+                bool(e.get("pinned", False)),
             )
         )
     async with get_pool().acquire() as conn, conn.transaction():
         created = [
             await conn.fetchrow(
                 """INSERT INTO intuition_examples
-                     (model_id, kind, item, item_b, label, source, split, needs_review, note)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *""",
+                     (model_id, kind, item, item_b, label, source, split, needs_review, note, pinned)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *""",
                 *row,
             )
             for row in rows
@@ -402,7 +408,7 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
     )
     updated = await get_pool().fetchrow(
         """UPDATE intuition_examples SET label = $3, split = $4, needs_review = $5, note = $6,
-                  pinned = $7
+                  pinned = $7, calibration = $8
             WHERE id = $1 AND model_id = $2 RETURNING *""",
         example_id,
         model_id,
@@ -411,6 +417,7 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
         merged["needs_review"],
         merged["note"],
         merged["pinned"],
+        merged["calibration"],
     )
     await _invalidate_draft(model_id, example_id)
     await _touch(model_id)
@@ -662,7 +669,7 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
     pinned_rows = [r for r in rows if r["pinned"]]
     pinned = heads.evaluate(head, model["output_type"], pinned_rows)
     active = await _load_version(model["active_version_id"])
-    incumbent, flips = None, None
+    incumbent, flips, fixes = None, None, None
     if active and not active["head_stale"]:
         active_rows, _ = await _rows(model, active)
         held_ids = {r["example_id"] for r in held}
@@ -670,8 +677,12 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
         incumbent = heads.evaluate(active["head"], model["output_type"], shared)
         incumbent["missing"] = len(held_ids) - len(shared)
         flips = _flips(model["output_type"], head, active["head"], held + pinned_rows, active_rows)
+        fixes = _flips(
+            model["output_type"], head, active["head"], held + pinned_rows, active_rows, fixed=True
+        )
     gate = heads.gate(metrics["eval"], incumbent, flips=flips, pinned=pinned)
     gate["flips"] = flips or []
+    gate["fixes"] = fixes or []
     gate["pinned"] = {k: pinned[k] for k in ("n", "accuracy", "rows")}
     if fit_options and fit_options.get("train_on") == "all":
         gate["passed"] = False
@@ -710,8 +721,11 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
     return {"head": head, "metrics": metrics, "gate": gate}
 
 
-def _flips(output_type, head, active_head, rows, active_rows) -> list[dict]:
-    """Held-out or pinned examples the active version got right and the candidate gets wrong."""
+def _flips(output_type, head, active_head, rows, active_rows, fixed: bool = False) -> list[dict]:
+    """Held-out or pinned examples the active version got right and the candidate gets wrong.
+
+    With `fixed`, the opposite: ones the active version got wrong and the candidate gets right.
+    """
     active_by_id = {r["example_id"]: r for r in active_rows}
     flips, seen = [], set()
     for row in rows:
@@ -721,7 +735,11 @@ def _flips(output_type, head, active_head, rows, active_rows) -> list[dict]:
         seen.add(row["example_id"])
         _, was = heads.row_probability(active_head, output_type, old)
         _, now = heads.row_probability(head, output_type, row)
-        if was == row["label"] and now != row["label"]:
+        if (
+            (was != row["label"] and now == row["label"])
+            if fixed
+            else (was == row["label"] and now != row["label"])
+        ):
             flips.append(
                 {
                     "example_id": row["example_id"],
@@ -1080,7 +1098,7 @@ async def review_prediction(
     )
     if status is None:
         raise NotFound("Prediction not found")
-    if status != "unreviewed":
+    if status not in ("unreviewed", "escalated"):
         raise Conflict("This prediction was already reviewed")
     if dismiss:
         await get_pool().execute(

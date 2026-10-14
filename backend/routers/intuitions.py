@@ -101,6 +101,7 @@ class EditExample(Body):
     note: str | None = Field(default=None, max_length=2000)
     # Pinned examples are regression tests: a new version must keep them correct.
     pinned: bool | None = None
+    calibration: bool | None = None
 
 
 class Generate(Body):
@@ -419,7 +420,7 @@ async def compare(model_id: UUID, req: Compare, user: User):
 async def predictions(
     model_id: UUID,
     user: User,
-    status: Literal["unreviewed", "labeled", "dismissed", "all"] = "unreviewed",
+    status: Literal["unreviewed", "escalated", "labeled", "dismissed", "all"] = "unreviewed",
     limit: int = Query(default=100, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):

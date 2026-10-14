@@ -11,14 +11,19 @@ import { evalReadFile, imAddExamples, type NewExample } from "@/lib/intuition-ap
 import { applyEvent, streamWizard, wzGet, type AssistantPart, type Card, type TranscriptEntry } from "@/lib/wizard-api";
 import { WizardProvider, type WizardCtx } from "./wizard-ui";
 import ModelPanel from "./ModelPanel";
+import AgreementCard from "./cards/AgreementCard";
+import BriefCard from "./cards/BriefCard";
 import ChoicesCard from "./cards/ChoicesCard";
 import CriteriaCard from "./cards/CriteriaCard";
 import ExamplesCard from "./cards/ExamplesCard";
+import GoldenCard from "./cards/GoldenCard";
+import InboxCard from "./cards/InboxCard";
 import LabelerCard from "./cards/LabelerCard";
 import PlaygroundCard from "./cards/PlaygroundCard";
 import ReportCard from "./cards/ReportCard";
 import ReviewCard from "./cards/ReviewCard";
 import RobustnessCard from "./cards/RobustnessCard";
+import TopicsCard from "./cards/TopicsCard";
 import UploaderCard from "./cards/UploaderCard";
 
 const STARTERS = [
@@ -31,6 +36,7 @@ const STARTERS = [
 const TITLES: Record<Card["kind"], string> = {
   choices: "Quick choices", uploader: "Add examples", labeler: "Label examples", criteria: "Criteria",
   report: "Training report", playground: "Try it", review: "Review predictions", robustness: "Robustness", examples: "Examples",
+  brief: "Eval brief", inbox: "Inbox", golden: "Golden set", agreement: "Agreement", topics: "Topics",
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- card props are validated server-side by the tool schemas */
@@ -46,6 +52,11 @@ function CardView({ card }: { card: Card }) {
     case "review": return <ReviewCard />;
     case "robustness": return <RobustnessCard result={p.result} />;
     case "examples": return <ExamplesCard />;
+    case "brief": return <BriefCard />;
+    case "inbox": return <InboxCard queue={p.queue} topic={p.topic} />;
+    case "golden": return <GoldenCard />;
+    case "agreement": return <AgreementCard invited={p.invited} />;
+    case "topics": return <TopicsCard />;
   }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -70,7 +81,14 @@ function ActivityRow({ part }: { part: Extract<AssistantPart, { type: "activity"
   );
 }
 
-export default function WizardChat({ sessionId }: { sessionId: string }) {
+export interface Injected { id: number; text: string; kind: "message" | "event" }
+
+/**
+ * The wizard conversation. Embedded (in the eval page's drawer) it drops its own
+ * header and model panel, takes messages from the page via `inject`, and tells
+ * the page to reload via `onRefresh`.
+ */
+export default function WizardChat({ sessionId, embedded = false, inject = null, onRefresh }: { sessionId: string; embedded?: boolean; inject?: Injected | null; onRefresh?: () => void }) {
   const [entries, setEntries] = useState<TranscriptEntry[] | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
   const [title, setTitle] = useState("New model");
@@ -89,7 +107,7 @@ export default function WizardChat({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [entries]);
 
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  const refresh = useCallback(() => { setVersion((v) => v + 1); onRefresh?.(); }, [onRefresh]);
 
   const run = useCallback(async (text: string, kind: "message" | "event") => {
     busyRef.current = true; setBusy(true); setError("");
@@ -123,6 +141,13 @@ export default function WizardChat({ sessionId }: { sessionId: string }) {
     void run(text, kind);
   }, [run]);
 
+  const injected = useRef(0);
+  useEffect(() => {
+    if (!inject || inject.id === injected.current || entries === null) return;
+    injected.current = inject.id;
+    send(inject.text, inject.kind);
+  }, [inject, entries, send]);
+
   async function attach(files: FileList) {
     if (!modelId) { setError("Tell the wizard what you want to classify first, then attach examples."); return; }
     const rows: NewExample[] = [];
@@ -145,10 +170,13 @@ export default function WizardChat({ sessionId }: { sessionId: string }) {
     <WizardProvider value={ctx}>
       <div className="flex h-full min-h-0">
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
-            <Link href="/reward-models/wizard" className="text-xs text-muted-foreground hover:underline">Model wizard /</Link>
-            <h1 className="m-0 truncate text-sm font-semibold">{title}</h1>
-          </header>
+          {!embedded && (
+            <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
+              <Link href="/reward-models/wizard" className="text-xs text-muted-foreground hover:underline">Model wizard /</Link>
+              <h1 className="m-0 truncate text-sm font-semibold">{title}</h1>
+              {modelId && <Link href={`/reward-models/evals/${modelId}`} className="ml-auto text-xs text-muted-foreground hover:underline">Open eval page →</Link>}
+            </header>
+          )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-3xl px-5 py-6">
               {entries && entries.length === 0 && (
@@ -196,7 +224,7 @@ export default function WizardChat({ sessionId }: { sessionId: string }) {
             {(attaching || (busy && queued.current.length > 0)) && <p role="status" className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">{attaching || "Queued until the wizard finishes."}</p>}
           </form>
         </div>
-        <ModelPanel modelId={modelId} version={version} />
+        {!embedded && <ModelPanel modelId={modelId} version={version} />}
       </div>
     </WizardProvider>
   );

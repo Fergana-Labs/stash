@@ -29,7 +29,7 @@ from uuid import UUID
 from ...config import settings
 from ...database import get_pool
 from .. import llm
-from . import fusion, providers, service
+from . import curation, fusion, providers, service
 from . import probe as probes
 
 log = logging.getLogger(__name__)
@@ -48,53 +48,99 @@ CARD_KINDS = (
     "review",
     "robustness",
     "examples",
+    "brief",
+    "inbox",
+    "golden",
+    "agreement",
+    "topics",
 )
 
-SYSTEM = """You are the Model Wizard inside Stash. You help a non-expert build a custom \
-classifier ("model") for their own judgment calls -- routing tickets, grading outputs, flagging \
-risky content, picking the better of two drafts -- with as few examples as possible. It should \
-feel effortless, like magic, but never dishonest.
+SYSTEM = """You are the Model Wizard inside Stash. You help a non-expert build a judge: a custom \
+classifier for their own judgment calls -- routing tickets, grading outputs, flagging risky \
+content, picking the better of two drafts. Your job is a GOOD EVAL: a judge that agrees with the \
+user's own expert judgment, measured honestly, that keeps improving from their corrections. It \
+should feel effortless, like magic, but never dishonest.
 
-How the models work (explain only when useful, in plain words):
-- A judge model (Jev) answers the user's criteria about each item with probabilities, and also \
-answers the task itself zero-shot. A small calibrated head learns how much each answer matters \
-from the user's labels, starting from "trust the zero-shot verdict", so even 6-10 labels help.
-- An embedding probe learns what the user's labeled examples look like, beyond what the \
-criteria say.
-- Criteria can be discovered contrastively: similar items the user labeled differently are \
-compared to find the property that separates them.
-- Hardening writes manipulation attempts (fake approvals, instructions to the grader), repairs \
-the model with the ones that work, and re-measures on fresh attacks.
-- Everything is measured on held-out examples the model never trained on. No LLM weights are \
-fine-tuned.
-- Inputs can be text, JSON objects, images, PDFs, slides or documents (multimodal). Images are \
-described by a vision model for the judge, and shown as images when discovering criteria.
+## Principles of a good eval (follow them; explain them only when it helps the user decide)
+1. One decision, one judge. Pin down a single decision someone acts on. If the user describes \
+several ("route it AND rate urgency"), build one and offer the other next.
+2. Few, sharp labels. Prefer 2-5 labels that are mutually exclusive and cover every input. Every \
+label gets a definition AND a boundary: what it is, and the nearest thing it is not. Vague labels \
+("good", "high quality") are the top cause of bad evals; push gently for "good means ..., not ...".
+3. The user is the source of truth. The judge learns the user's taste, not yours. Capture their \
+reasons, not only their labels -- a reason is worth five labels.
+4. Real and hard beats many and easy. Ask for real inputs early, especially borderline cases and \
+past mistakes. Generated examples only fill gaps, and the user always labels them.
+5. Decide which mistake is worse. A false alarm and a miss rarely cost the same; know which way \
+to lean when unsure.
+6. Pin what must never break. Cases the judge must never get wrong become pinned examples: a new \
+version cannot ship if it gets any of them wrong.
+7. Criteria are observable. Each criterion checks one property visible in the input ("mentions a \
+charge they did not make"), never the verdict itself ("is this fraud?") and never something the \
+judge cannot see.
+8. Measure honestly. Accuracy is always on held-out examples the judge never trained on, with how \
+many there are and next to zero-shot Jev. Fewer than ~20 held out is an early estimate.
+9. People are the ceiling. If two people disagree on 20% of cases, 80% agreement with one of them \
+is the best a judge can do. When people disagree, fix the label definitions, not the judge.
+10. The eval is never done. Real traffic flows into the Inbox; corrections become golden examples; \
+recurring reasons become criteria; duplicates get pruned.
 
-The flow (adapt to the user; skip what they already gave you):
-1. Goal: what decision, what an input looks like, which labels. Ask at most two short questions \
-at a time; offer quick picks with show_choices. Choice models pick one of 2-12 labels; \
-preference models score outputs good/bad or pick the better of two.
-2. Create the model as soon as the goal and labels are clear (create_model). Write a rich context \
-description: who uses it, what matters, edge cases, what the user said.
-3. Examples: ask for real ones (open_uploader: files, images, pasted text/CSV/JSONL) or paste \
-them into chat (add_examples). If they have few, generate_examples drafts realistic, borderline \
-cases. Then open_labeler so they label quickly. Aim for >= 8 labeled with every label present.
-4. Criteria: co-create. Draft with propose_criteria (mode "contrastive" once there are labels of \
-two kinds -- prefer it; "describe" before). Discuss them, then open_criteria so the user can \
-accept, edit, or remove. You may also write criteria yourself from what the user tells you \
-(set_criteria). Ask about observable properties, never the verdict itself.
-5. Train (train). The report card opens automatically; summarize it in 2-3 sentences: held-out \
-accuracy vs. zero-shot Jev, how sure we can be given the held-out size, the top drivers.
-6. Improve: label uncertain cases (open_review), add contrastive criteria, harden, then ship \
-(promote) once the gate passes. Then point them to the playground and the API.
+## The script (adapt: skip anything the user already told you, never ask more than two short \
+questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
+A. Decision. "What decision should it make, and what happens after?" Who acts on the answer.
+B. Input. "Paste one or two real examples" -- before discussing labels, so everything stays \
+concrete. Note the format (text, JSON fields, images, PDFs; any of them works).
+C. Labels. Propose labels from what you have seen and confirm with show_choices. Then get the \
+boundary: ask for the hardest borderline case between two labels and what the right call is (skip \
+only if the user already gave one) -- this is where most evals go wrong. Then create_model (choice: pick one of 2-12 labels; preference: good/bad or better of two) \
+with a description written for the judge, and save_brief with what you learned.
+D. Stakes. Which mistake is worse (show_choices with both directions spelled out in their terms), \
+and 1-3 cases it must never get wrong. Add those as pinned, labeled examples (add_examples with \
+pinned true) and save_brief.
+E. Context (one question, optional). Policies, style guides or facts the decision depends on \
+(open_uploader, or paste), and who else makes this call today (for calibration later).
+F. Play it back. Summarize the brief in 3-5 bullets ("Here is what I will hold the judge to") and \
+ask what is off. Then update_model so the judge's description carries the label boundaries, the \
+costly mistake, the must-never cases and the context -- the description is all the judge reads.
+G. Examples. Get to at least 8 labeled with every label present (ideally 3+ per label, including \
+borderline ones): open_uploader or add_examples for real ones, generate_examples aimed at the \
+boundaries to fill gaps, then open_labeler. Ask for a short reason on surprising labels.
+H. Criteria. Co-create 3-6 (principle 7). Once both kinds of labels exist, prefer \
+propose_criteria mode "contrastive" (similar items labeled differently); before that, "describe" \
+grounded in the boundaries and the costly mistake. Then open_criteria for the user to accept, \
+edit or remove.
+I. Train, then read the report in 2-3 sentences: held-out accuracy vs. zero-shot Jev with n, the \
+top drivers, whether pinned cases pass. open_golden if coverage is thin.
+J. Calibrate if anyone else judges these cases: invite_reviewer creates a private link; when they \
+are done, open_agreement and explain the ceiling (principle 9).
+K. Harden when inputs could be written by someone who wants a particular answer. Ship (promote) \
+when the gate passes. Then point to the playground and the API, and explain the loop: traffic \
+lands in the Inbox, triage it, corrections improve the next version.
+After shipping: open_inbox to triage, open_topics to see where the judge gets overturned, \
+suggest_criteria_from_corrections when reviewers have given reasons, and retrain.
 
-When the user asks to do something that a card does (label, upload, edit criteria, see results, \
-try it, review predictions, see examples, robustness), open that card. Cards report back with a \
-message starting with "[card]". Keep replies short and warm, no jargon unless asked, never \
-fabricate numbers -- quote only what tools returned. Whenever you quote accuracy, say on how many \
-held-out examples (and the interval when it is wide); with fewer than ~20, call it an early \
-estimate. Robustness results are evidence, not guarantees: say "0 of 18 attempts got through", \
-never "manipulation-proof". If a tool fails, say what happened and what to do next."""
+The CURRENT STATE below shows the brief and what it is missing; work toward a complete brief \
+before training, but never block the user -- if they want to rush, note what is missing and go.
+
+## Cards
+When the user asks to do something a card does (label, upload, edit criteria or the brief, see \
+results, try it, triage the inbox, review the golden set, check agreement, see topics, \
+robustness), open that card. Cards report back with a message starting with "[card]". The \
+judge page (Judge, Inbox, Golden set, Results tabs) shows everything too; mention it once the \
+model exists.
+
+How the engine works (explain only when useful, in plain words): Jev answers each criterion and \
+the task itself zero-shot; a small calibrated head learns from the user's labels how much each \
+answer matters, starting from "trust the zero-shot verdict", so 6-10 labels already help. An \
+embedding probe learns what labeled examples look like beyond the criteria. Hardening writes \
+manipulation attempts, repairs the model with the ones that work, and re-measures. No LLM \
+weights are fine-tuned. Images are described by a vision model for the judge and shown as \
+images when discovering criteria.
+
+Words matter: a model is "created" when it exists, "trained" after train, and "live" only after \
+promote. Keep replies short and warm, no jargon unless asked, never fabricate numbers -- quote only what \
+tools returned. Robustness results are evidence, not guarantees: say "0 of 18 attempts got \
+through", never "manipulation-proof". If a tool fails, say what happened and what to do next."""
 
 
 def _tool(name: str, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:
@@ -132,6 +178,25 @@ QUESTION_SCHEMA = {
     },
 }
 ITEM_SCHEMA = {"description": "The input: a string, or a JSON object with the same keys as the other items"}
+BRIEF_SCHEMA = {
+    "decision": {"type": "string", "description": "What is decided, by whom, and what happens next"},
+    "input": {"type": "string", "description": "What one input looks like and where it comes from"},
+    "labels": {
+        "type": "array",
+        "description": "Per label: what it means and its boundary (the nearest thing it is not)",
+        "items": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "means": {"type": "string"}, "not": {"type": "string"}},
+            "required": ["id", "means"],
+        },
+    },
+    "costly_mistake": {"type": "string", "description": "Which mistake is worse and why, in the user's words"},
+    "must_never": {"type": "array", "items": {"type": "string"}, "description": "Cases it must never get wrong"},
+    "edge_cases": {"type": "array", "items": {"type": "string"}, "description": "Hard cases with the right call"},
+    "context": {"type": "string", "description": "Policies, style guides or facts the decision depends on"},
+    "success": {"type": "string", "description": "What good enough looks like"},
+    "reviewers": {"type": "array", "items": {"type": "string"}, "description": "Who else makes this call"},
+}
 
 TOOLS = [
     _tool(
@@ -142,8 +207,15 @@ TOOLS = [
             "output_type": {"type": "string", "enum": ["choice", "preference"]},
             "description": {"type": "string", "description": "Context for the judge: the goal, who decides, what matters, edge cases."},
             "labels": {**LABEL_SCHEMA, "description": "Choice models only: 2-12 labels. Omit for preference."},
+            "brief": {"type": "object", "properties": BRIEF_SCHEMA, "description": "What you learned so far"},
         },
         ["name", "output_type", "description"],
+    ),
+    _tool(
+        "save_brief",
+        "Save what you learned about the decision into the eval brief (merged; send only what changed). "
+        "The state shows which fields are still missing.",
+        BRIEF_SCHEMA,
     ),
     _tool(
         "update_model",
@@ -181,6 +253,8 @@ TOOLS = [
                         "item": ITEM_SCHEMA,
                         "item_b": {"description": "Preference pairs only: the second output"},
                         "label": {"type": "string", "description": "A label id; preference: good|bad, pairs: a|b"},
+                        "note": {"type": "string", "description": "The user's reason for the label, if given"},
+                        "pinned": {"type": "boolean", "description": "A must-never-get-wrong case (needs a label)"},
                     },
                     "required": ["item"],
                 },
@@ -232,6 +306,28 @@ TOOLS = [
     _tool("open_playground", "Open a playground to try inputs (text, JSON, or files) against the model."),
     _tool("open_review", "Open the review queue of recent predictions the model was least sure about."),
     _tool("open_examples", "Open the table of all examples with their labels and splits."),
+    _tool("open_brief", "Open the eval brief so the user can read and edit it."),
+    _tool(
+        "open_inbox",
+        "Open the review inbox: 'triage' is a fast pass over served predictions (looks right / needs "
+        "review / ignore); 'expert' fills in the right label and a reason for escalated ones.",
+        {"queue": {"type": "string", "enum": ["triage", "expert"]}, "topic": {"type": "string", "description": "A topic id to focus on"}},
+    ),
+    _tool("open_golden", "Open the golden set: coverage per label, pinned cases, duplicates and look-alikes labeled differently."),
+    _tool("open_agreement", "Open agreement: people vs. each other on the calibration set, and the judge vs. people on held-out."),
+    _tool("open_topics", "Open topics: traffic and examples clustered by subject, with how often the judge is overturned per topic."),
+    _tool(
+        "invite_reviewer",
+        "Create a private review link for someone else to label the calibration set blind (no account needed). "
+        "Picks a calibration set automatically if there is none. Give the user the link.",
+        {"name": {"type": "string", "description": "The reviewer's name or role"}},
+        ["name"],
+    ),
+    _tool(
+        "suggest_criteria_from_corrections",
+        "Draft criteria from the reasons reviewers gave when they overturned the judge; opens the criteria editor.",
+        {"count": {"type": "integer", "minimum": 1, "maximum": 6}},
+    ),
 ]
 
 
@@ -286,22 +382,32 @@ async def delete_session(owner_id: UUID, session_id: UUID) -> None:
 async def _save(session: dict) -> None:
     await get_pool().execute(
         """UPDATE intuition_wizard_sessions
-              SET messages = $2, transcript = $3, model_id = $4, title = $5, updated_at = now()
+              SET messages = $2, transcript = $3, model_id = $4, title = $5, brief = $6,
+                  updated_at = now()
             WHERE id = $1""",
         UUID(session["id"]),
         session["messages"][-MAX_HISTORY_MESSAGES:],
         session["transcript"],
         UUID(session["model_id"]) if session["model_id"] else None,
         session["title"],
+        session["brief"],
     )
 
 
 # ── State summary given to the wizard every turn ─────────────────────────
 
 
-async def status(owner_id: UUID, model_id: str | None) -> dict:
+async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None = None) -> dict:
     if not model_id:
-        return {"model": None, "judge": providers.status(), "embeddings": probes.embeddings.is_configured()}
+        return {
+            "model": None,
+            "brief_so_far": held_brief or {},
+            "brief_status": curation.brief_status(held_brief or {}),
+            "brief_fields": {k: d for k, (d, _) in curation.BRIEF_FIELDS.items()},
+            "note": "No model yet: save_brief holds what you learn and it is saved with the model.",
+            "judge": providers.status(),
+            "embeddings": probes.embeddings.is_configured(),
+        }
     detail = await service.get_detail(owner_id, UUID(model_id))
     version = detail["draft"] or detail["active"]
     examples = await service.list_examples(owner_id, UUID(model_id))
@@ -310,7 +416,11 @@ async def status(owner_id: UUID, model_id: str | None) -> dict:
     for e in labeled:
         by_label[e["label"]] = by_label.get(e["label"], 0) + 1
     report = ((version or {}).get("metrics") or {}).get("report")
+    brief = detail["model"].get("brief") or {}
     return {
+        "brief": brief,
+        "brief_status": curation.brief_status(brief),
+        "inbox": {"to_triage": detail["counts"]["inbox"], "escalated": detail["counts"]["escalated"]},
         "model": {
             "id": model_id,
             "name": detail["model"]["name"],
@@ -327,6 +437,8 @@ async def status(owner_id: UUID, model_id: str | None) -> dict:
             "needs_labels": sum(e["needs_review"] for e in examples),
             "by_label": by_label,
             "held_out": sum(e["split"] == "eval" for e in labeled),
+            "pinned": sum(e["pinned"] for e in labeled),
+            "calibration": sum(e["calibration"] for e in examples),
             "images": sum(isinstance(e["item"], dict) and e["item"].get("kind") == "image" for e in examples),
         },
         "latest_training": None
@@ -336,6 +448,7 @@ async def status(owner_id: UUID, model_id: str | None) -> dict:
             "held_out_n": report["holdout"]["n"],
             "leaderboard": [{k: row.get(k) for k in ("name", "accuracy", "log_loss")} for row in report["leaderboard"]],
             "gate_passed": report["gate"]["passed"],
+            "pinned": {k: report["gate"].get("pinned", {}).get(k) for k in ("n", "accuracy")},
             "top_drivers": [d["prompt"] for d in report["drivers"][:3]],
         },
         "judge": providers.status(),
@@ -348,6 +461,10 @@ async def status(owner_id: UUID, model_id: str | None) -> dict:
 def _card(kind: str, **props) -> dict:
     assert kind in CARD_KINDS
     return {"id": uuid.uuid4().hex[:12], "kind": kind, "props": props}
+
+
+def _brief_fields(args: dict) -> dict:
+    return {k: v for k, v in args.items() if k in curation.BRIEF_FIELDS and v not in (None, "", [])}
 
 
 def _need_model(session: dict) -> UUID:
@@ -382,7 +499,18 @@ async def run_tool(owner_id: UUID, session: dict, name: str, args: dict, progres
         )
         session["model_id"] = str(detail["model"]["id"])
         session["title"] = args["name"][:160]
+        brief = {**session["brief"], **_brief_fields(args.get("brief") or {})}
+        if brief:
+            await curation.save_brief(owner_id, UUID(session["model_id"]), brief)
+        session["brief"] = {}
         return {"created": True, "model_id": session["model_id"]}, None
+    if name == "save_brief":
+        if not session["model_id"]:
+            # Held on the session and saved with the model when it is created.
+            session["brief"] = {**session["brief"], **_brief_fields(args)}
+            return {"held_until_model_exists": True, **curation.brief_status(session["brief"])}, None
+        saved = await curation.save_brief(owner_id, UUID(session["model_id"]), _brief_fields(args))
+        return {"missing": saved["missing"], "optional_missing": saved["optional_missing"]}, None
     if name == "update_model":
         model_id = _need_model(session)
         if args.get("name"):
@@ -393,7 +521,7 @@ async def run_tool(owner_id: UUID, session: dict, name: str, args: dict, progres
             await service.update_draft(owner_id, model_id, changes)
         return {"updated": sorted(changes) + (["name"] if args.get("name") else [])}, None
     if name == "get_status":
-        return await status(owner_id, session["model_id"]), None
+        return await status(owner_id, session["model_id"], session["brief"]), None
     if name == "propose_criteria":
         model_id = _need_model(session)
         count = int(args.get("count") or 4)
@@ -420,7 +548,8 @@ async def run_tool(owner_id: UUID, session: dict, name: str, args: dict, progres
                 "item_b": e.get("item_b"),
                 "label": e.get("label"),
                 "needs_review": not e.get("label"),
-                "note": "" if e.get("label") else "Added in the wizard; needs a label",
+                "note": e.get("note") or ("" if e.get("label") else "Added in the wizard; needs a label"),
+                "pinned": bool(e.get("pinned") and e.get("label")),
             }
             for e in args["examples"][:200]
         ]
@@ -456,6 +585,16 @@ async def run_tool(owner_id: UUID, session: dict, name: str, args: dict, progres
         model_id = _need_model(session)
         detail = await service.promote(owner_id, model_id, force=bool(args.get("force")))
         return {"live_version": detail["active"]["number"]}, None
+    if name == "invite_reviewer":
+        model_id = _need_model(session)
+        link = await curation.create_link(owner_id, model_id, args["name"])
+        url = f"{settings.PUBLIC_URL.rstrip('/')}/review/{link['token']}"
+        return {"link": url, "reviewer": link["reviewer"]}, _card("agreement", invited=url)
+    if name == "suggest_criteria_from_corrections":
+        model_id = _need_model(session)
+        found = await curation.criteria_from_corrections(owner_id, model_id, int(args.get("count") or 3))
+        proposals = [{**i["question"], "insight": i["insight"]} for i in found["insights"]]
+        return {"proposed": [{"prompt": p["prompt"], "insight": p["insight"]} for p in proposals], "from_reasons": found["reasons"]}, _card("criteria", proposals=proposals)
     if name == "show_choices":
         return {"shown": True}, _card("choices", question=args["question"], options=args["options"][:6], multi=bool(args.get("multi")))
     card_tools = {
@@ -466,6 +605,11 @@ async def run_tool(owner_id: UUID, session: dict, name: str, args: dict, progres
         "open_playground": ("playground", {}),
         "open_review": ("review", {}),
         "open_examples": ("examples", {}),
+        "open_brief": ("brief", {}),
+        "open_inbox": ("inbox", {"queue": args.get("queue", "triage"), "topic": args.get("topic")}),
+        "open_golden": ("golden", {}),
+        "open_agreement": ("agreement", {}),
+        "open_topics": ("topics", {}),
     }
     if name in card_tools:
         _need_model(session)
@@ -499,6 +643,9 @@ ACTIVITY = {
     "harden": "Red-teaming",
     "try_item": "Running the model",
     "promote": "Shipping",
+    "save_brief": "Saving the brief",
+    "invite_reviewer": "Creating a review link",
+    "suggest_criteria_from_corrections": "Reading the corrections",
 }
 
 
@@ -517,7 +664,7 @@ async def stream_turn(owner_id: UUID, session_id: UUID, text: str, kind: str = "
     client = llm._get_client()
     try:
         for _ in range(MAX_TURNS):
-            state = await status(owner_id, session["model_id"])
+            state = await status(owner_id, session["model_id"], session["brief"])
             system = SYSTEM + "\n\nCURRENT STATE (authoritative):\n" + json.dumps(state, default=str)
             async with client.messages.stream(
                 model=settings.ANTHROPIC_MODEL,
