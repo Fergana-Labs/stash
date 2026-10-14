@@ -149,7 +149,10 @@ def scripted(monkeypatch):
             answers=[
                 judge.Answer(
                     question_id="supported",
-                    probabilities={"true": 0.1, "false": 0.3},
+                    probabilities=[
+                        judge.OptionProbability(option="yes", probability=0.1),
+                        judge.OptionProbability(option="false", probability=0.3),
+                    ],
                     rationale="Tests failed",
                 )
             ],
