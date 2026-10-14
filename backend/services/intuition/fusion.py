@@ -51,7 +51,8 @@ log = logging.getLogger(__name__)
 Progress = Callable[[str, str, int, int], None]
 VERDICT_ID = heads.VERDICT_ID
 SIGNAL_IDS = (VERDICT_ID, probes.PROBE_ID)
-L2_GRID = (0.01, 0.03, 0.1, 0.3)
+# From "learn freely" to "stay near the zero-shot verdict"; CV picks how far labels move it.
+L2_GRID = (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 CV_FOLDS = 4
 CURVE_DRAWS = 6
 GRADE_BATCH = 24
@@ -104,12 +105,16 @@ async def _grade_all(owner_id: UUID, model_id: UUID, progress: Progress) -> None
 
 
 def _cv_log_loss(output_type, names, classes, rows, l2) -> float | None:
-    if len(rows) < 2 * CV_FOLDS:
+    """Cross-validated log loss. Seeds train every fold but are never scored: the judge saw
+    them as reference examples, so their answers are near-certain and would flatter weak L2."""
+    scored = [r for r in rows if not r.get("seed")]
+    if len(scored) < 2 * CV_FOLDS:
         return None
-    order = sorted(rows, key=lambda r: str(r["example_id"]))
+    seeds = [r for r in rows if r.get("seed")]
+    order = sorted(scored, key=lambda r: str(r["example_id"]))
     losses = []
     for k in range(CV_FOLDS):
-        train = [r for i, r in enumerate(order) if i % CV_FOLDS != k]
+        train = seeds + [r for i, r in enumerate(order) if i % CV_FOLDS != k]
         test = [r for i, r in enumerate(order) if i % CV_FOLDS == k]
         if output_type == "choice" and len({r["label"] for r in train}) < 2:
             return None
@@ -124,7 +129,7 @@ def choose_l2(output_type, names, classes, rows) -> tuple[float, dict]:
     scores = {l2: _cv_log_loss(output_type, names, classes, rows, l2) for l2 in L2_GRID}
     valid = {k: v for k, v in scores.items() if v is not None}
     # Too little data to cross-validate: lean on the prior (strong shrinkage).
-    chosen = min(valid, key=valid.get) if valid else 0.1
+    chosen = min(valid, key=valid.get) if valid else 1.0
     return chosen, {str(k): v for k, v in scores.items()}
 
 
@@ -139,6 +144,20 @@ def _subset(rows: list[dict], idx: list[int]) -> list[dict]:
     ]
 
 
+def signal_columns(output_type: str, names: list[str], classes: list[str], qid: str) -> list[int] | None:
+    """Feature indices of one signal question, aligned with `classes` (choice) or [P(good)].
+
+    Looked up by name: stored rubric options come back from jsonb in key order,
+    not label order, so positions cannot be trusted.
+    """
+    index = {n: i for i, n in enumerate(names)}
+    if output_type == "choice":
+        wanted = [f"{qid}={c}" for c in classes]
+    else:
+        wanted = [qid] if qid in index else [f"{qid}=good"]
+    return [index[n] for n in wanted] if all(n in index for n in wanted) else None
+
+
 def direct_eval(output_type: str, classes: list[str], rows: list[dict], cols: list[int]) -> dict:
     """Score rows by a signal's own probabilities (no fitting): zero-shot Jev, or the probe."""
     scored = []
@@ -151,15 +170,14 @@ def direct_eval(output_type: str, classes: list[str], rows: list[dict], cols: li
             p_true = probs[r["label"]]
             confidence = probs[predicted]
         else:
-            good = lambda f: f[cols[0]]  # noqa: E731 -- P(good) is the first column
             if r["kind"] == "pair":
-                a, b = good(r["f"]), good(r["f_b"])
+                a, b = r["f"][cols[0]], r["f_b"][cols[0]]
                 p_a = a / ((a + b) or 1)
                 predicted = "a" if p_a >= 0.5 else "b"
                 p_true = p_a if r["label"] == "a" else 1 - p_a
                 confidence = max(p_a, 1 - p_a)
             else:
-                p_good = good(r["f"])
+                p_good = r["f"][cols[0]]
                 predicted = "good" if p_good >= 0.5 else "bad"
                 p_true = p_good if r["label"] == "good" else 1 - p_good
                 confidence = max(p_good, 1 - p_good)
@@ -186,13 +204,13 @@ def wilson(accuracy: float | None, n: int, z: float = 1.96) -> list[float] | Non
 
 def leaderboard(output_type, names, classes, train, held, shipped: dict, l2: float) -> list[dict]:
     board = []
-    verdict = _columns(names, lambda q: q == VERDICT_ID)
+    verdict = signal_columns(output_type, names, classes, VERDICT_ID)
     if verdict:
         board.append(
             {"name": "Jev zero-shot", "detail": "The judge asked the task directly, no training",
              **direct_eval(output_type, classes, held, verdict)}
         )
-    probe_cols = _columns(names, lambda q: q == probes.PROBE_ID)
+    probe_cols = signal_columns(output_type, names, classes, probes.PROBE_ID)
     if probe_cols:
         board.append(
             {"name": "Embedding probe", "detail": "Linear probe on embeddings of your labeled examples",
@@ -215,8 +233,12 @@ def leaderboard(output_type, names, classes, train, held, shipped: dict, l2: flo
     return board
 
 
-def learning_curve(output_type, names, classes, train, held, l2) -> list[dict]:
-    """Held-out accuracy by number of labeled examples (probe excluded: its answers are fitted on all of train)."""
+def learning_curve(output_type, names, classes, train, held) -> list[dict]:
+    """Held-out accuracy by number of labeled examples (probe excluded: its answers are fitted on all of train).
+
+    Each draw picks its own regularization the way a real fit on that much data
+    would, so small draws stay near the zero-shot prior instead of overfitting.
+    """
     if not held or len(train) < 2:
         return []
     cols = _columns(names, lambda q: q != probes.PROBE_ID)
@@ -233,7 +255,7 @@ def learning_curve(output_type, names, classes, train, held, l2) -> list[dict]:
                 continue
             if output_type == "choice" and n == 1:
                 continue
-            fitted = heads.fit(output_type, sub_names, classes, draw, l2)
+            fitted = heads.fit(output_type, sub_names, classes, draw, choose_l2(output_type, sub_names, classes, draw)[0])
             accs.append(heads.evaluate(fitted, output_type, held_s)["accuracy"])
         if accs:
             curve.append({"n": n, "accuracy": float(np.mean(accs)), "draws": len(accs)})
@@ -312,7 +334,7 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
         },
         "train_accuracy": fitted["metrics"]["train"]["accuracy"],
         "leaderboard": leaderboard(model["output_type"], names, classes, train_rows, held, shipped, l2),
-        "learning_curve": learning_curve(model["output_type"], names, classes, train_rows, held, l2),
+        "learning_curve": learning_curve(model["output_type"], names, classes, train_rows, held),
         "drivers": drivers(draft, fitted["head"], train_rows + held),
         "probe": probe_info and probe_info["metrics"],
         "regularization": {"l2": l2, "cv_log_loss": cv},

@@ -20,7 +20,9 @@ from backend.services.intuition import probe as probes
 
 from .conftest import unique_name
 
-LABELS = [{"id": "send", "description": "Ready to send"}, {"id": "rewrite", "description": "Needs a rewrite"}]
+# Deliberately not in jsonb key order (shorter keys sort first), so stored rubric
+# options come back in a different order than the labels.
+LABELS = [{"id": "rewrite", "description": "Needs a rewrite"}, {"id": "send", "description": "Ready to send"}]
 CRITERIA = [
     {"id": "polite", "type": "noul", "prompt": "Is it polite?", "criteria": {"true": "Polite", "false": "Rude"}}
 ]
@@ -148,6 +150,8 @@ async def test_train_fuses_verdict_probe_and_criteria_with_held_out_report(clien
     report = resp.json()
     names = [row["name"] for row in report["leaderboard"]]
     assert names == ["Jev zero-shot", "Embedding probe", "Rubric criteria", "Fused model"]
+    # The fake verdict is always right; a column/label misalignment would score it 0%.
+    assert report["leaderboard"][0]["accuracy"] == 1.0
     assert report["holdout"]["accuracy"] == 1.0 and report["holdout"]["n"] > 0
     assert report["learning_curve"] and report["probe"]["rows"] > 0
     assert {d["kind"] for d in report["drivers"]} >= {"verdict", "probe", "criterion"}

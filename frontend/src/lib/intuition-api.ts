@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api";
 const IM = "/api/v1/intuitions";
 
 export type OutputType = "choice" | "preference";
-export type QuestionType = "noul" | "choice" | "score" | "eval";
+export type QuestionType = "noul" | "choice" | "score" | "eval" | "probe";
 export type ExampleSource = "human" | "agent" | "generated" | "production";
 export type Split = "train" | "eval";
 export type Item = string | Record<string, unknown>;
