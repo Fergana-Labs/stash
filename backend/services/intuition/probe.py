@@ -102,6 +102,7 @@ def probabilities(output_type: str, scores: np.ndarray, scale: float) -> np.ndar
     z = np.atleast_2d(scores) * scale
     if output_type == "multi":
         return 1 / (1 + np.exp(-z))  # independent P(issue) per column
+    if output_type == "choice":
         z = z - z.max(axis=1, keepdims=True)
         e = np.exp(z)
         return e / e.sum(axis=1, keepdims=True)

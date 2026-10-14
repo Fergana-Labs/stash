@@ -118,6 +118,21 @@ def test_probe_leave_one_out_is_exact_and_honest():
     assert solved["loo_accuracy"] >= 0.75
 
 
+def test_probe_probabilities_match_the_output_type():
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(30, 6))
+    X /= np.linalg.norm(X, axis=1, keepdims=True)
+    labels = [("a", "b", "c")[int(np.argmax(x[:3]))] for x in X]
+    y = probes.targets("choice", ["a", "b", "c"], labels)
+    solved = probes.solve("choice", X, y)
+    p = probes.probabilities("choice", solved["loo_scores"], solved["scale"])
+    # One column per class, a distribution per row: never the two-column good/bad shape.
+    assert p.shape == (30, 3) and np.allclose(p.sum(axis=1), 1)
+    multi = probes.probabilities("multi", solved["loo_scores"], solved["scale"])
+    assert multi.shape == (30, 3) and not np.allclose(multi.sum(axis=1), 1)
+    assert probes.probabilities("preference", solved["loo_scores"][:, :1], 1.0).shape == (30, 2)
+
+
 def test_verdict_prior_makes_two_labels_enough():
     names = ["polite", "verdict=send", "verdict=rewrite"]
     rows = [
