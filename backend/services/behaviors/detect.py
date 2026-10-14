@@ -20,7 +20,9 @@ SYSTEM = """You tag one behavior in a segment of an agent's trajectory.
 
 You get the behavior's name, who exhibits it (the user, the agent, or the environment the agent's tools talk to), its definition, optional examples, and one segment of the trace. Each step in the segment starts with its index in brackets, like [12].
 
-Tag every window of consecutive steps where the behavior clearly happens. A window is the smallest step range that shows it: start_idx is the first step that shows it, end_idx the last. Quote the steps that show it verbatim (under 200 characters each). Tag only what is observable in the segment; when it is ambiguous, leave it out or give a low confidence. Return no hits when the behavior does not happen."""
+Tag every window of consecutive steps where the behavior clearly happens. A window is the smallest step range that shows it: start_idx is the first step that shows it, end_idx the last. Quote the steps that show it verbatim (under 200 characters each). Tag only what is observable in the segment; when it is ambiguous, leave it out or give a low confidence. Return no hits when the behavior does not happen.
+
+When people have confirmed or rejected earlier hits, those verdicts show where the line is: follow them over your own reading of the definition."""
 
 
 class Evidence(BaseModel):
@@ -65,9 +67,53 @@ async def rank(behavior: dict, segments: list[dict]) -> list[dict]:
     return [segments[i] for i in order]
 
 
-async def classify(behavior: dict, segment: dict) -> list[dict]:
+MAX_REVIEWED = 4
+REVIEW_CHARS = 900
+
+
+async def reviewed(behavior: dict) -> str:
+    """People's verdicts on earlier hits, as examples: confirmed windows show what
+    the behavior looks like, rejected ones what it is not. Reviews teach the
+    detector without anyone editing its definition."""
+    from ...database import get_pool
+    from .segments import clip, render_step
+
+    pool = get_pool()
+    blocks = []
+    for verdict, heading in (
+        ("confirmed", "CONFIRMED BY A PERSON (this is the behavior)"),
+        ("rejected", "REJECTED BY A PERSON (this is NOT the behavior)"),
+    ):
+        hits = await pool.fetch(
+            """SELECT trace_id, start_idx, end_idx,
+                      CASE WHEN source = 'human' THEN note ELSE review_note END AS note FROM behavior_hits
+               WHERE behavior_id = $1 AND review = $2 ORDER BY created_at DESC LIMIT $3""",
+            behavior["id"], verdict, MAX_REVIEWED,
+        )  # fmt: skip
+        shown = []
+        for h in hits:
+            steps = await pool.fetch(
+                "SELECT idx, role, content, tool_name, tool_input FROM rm_trace_steps WHERE trace_id = $1 AND idx BETWEEN $2 AND $3 ORDER BY idx",
+                h["trace_id"], h["start_idx"], h["end_idx"],
+            )  # fmt: skip
+            text = clip("\n".join(render_step(dict(st), 400) for st in steps), REVIEW_CHARS)
+            shown.append(text + (f"\nREVIEWER NOTE: {h['note']}" if h["note"] else ""))
+        if shown:
+            blocks.append(heading + ":\n" + "\n---\n".join(shown))
+    return "\n\n".join(blocks)
+
+
+async def classify(behavior: dict, segment: dict, reviews: str = "") -> list[dict]:
     result = await llm.complete_structured(
-        prompt=f"{describe(behavior)}\n\nSEGMENT (steps {segment['start_idx']}–{segment['end_idx']}):\n\n{segment['text']}",
+        prompt="\n\n".join(
+            part
+            for part in (
+                describe(behavior),
+                reviews,
+                f"SEGMENT (steps {segment['start_idx']}–{segment['end_idx']}):\n\n{segment['text']}",
+            )
+            if part
+        ),
         system=SYSTEM,
         output_model=Detection,
         tier=llm.ModelTier.FAST,
@@ -101,7 +147,8 @@ async def detect(
     todo = await rank(behavior, [s for s in segments if s["content_hash"] not in seen])
     hits: list[dict] = []
     read = set(seen)
+    reviews = await reviewed(behavior) if todo and behavior.get("id") else ""
     for segment in todo[:MAX_SEGMENTS_PER_PASS]:
-        hits.extend(await classify(behavior, segment))
+        hits.extend(await classify(behavior, segment, reviews))
         read.add(segment["content_hash"])
     return hits, read

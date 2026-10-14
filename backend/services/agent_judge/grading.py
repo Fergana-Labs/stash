@@ -62,7 +62,8 @@ def _with_seeds(version: dict, seeds: list[dict]) -> dict:
     shown = []
     for s in seeds[:4]:
         text = json.dumps(s.get("item"), ensure_ascii=False, default=str)
-        shown.append(f"- labeled {s.get('label')!r}: {text[:400]}")
+        why = f" — because: {s['note'][:300]}" if s.get("note") else ""
+        shown.append(f"- labeled {s.get('label')!r}{why}: {text[:400]}")
     note = (
         "\n\nHOW THE OWNER LABELED OTHER ITEMS (reference, not facts about this item):\n"
         + "\n".join(shown)

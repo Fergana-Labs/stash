@@ -41,7 +41,11 @@ async def detect(
     if not todo:
         return [], set(seen)
     item, _ = await builder.trace_input(behavior["owner_user_id"], trace_id)
-    version = {"description": model_detect.describe(behavior), "model_id": None}
+    reviews = await model_detect.reviewed(behavior)
+    version = {
+        "description": model_detect.describe(behavior) + ("\n\n" + reviews if reviews else ""),
+        "model_id": None,
+    }
     hits, read = [], set(seen)
     for seg in todo[:SEGMENTS_PER_PASS]:
         lo, hi = seg["start_idx"], seg["end_idx"]

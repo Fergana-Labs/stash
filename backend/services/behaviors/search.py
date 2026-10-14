@@ -82,7 +82,9 @@ async def _finals(traces) -> dict[UUID, dict]:
         # The answer that counts is the last one given to an actual request, not
         # the "you're welcome" after a thank-you.
         last_user, chosen = None, None
-        for idx, label in sorted(((int(k), v) for k, v in (r["labels"] or {}).items()), key=lambda kv: kv[0]):
+        for idx, label in sorted(
+            ((int(k), v) for k, v in (r["labels"] or {}).items()), key=lambda kv: kv[0]
+        ):
             if label.get("actor") == "user":
                 last_user = label.get("intent")
             elif label.get("is_output") and last_user != "acknowledgment":

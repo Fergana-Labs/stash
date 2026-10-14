@@ -48,6 +48,9 @@ def upgrade() -> None:
         "ALTER TABLE behavior_alerts ADD COLUMN triage_id uuid REFERENCES behavior_triage(id) ON DELETE SET NULL"
     )
 
+    # A reviewer's reason for confirming or rejecting a hit; the detector learns from it.
+    op.execute("ALTER TABLE behavior_hits ADD COLUMN review_note text NOT NULL DEFAULT ''")
+
     # Eval drift alerts: {"min_agreement": 0.8, "cooldown_hours": 24, "channels": [...]}
     op.execute("ALTER TABLE intuition_models ADD COLUMN alert jsonb")
     op.execute("ALTER TABLE intuition_models ADD COLUMN last_alert_at timestamptz")
@@ -65,6 +68,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE rm_trace_task_types")
     op.execute("ALTER TABLE intuition_models DROP COLUMN last_alert_at")
     op.execute("ALTER TABLE intuition_models DROP COLUMN alert")
+    op.execute("ALTER TABLE behavior_hits DROP COLUMN review_note")
     op.execute("ALTER TABLE behavior_alerts DROP COLUMN triage_id")
     op.execute("DROP TABLE behavior_triage")
     op.execute("DROP TABLE agent_releases")

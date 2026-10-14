@@ -443,3 +443,56 @@ def test_repeated_tool_call_ignores_retries_and_rechecks():
     }
     windows = builtin.detect({"kind": "repeated_tool_call"}, labels, [])
     assert [(w["start_idx"], w["end_idx"]) for w in windows] == [(1, 3)]
+
+
+def test_user_reactions_reach_back_to_the_answer_they_react_to():
+    labels = {
+        "1": {
+            "actor": "agent",
+            "chunk_id": "a1",
+            "is_output": True,
+            "evidence": "Order 7172 is delivered",
+        },
+        "2": {"actor": "agent", "chunk_id": "a2", "type": "tool_call", "evidence": "lookup"},
+        "3": {
+            "actor": "user",
+            "chunk_id": "u2",
+            "intent": "correction",
+            "verdict_target": "a1",
+            "evidence": "I said 7712",
+        },
+    }
+    [window] = builtin.detect({"kind": "user_correction"}, labels, [])
+    assert (window["start_idx"], window["end_idx"]) == (1, 3)
+    assert [e["idx"] for e in window["evidence"]] == [1, 3]
+
+
+async def test_detector_learns_from_reviewed_hits(client, pool, monkeypatch, fakes):
+    calls: list[str] = []
+    monkeypatch.setattr(llm, "complete_structured", _detector(calls))
+    auth = await _auth(client)
+    owner = await _me(pool, auth)
+    created = await client.post(
+        f"{B}",
+        headers=auth,
+        json={
+            "name": "Gives up",
+            "actor": "agent",
+            "definition": "Stops after an empty refund search.",
+        },
+    )
+    b = await scan.get_behavior(UUID(created.json()["id"]))
+    await scan.scan_trace(b, await _trace(pool, owner))
+    hit = (await client.get(f"{B}/{b['id']}/hits", headers=auth)).json()["hits"][0]
+    await client.post(
+        f"{B}/hits/{hit['id']}/review",
+        headers=auth,
+        json={"verdict": "rejected", "note": "it did retry later"},
+    )
+    await pool.execute(
+        "UPDATE behavior_hits SET note = 'it did retry later' WHERE id = $1", UUID(hit["id"])
+    )
+    calls.clear()
+    await scan.scan_trace(b, await _trace(pool, owner))
+    assert "REJECTED BY A PERSON" in calls[0] and "REVIEWER NOTE: it did retry later" in calls[0]
+    assert "CONFIRMED BY A PERSON" not in calls[0]

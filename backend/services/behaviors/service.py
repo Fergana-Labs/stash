@@ -221,10 +221,12 @@ async def _to_eval(owner_id: UUID, eval_id: UUID, hit: dict, label: str, note: s
 async def review(owner_id: UUID, hit_id: UUID, verdict: str | None, note: str = "") -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
-        """UPDATE behavior_hits SET review = $3 WHERE id = $1 AND owner_user_id = $2 RETURNING *""",
+        """UPDATE behavior_hits SET review = $3, review_note = $4
+           WHERE id = $1 AND owner_user_id = $2 RETURNING *""",
         hit_id,
         owner_id,
         verdict,
+        note if verdict else "",
     )
     if row is None:
         raise NotFound("Hit not found")
@@ -255,7 +257,7 @@ async def add_hit(
              (behavior_id, owner_user_id, trace_id, start_idx, end_idx, note, source, review, detector_version)
            VALUES ($1, $2, $3, $4, $5, $6, 'human', 'confirmed', $7)
            ON CONFLICT (behavior_id, trace_id, start_idx, end_idx)
-           DO UPDATE SET review = 'confirmed', note = EXCLUDED.note RETURNING *""",
+           DO UPDATE SET review = 'confirmed', review_note = EXCLUDED.note RETURNING *""",
         behavior_id, owner_id, trace_id, start, end, note, behavior["version"],
     )  # fmt: skip
     if behavior["eval_id"]:
@@ -319,7 +321,7 @@ async def promote(owner_id: UUID, behavior_id: UUID) -> dict:
         {
             "item": await window_item(owner_id, r["trace_id"], r["start_idx"], r["end_idx"]),
             "label": "yes" if r["review"] == "confirmed" else "no",
-            "note": r["note"],
+            "note": r["review_note"] or (r["note"] if r["source"] == "human" else ""),
         }
         for r in reviewed
     ]

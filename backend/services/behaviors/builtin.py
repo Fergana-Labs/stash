@@ -36,12 +36,29 @@ def _ordered(labels: dict[str, dict]) -> list[tuple[int, dict]]:
 
 
 def _user_where(field: str, value: str) -> Callable:
+    """User reactions, with the window reaching back to the agent output they react to.
+
+    The turn that caused a complaint is often not the one right before it; the
+    labeler records which output a reaction refers to (verdict_target), so the
+    window starts there and the cause is inside it."""
+
     def rule(labels: dict[str, dict], steps: list[dict]) -> list[Window]:
-        return [
-            _window(idx, idx, [_quote(idx, label.get("evidence"))])
-            for idx, label in _ordered(labels)
-            if label.get("actor") == "user" and label.get(field) == value
-        ]
+        ordered = _ordered(labels)
+        by_chunk = {label.get("chunk_id"): idx for idx, label in ordered if label.get("chunk_id")}
+        out = []
+        for idx, label in ordered:
+            if label.get("actor") != "user" or label.get(field) != value:
+                continue
+            target = by_chunk.get(label.get("verdict_target"))
+            evidence = [_quote(idx, label.get("evidence"))]
+            if target is not None and target < idx:
+                evidence.insert(0, _quote(target, labels[str(target)].get("evidence")))
+                out.append(
+                    _window(target, idx, evidence, f"Reacting to the answer at step {target + 1}")
+                )
+            else:
+                out.append(_window(idx, idx, evidence))
+        return out
 
     return rule
 
