@@ -201,6 +201,15 @@ async def test_wizard_holds_out_a_stratified_share_and_caps_seeds(client, fakes)
     assert {e["id"] for e in again if e["split"] == "eval"} == {e["id"] for e in held}
 
 
+async def test_reference_seeds_never_exceed_the_draft_limit(client, fakes):
+    auth = await _auth(client)
+    model_id = await _model_with_examples(client, auth, n=72)  # ~50 training labels
+    resp = await client.post(f"/api/v1/model-wizard/models/{model_id}/train", headers=auth)
+    assert resp.status_code == 200, resp.text
+    draft = (await client.get(f"/api/v1/intuitions/{model_id}", headers=auth)).json()["draft"]
+    assert 10 <= len(draft["seed_example_ids"]) <= 20
+
+
 async def test_probe_questions_cannot_read_another_models_probe(client, fakes):
     auth = await _auth(client)
     mine = await _model_with_examples(client, auth)

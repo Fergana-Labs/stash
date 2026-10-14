@@ -45,7 +45,7 @@ from .. import llm
 from . import builder, providers, selection, service
 from . import head as heads
 from . import probe as probes
-from .spec import MAX_QUESTIONS, NO_ISSUES, issues_label, issues_of
+from .spec import MAX_QUESTIONS, MAX_SEEDS, NO_ISSUES, issues_label, issues_of
 
 log = logging.getLogger(__name__)
 
@@ -383,7 +383,7 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
         e for e in await service._examples(model_id)
         if e["split"] == "train" and e["label"] and not e["needs_review"]
     ]
-    seed_ids = [e["id"] for e in selection.seeds(train_examples, limit=max(2, len(train_examples) // 2))]
+    seed_ids = [e["id"] for e in selection.seeds(train_examples, limit=min(MAX_SEEDS, max(2, len(train_examples) // 2)))]
     verdicts = verdict_questions(model["output_type"], draft["description"], draft["labels"])
     criteria = user_questions(draft["rubric"])[: MAX_QUESTIONS - 1 - len(verdicts)]
     rubric = criteria + verdicts
