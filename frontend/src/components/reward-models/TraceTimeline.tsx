@@ -37,7 +37,7 @@ export interface StepAnnotations {
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
   /** Steps inside a selected window (a behavior hit): tinted, with an optional label on the first. */
-  mark?: (step: RmStep) => { label: string | null } | null;
+  mark?: (step: RmStep) => { label: string | null; color?: string } | null;
   onViewComments?: (step: RmStep) => void;
   onComment?: (step: RmStep) => void;
   contextHref?: (step: RmStep) => string;
@@ -58,8 +58,9 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
         ann.flashing(step) && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
+      style={mark?.color ? { borderLeftColor: mark.color, backgroundColor: `${mark.color}0d` } : undefined}
     >
-      {mark?.label && <span className="pointer-events-none absolute top-1 right-2 z-10 rounded border border-brand-500/30 bg-background px-1.5 py-px text-[10.5px] text-brand-600">{mark.label}</span>}
+      {mark?.label && <span className="pointer-events-none absolute top-1 right-2 z-10 rounded border border-brand-500/30 bg-background px-1.5 py-px text-[10.5px] text-brand-600" style={mark.color ? { borderColor: `${mark.color}66`, color: mark.color } : undefined}>{mark.label}</span>}
       {children}
       {ann.footer?.(step)}
     </div>

@@ -8,12 +8,13 @@ import { Select } from "@/components/ui/select";
 import { evalInputClass as inputClass, evalSurfaceClass, InlinePanel, examplePreview } from "./eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import ItemView from "@/components/intuitions/ItemView";
+import DifficultyChart from "@/components/intuitions/DifficultyChart";
 import { ProbabilityBars, RubricAnswersView } from "@/components/intuitions/ProbabilityBars";
 import {
   evalAddExamples, evalAddTrace, evalPrepare, imDraftRubric, imEditDraft, imEditExample, imExamples, imFeedback, imFit, imGet, imGrade, imPredict, imPredictions, imPromote, imReview,
   type Example, type Gate, type Item, type LoggedPrediction, type ModelDetail, type Prediction,
 } from "@/lib/intuition-api";
-import { ImprovePanel, LabelQueue, promoteChecked, RegressionPanel, VersionsPanel } from "./EvalLearning";
+import { LabelQueue, promoteChecked, RegressionPanel, VersionsPanel } from "./EvalLearning";
 import RefinePanel from "./RefinePanel";
 import { EvalSignals } from "./EvalComposition";
 import EvalInput from "./EvalInput";
@@ -162,7 +163,6 @@ export default function EvalWorkspace({ id }: { id: string }) {
       </section>
       {saveProgress && <SaveStatus progress={saveProgress} error={saveError} onTest={() => { setTestItem(null); setView("test"); }} />}
       <EvalSignals id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
-      <ImprovePanel id={id} detail={detail} examples={examples} busy={!!busy} onChanged={() => { void load(); }} />
       <RefinePanel id={id} detail={detail} examples={examples} busy={!!busy} onChanged={() => { void load(); }} />
       <VersionsPanel id={id} detail={detail} busy={!!busy} onChanged={() => { void load(); }} />
         </aside>
@@ -203,6 +203,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
         {showBuildResults && metrics && !savedVersion?.head_stale && <section aria-label="Held-out checks" className="space-y-3 rounded border border-border p-4">
           <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">Held-out checks</h2>{(metrics.eval.n <= 1 || savedVersion?.gate?.checks.some((check) => check.name === "held_out_size" && !check.passed)) && <span className="rounded border border-border bg-surface px-2 py-1 text-[11px] text-muted-foreground">Limited data</span>}</div>
           <div className="text-[16px] font-semibold">{metrics.eval.accuracy === null ? "No labels checked" : `${Math.round(metrics.eval.accuracy * metrics.eval.n)} of ${metrics.eval.n} labels matched`}</div>
+          {!!metrics.eval.by_difficulty?.length && <DifficultyChart buckets={metrics.eval.by_difficulty} />}
           <div className="grid gap-3 md:grid-cols-2">{results.map((row) => { const example = examples.find((e) => e.id === row.example_id); return <article key={row.example_id} className="rounded border border-border p-3">
             {example && <ItemView item={example.item} />}<div className="mt-3 flex flex-wrap gap-3 text-xs"><span>Your label: <strong>{row.label}</strong></span><span>Eval: <strong className={row.label === row.predicted ? "text-success" : "text-destructive"}>{row.predicted}</strong></span><span>Probability of your label: {Math.round(row.p_true * 100)}%</span></div>
           </article>; })}</div>
@@ -211,7 +212,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
         </div>
       </div>
     </> : view === "test" ? <EvalTest id={id} detail={detail} initialItem={testItem} />
-      : view === "monitoring" ? <EvalMonitoring id={id} onOpenCall={(callId) => { setFocusCall(callId); setView("usage"); }} />
+      : view === "monitoring" ? <EvalMonitoring id={id} onOpenCall={(callId) => { setFocusCall(callId); setView("usage"); }} onImprove={() => setView("build")} />
       : <EvalUsage id={id} labels={labels} focus={focusCall} onCorrected={() => { void load(); }} />}
   </section>;
 }

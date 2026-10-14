@@ -14,7 +14,7 @@ export default function ModelTraceConversation({ trace, scores, modelName, feedb
 }) {
   const anchorPrefix = useId();
   const [choices, setChoices] = useState<Map<string, boolean>>(new Map());
-  const { rows, numberById } = presentTrace(trace.steps);
+  const { rows, labelById: numberById } = presentTrace(trace.steps);
   const expanded = (row: TraceRow) => choices.get(row.key) ?? false;
   const rowByStep = new Map(rows.flatMap((row) => rowSteps(row).map((step) => [step.id, row] as const)));
   const groups: { context: boolean; rows: TraceRow[] }[] = [];

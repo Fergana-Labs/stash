@@ -4,11 +4,18 @@ import { buildRows, rowSteps, type TraceRow } from "./trace-rows";
 export function presentTrace(steps: RmStep[]) {
   // Every source message stays in chronological order, regardless of role or content.
   const rows = buildRows(steps);
+  // numberById is the row's position (layout: the minimap and comment ordering use it).
+  // labelById is what people read: "step N" with N = the stored step index + 1, so the
+  // viewer, the Behaviors page and judge citations agree. A merged row reads as its first step.
   const numberById = new Map<string, number>();
-  rows.forEach((row, index) => rowSteps(row).forEach((step) => numberById.set(step.id, index + 1)));
+  const labelById = new Map<string, number>();
+  rows.forEach((row, index) => {
+    const members = rowSteps(row);
+    members.forEach((step) => { numberById.set(step.id, index + 1); labelById.set(step.id, members[0].index + 1); });
+  });
   const mapSteps = rows.map((row, index) => ({ ...rowSteps(row)[0], index }));
-  const commentSteps = steps.map((step) => ({ ...step, index: (numberById.get(step.id) ?? 0) - 1 }));
-  return { rows, numberById, mapSteps, commentSteps };
+  const commentSteps = steps.map((step) => ({ ...step, index: (labelById.get(step.id) ?? step.index + 1) - 1 }));
+  return { rows, numberById, labelById, mapSteps, commentSteps };
 }
 
 /** Hide known transport envelopes, never arbitrary XML/code the user is discussing. */

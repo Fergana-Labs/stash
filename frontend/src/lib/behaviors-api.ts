@@ -26,13 +26,18 @@ export interface BehaviorTrend {
 }
 export interface BehaviorOverview { days: number; behaviors: BehaviorTrend[] }
 
-export interface BehaviorAlert { id: string; behavior_id: string; behavior_name: string; message: string; stats: Record<string, unknown>; delivered: unknown; created_at: string }
+export interface BehaviorAlert { id: string; behavior_id: string; behavior_name: string; message: string; stats: Record<string, unknown>; delivered: unknown; created_at: string; triage_id?: string | null }
 
-export interface SearchSegment { start_idx: number; end_idx: number; score: number | null; snippet: string }
+export interface SearchSegment { start_idx: number; end_idx: number; score: number | null; snippet: string; quote?: string }
 export interface SearchBehavior { id: string; behavior_id: string; name: string; actor: Actor; start_idx: number; end_idx: number; review: Verdict | null; confidence: number | null }
 export interface SearchResult {
   trace_id: string; title: string | null; created_at: string; agent: string | null; input: string | null; output: string | null;
   score: number | null; segments: SearchSegment[]; behaviors: SearchBehavior[];
+  /** e.g. "answer", "partial_answer", "not_found", "handoff", "error". */
+  outcome?: string | null;
+  /** The agent's final user-facing answer, clipped. */
+  final_output?: string | null;
+  session_id?: string | null;
 }
 export interface SearchResponse { query: string; mode: "semantic" | "text" | "browse"; results: SearchResult[] }
 
@@ -87,12 +92,25 @@ export const ACTORS: { value: Actor; label: string }[] = [
   { value: "user", label: "User" }, { value: "agent", label: "Agent" }, { value: "environment", label: "Environment" },
 ];
 export const SEVERITIES: Severity[] = ["low", "medium", "high"];
-export const DETECTOR_LABEL: Record<Detector, string> = { llm: "Model-detected", rule: "Rule", agent_judge: "Agent judge" };
+export const DETECTOR_LABEL: Record<Detector, string> = { llm: "Described in words", rule: "Built-in", agent_judge: "Described in words · verified by the Agent Judge" };
+
+/** "partial_answer" → "Partial answer". Enum values never reach the screen raw. */
+export const humanize = (value: string) => {
+  const text = value.replaceAll("_", " ").replaceAll("-", " ").trim();
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+};
+
+/** One color per actor everywhere (matches the blog): user green, environment blue, agent orange. */
+export const ACTOR_COLOR: Record<Actor, { dot: string; chip: string; hex: string }> = {
+  user: { dot: "bg-emerald-500", chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", hex: "#10b981" },
+  environment: { dot: "bg-blue-500", chip: "bg-blue-500/12 text-blue-700 dark:text-blue-300", hex: "#3b82f6" },
+  agent: { dot: "bg-orange-500", chip: "bg-orange-500/12 text-orange-700 dark:text-orange-300", hex: "#f97316" },
+};
 /** Steps are stored 0-based; the trace viewer numbers them from 1. */
 export const stepWindow = (start: number, end: number) => start === end ? `step ${start + 1}` : `steps ${start + 1}–${end + 1}`;
 export const traceStepHref = (traceId: string, start: number) => `/reward-models/traces/${traceId}?step=${start}`;
 
-export type CohortBy = "outcome" | "satisfaction" | "agent" | "behavior" | "tool_use";
+export type CohortBy = "outcome" | "satisfaction" | "agent" | "behavior" | "tool_use" | "task_type";
 export interface Cohort {
   key: string; traces: number; share: number; frustrated_rate: number; correction_rate: number; avg_tool_calls: number;
   outcomes: Record<string, number>; top_behaviors: [string, number][]; sample: { trace_id: string; title: string | null }[];
@@ -101,5 +119,28 @@ export interface CohortOverview { by: CohortBy; days: number; traces: number; co
 export const getCohorts = (by: CohortBy, days: number) => apiFetch<CohortOverview>(`${BASE}/cohorts?by=${by}&days=${days}`);
 export const COHORT_DIMENSIONS: { value: CohortBy; label: string }[] = [
   { value: "outcome", label: "Outcome" }, { value: "satisfaction", label: "Satisfaction" }, { value: "agent", label: "Agent" },
-  { value: "behavior", label: "Behavior" }, { value: "tool_use", label: "Tool use" },
+  { value: "behavior", label: "Behavior" }, { value: "tool_use", label: "Tool use" }, { value: "task_type", label: "Task type" },
 ];
+
+// --- Templates ---
+export interface BehaviorTemplate { slug: string; name: string; actor: Actor; definition: string; examples: string[]; severity: Severity; verify: boolean }
+export const listBehaviorTemplates = () => apiFetch<{ templates: BehaviorTemplate[] }>(`${BASE}/templates`);
+export const createFromTemplate = (slug: string) => send<Behavior>(`${BASE}/templates/${slug}`, "POST");
+
+// --- Releases ---
+export interface Release { id: string; agent: string | null; label: string; released_at: string; note: string | null }
+export const listReleases = () => apiFetch<{ releases: Release[] }>(`${BASE}/releases`);
+export const createRelease = (body: { agent?: string | null; label: string; released_at?: string; note?: string }) => send<Release>(`${BASE}/releases`, "POST", body);
+export const deleteRelease = (id: string) => send<void>(`${BASE}/releases/${id}`, "DELETE");
+export interface RateWindow { traces: number; with_hit: number; rate: number | null; ci: [number, number] | null }
+export interface ReleaseComparison { release: Release; before: RateWindow; after: RateWindow; change: number | null; significant: boolean; window_days: number }
+export const compareAroundRelease = (id: string, releaseId: string) => apiFetch<ReleaseComparison>(`${BASE}/${id}/compare?release_id=${encodeURIComponent(releaseId)}`);
+
+// --- Triage ---
+export interface RootCause { title: string; explanation: string; traces: { trace_id: string; title: string | null; step_idx: number | null }[]; share: number | null }
+export interface Triage {
+  id: string; status: "running" | "done" | "failed"; error: string | null; created_at: string;
+  result: { summary: string; root_causes: RootCause[]; suggested_fixes: string[] } | null;
+}
+export const startTriage = (id: string) => send<{ id: string; status: "running" }>(`${BASE}/${id}/triage`, "POST");
+export const getTriage = (id: string) => apiFetch<{ triage: Triage | null }>(`${BASE}/${id}/triage`);

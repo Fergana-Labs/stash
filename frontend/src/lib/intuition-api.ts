@@ -35,7 +35,10 @@ export interface Evaluation {
   confusion: Record<string, Record<string, number>> | null;
   rows: EvalRow[];
   classification?: Classification | null;
+  /** Accuracy by input size (characters), bucketed 1..10 from easiest to hardest. */
+  by_difficulty?: DifficultyBucket[];
 }
+export interface DifficultyBucket { bucket: number; n: number; difficulty: [number, number]; accuracy: number | null }
 export interface ClassMetrics { precision: number | null; recall: number | null; f1: number | null; support: number }
 export interface Classification { per_class: Record<string, ClassMetrics>; macro_f1: number | null; kappa: number | null }
 export interface FitOptions { l2: number; train_on: "train" | "all"; sources: ExampleSource[] | null; calibrate: boolean; rows: number }
@@ -157,6 +160,9 @@ export interface MonitoringSummary {
 export interface Monitoring {
   days: number;
   truncated: boolean;
+  /** The rubric may be going stale (drift or production disagreement); refine it. */
+  refine_suggested?: boolean;
+  refine_reason?: string | null;
   summary: MonitoringSummary & { reliability: { bin: number; n: number; confidence: number; accuracy: number }[] };
   daily: (MonitoringSummary & { date: string; labels: Record<string, number> })[];
   versions: (MonitoringSummary & { version: number })[];
@@ -265,7 +271,7 @@ export interface RefineJob {
 export const imStartRefine = (id: string) => post<RefineJob>(`${IM}/${id}/refine`);
 export const imRefineStatus = (id: string) => apiFetch<{ job: RefineJob | null }>(`${IM}/${id}/refine`);
 
-export type CohortDimension = "agent" | "outcome" | "satisfaction" | "behavior" | "tool_use";
+export type CohortDimension = "agent" | "outcome" | "satisfaction" | "behavior" | "tool_use" | "task_type";
 export interface MinedCriteria {
   cohort: { by: CohortDimension; key: string; traces: number }; votes: number;
   examples: { reaction: string; agent_said: string; user_replied: string }[];
@@ -282,3 +288,8 @@ export interface Credit {
   calls_by_credit?: { prediction_id: string; run: string; outcome: number; decision: string; credit: number; suspect: boolean }[];
 }
 export const imCredit = (id: string) => apiFetch<Credit>(`${IM}/${id}/credit`);
+
+export interface EvalAlert { min_agreement: number; min_feedback?: number; window_days?: number; cooldown_hours?: number; channels: ("slack" | "email")[] }
+/** Alert when agreement with production feedback drops; null turns it off. */
+export const imSetAlert = (id: string, alert: EvalAlert | null) =>
+  apiFetch<{ alert: EvalAlert | null }>(`${IM}/${id}/alert`, { method: "PUT", body: JSON.stringify(alert) });

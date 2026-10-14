@@ -6,7 +6,10 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import { value } from "@/components/monitoring/RollingRewardChart";
 import { evalSurfaceClass } from "./eval-ui";
 import { OutcomeLink } from "./EvalComposition";
-import { imMonitoring, type Monitoring } from "@/lib/intuition-api";
+import { AlertTriangle, Layers } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { imMonitoring, imSetAlert, imStartRefine, type Monitoring } from "@/lib/intuition-api";
 
 // Buckets are calendar days (YYYY-MM-DD); parse them as local dates, not UTC midnight.
 const date = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -14,7 +17,7 @@ const percent = (n: number | null | undefined) => n == null ? "—" : `${Math.ro
 const RANGES = [{ value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }];
 
 /** Live quality of a saved eval: volume, accuracy against feedback, calibration, drift, misses. */
-export default function EvalMonitoring({ id, onOpenCall }: { id: string; onOpenCall?: (predictionId: string) => void }) {
+export default function EvalMonitoring({ id, onOpenCall, onImprove }: { id: string; onOpenCall?: (predictionId: string) => void; onImprove?: () => void }) {
   const [days, setDays] = useState("30");
   const [data, setData] = useState<Monitoring | null>(null);
   const [error, setError] = useState("");
@@ -35,6 +38,8 @@ export default function EvalMonitoring({ id, onOpenCall }: { id: string; onOpenC
       <Stat label="Calibration error" value={s.ece == null ? "—" : value(s.ece)} detail="lower is better" />
       <Stat label="Mean outcome" value={s.mean_value == null ? "—" : value(s.mean_value)} detail="from feedback values" />
     </div>
+    {data.refine_suggested && <StaleBanner id={id} reason={data.refine_reason ?? null} onImprove={onImprove} />}
+    <AgreementAlert id={id} />
     {data.truncated && <p className="text-xs text-muted-foreground">Only the most recent calls in this range are included.</p>}
     {!data.daily.length ? <p className="rounded border border-border px-4 py-10 text-center text-xs text-muted-foreground">No calls in this range. Calls from the sandbox and the API appear here.</p> : <>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -50,6 +55,47 @@ export default function EvalMonitoring({ id, onOpenCall }: { id: string; onOpenC
       <Disagreements data={data} onOpenCall={onOpenCall} />
     </>}
   </section>;
+}
+
+/** The rubric may be going stale: say why and offer to improve it. */
+function StaleBanner({ id, reason, onImprove }: { id: string; reason: string | null; onImprove?: () => void }) {
+  const [starting, setStarting] = useState(false);
+  async function improve() {
+    setStarting(true);
+    try {
+      await imStartRefine(id);
+      toast.success("Improving the rubric; follow it under Build eval");
+      onImprove?.();
+    } catch (e) { toast.error(errorMessage(e)); } finally { setStarting(false); }
+  }
+  return <div role="status" className="flex flex-wrap items-center gap-3 rounded border border-amber-500/40 bg-amber-500/8 px-3 py-2 text-xs">
+    <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+    <span className="min-w-0 flex-1">This rubric may be going stale{reason ? `: ${reason}` : "."}</span>
+    <Button size="xs" variant="outline" disabled={starting} onClick={() => void improve()}><Layers />{starting ? "Starting…" : "Improve rubric"}</Button>
+  </div>;
+}
+
+/** Write-mostly: the eval detail may not echo the alert back, so this shows what was last saved here. */
+function AgreementAlert({ id }: { id: string }) {
+  const [threshold, setThreshold] = useState("80");
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save(on: boolean) {
+    setSaving(true);
+    try {
+      await imSetAlert(id, on ? { min_agreement: Number(threshold) / 100, channels: ["slack", "email"] } : null);
+      setSaved(on ? threshold : "off");
+      toast.success(on ? `Alert set: agreement below ${threshold}%` : "Alert off");
+    } catch (e) { toast.error(errorMessage(e)); } finally { setSaving(false); }
+  }
+  const valid = Number(threshold) > 0 && Number(threshold) <= 100;
+  return <div className="flex flex-wrap items-center gap-2 text-xs">
+    <span>Alert me when agreement with production feedback drops below</span>
+    <input type="number" min={1} max={100} aria-label="Agreement threshold" value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-7 w-14 rounded-md border border-border bg-transparent px-1.5 text-right tabular-nums" />%
+    <Button size="xs" variant="outline" disabled={saving || !valid} onClick={() => void save(true)}>{saved && saved !== "off" ? "Update" : "Set alert"}</Button>
+    {saved && saved !== "off" && <Button size="xs" variant="ghost" disabled={saving} onClick={() => void save(false)}>Turn off</Button>}
+    {saved && <span className="text-muted-foreground">{saved === "off" ? "Off" : `On · below ${saved}% · Slack and email`}</span>}
+  </div>;
 }
 
 function Stat({ label, value: shown, detail }: { label: string; value: string; detail: string }) {

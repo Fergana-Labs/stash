@@ -1,6 +1,7 @@
 "use client";
 
 import type { Classification, EvalRow } from "@/lib/intuition-api";
+import { humanize } from "@/lib/behaviors-api";
 
 const fmt = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 
@@ -44,7 +45,7 @@ export default function ClassificationTable({ classification }: { classification
           <tbody>
             {entries.map(([label, m]) => (
               <tr key={label} className="border-t border-border-subtle">
-                <td className="py-1 pr-2 font-mono text-dim">{label}</td>
+                <td className="py-1 pr-2 text-dim" title={label}>{humanize(label)}</td>
                 <td className="px-2 py-1 text-right font-mono tabular-nums">{fmt(m.precision)}</td>
                 <td className="px-2 py-1 text-right font-mono tabular-nums">{fmt(m.recall)}</td>
                 <td className="px-2 py-1 text-right font-mono tabular-nums">{fmt(m.f1)}</td>
