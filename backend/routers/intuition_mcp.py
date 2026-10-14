@@ -120,6 +120,28 @@ async def get_intuition(ctx: Context, intuition_id: str) -> dict:
 
 
 @mcp.tool()
+async def update_intuition(
+    ctx: Context,
+    intuition_id: str,
+    name: str | None = None,
+    instructions: str | None = None,
+    labels: list[dict] | None = None,
+) -> dict:
+    """Rename it, rewrite your instructions, or change its labels ([{id, description}]). Changing
+    labels leaves existing examples on the old ids: relabel them with label_example, then train."""
+    user = await _user(ctx)
+    model_id = _id(intuition_id)
+    if name:
+        await service.rename_model(user["id"], model_id, name[:160])
+    changes = {
+        k: v for k, v in (("description", instructions), ("labels", labels)) if v is not None
+    }
+    if changes:
+        await service.update_draft(user["id"], model_id, changes)
+    return await wizard.status(user["id"], intuition_id)
+
+
+@mcp.tool()
 async def save_brief(ctx: Context, intuition_id: str, fields: dict[str, Any]) -> dict:
     """Merge fields into the eval brief (null clears one). Fields: decision, input, labels
     ([{id, means, not}]), costly_mistake, must_never ([str]), edge_cases ([str]), context, success,

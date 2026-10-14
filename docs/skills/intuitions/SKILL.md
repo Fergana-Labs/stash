@@ -103,7 +103,7 @@ than two questions at a time.
 
 ## MCP tools
 
-`list_intuitions`, `create_intuition`, `get_intuition`, `save_brief`,
+`list_intuitions`, `create_intuition`, `get_intuition`, `update_intuition`, `save_brief`,
 `add_examples`, `generate_examples`, `list_examples`, `label_example`,
 `accept_suggestions`, `propose_criteria`, `set_criteria`, `train`, `ship`,
 `classify`, `inbox`, `review_prediction`, `give_feedback`.

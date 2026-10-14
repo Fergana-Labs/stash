@@ -51,7 +51,7 @@ export default function HowItWorks({ id, name }: { id: string | null; name: stri
         <div className="space-y-1.5">
           <div className="font-medium">MCP <span className="font-normal text-muted-foreground">— streamable HTTP at <code className="text-[12px]">{base}/mcp/intuitions</code></span></div>
           <CopyBlock label="MCP config" text={s.mcp} />
-          <p className="m-0 text-[12px] text-muted-foreground">Tools: <code className="text-[11.5px]">list_intuitions, create_intuition, get_intuition, save_brief, add_examples, generate_examples, list_examples, label_example, accept_suggestions, propose_criteria, set_criteria, train, ship, classify, inbox, review_prediction, give_feedback</code>. Agents can build intuitions end to end; suggested labels still need a person to confirm them.</p>
+          <p className="m-0 text-[12px] text-muted-foreground">Tools: <code className="text-[11.5px]">list_intuitions, create_intuition, get_intuition, update_intuition, save_brief, add_examples, generate_examples, list_examples, label_example, accept_suggestions, propose_criteria, set_criteria, train, ship, classify, inbox, review_prediction, give_feedback</code>. Agents can build intuitions end to end; suggested labels still need a person to confirm them.</p>
         </div>
         <div className="space-y-1.5"><div className="font-medium">REST</div><CopyBlock label="curl" text={s.rest} /></div>
         <table className="w-full text-left text-[12px]">
