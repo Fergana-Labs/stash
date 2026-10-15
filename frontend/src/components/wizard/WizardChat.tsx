@@ -12,6 +12,7 @@ import { applyEvent, streamWizard, wzGet, type AssistantPart, type Card, type Tr
 import { WizardProvider, type WizardCtx } from "./wizard-ui";
 import ModelPanel from "./ModelPanel";
 import { useDictation } from "./useDictation";
+import { takeWizardMessage } from "./wizard-navigation";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
 import ChoicesCard from "./cards/ChoicesCard";
@@ -83,9 +84,8 @@ function ActivityRow({ part }: { part: Extract<AssistantPart, { type: "activity"
 export interface Injected { id: number; text: string; kind: "message" | "event" }
 
 /**
- * The wizard conversation. Embedded (in the eval page's drawer) it drops its own
- * header and model panel, takes messages from the page via `inject`, and tells
- * the page to reload via `onRefresh`.
+ * The wizard conversation. Workspace actions arrive once through session storage.
+ * Embedded callers can hide its header/model panel and send messages via `inject`.
  */
 export default function WizardChat({ sessionId, embedded = false, inject = null, onRefresh, onModel }: { sessionId: string; embedded?: boolean; inject?: Injected | null; onRefresh?: () => void; onModel?: (modelId: string, title: string) => void }) {
   const [entries, setEntries] = useState<TranscriptEntry[] | null>(null);
@@ -94,6 +94,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState<Injected | null>(null);
   const [error, setError] = useState("");
   const [attaching, setAttaching] = useState("");
   const queued = useRef<{ text: string; kind: "message" | "event" }[]>([]);
@@ -104,6 +105,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setPending(takeWizardMessage(sessionId));
     wzGet(sessionId).then((s) => { setEntries(s.transcript ?? []); setModelId(s.model_id); setTitle(s.title); }).catch((e) => setError(errorMessage(e)));
   }, [sessionId]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [entries]);
@@ -147,10 +149,11 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const submit = () => { if (dictation.listening) dictation.stop(); send(input); setInput(""); };
   const injected = useRef(0);
   useEffect(() => {
-    if (!inject || inject.id === injected.current || entries === null) return;
-    injected.current = inject.id;
-    send(inject.text, inject.kind);
-  }, [inject, entries, send]);
+    const message = inject ?? pending;
+    if (!message || message.id === injected.current || entries === null) return;
+    injected.current = message.id;
+    send(message.text, message.kind);
+  }, [inject, pending, entries, send]);
 
   async function attach(files: FileList) {
     if (!modelId) { setError("Tell the wizard what you want to classify first, then attach examples."); return; }
@@ -178,7 +181,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
             <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
               <Link href="/reward-models/wizard" className="text-xs text-muted-foreground hover:underline">Eval wizard /</Link>
               <h1 className="m-0 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
-              {modelId && <Link href={`/reward-models/evals/${modelId}`} className="ml-auto text-xs text-muted-foreground hover:underline">Open eval page →</Link>}
+              {modelId && <Link href={`/reward-models/evals/${modelId}`} className="ml-auto text-xs text-muted-foreground hover:underline">Back to eval →</Link>}
             </header>
           )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">

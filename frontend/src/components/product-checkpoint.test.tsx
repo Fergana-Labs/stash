@@ -6,9 +6,9 @@ import TraceTable from "./reward-models/TraceTable";
 import TrainPanel from "./reward-models/TrainPanel";
 import type { ProductCheckpoint, RmTraceSummary, User } from "@/lib/types";
 
-const api = vi.hoisted(() => ({ create: vi.fn(), list: vi.fn(), push: vi.fn() }));
+const api = vi.hoisted(() => ({ create: vi.fn(), list: vi.fn(), push: vi.fn(), pathname: "/reward-models" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/reward-models",
+  usePathname: () => api.pathname,
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: api.push }),
 }));
@@ -28,6 +28,7 @@ const trace: RmTraceSummary = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.pathname = "/reward-models";
   // The current reward navigation includes the system-theme toggle.
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   api.list.mockResolvedValue([]);
@@ -39,7 +40,7 @@ it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("selects the acco
   render(<RewardRail user={{ ...user, product_checkpoint: checkpoint }} onLogout={vi.fn()} />);
   expect(screen.getByRole("link", { name: "Traces" })).toBeVisible();
   if (checkpoint === "latest") {
-    expect(screen.getByRole("link", { name: "Intuitions" })).toHaveAttribute("href", "/reward-models/evals");
+    expect(screen.getByRole("link", { name: "Evals" })).toHaveAttribute("href", "/reward-models/evals");
     for (const name of ["Reward models", "Monitoring", "Skills", "Review", "Changes", "Optimization"]) expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
   } else {
     expect(screen.getByRole("link", { name: "Reward models" })).toBeVisible();
@@ -47,6 +48,13 @@ it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("selects the acco
     expect(screen.queryByRole("link", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Changes" })).not.toBeInTheDocument();
   }
+});
+
+it("keeps Evals selected in the full-page wizard", () => {
+  api.pathname = "/reward-models/wizard/session";
+  render(<RewardRail user={{ ...user, product_checkpoint: "latest" }} onLogout={vi.fn()} />);
+  expect(screen.getByRole("link", { name: "Evals" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", { name: "Traces" })).not.toHaveAttribute("aria-current");
 });
 
 it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("shows the checkpoint's trace columns while retaining owned traces: %s", (checkpoint) => {

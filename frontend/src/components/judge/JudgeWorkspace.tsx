@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Wand2, X } from "lucide-react";
+import { Loader2, RefreshCw, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import RefinePanel from "@/components/evals/RefinePanel";
@@ -11,7 +12,7 @@ import { BRIEF_MARKER, imEditDraft, imGet, type JudgeProvider, type ModelDetail 
 import { Select } from "@/components/ui/select";
 import { wzCreate, wzFromCorrections, wzReport, wzSessions, wzTrain, type TrainingReport } from "@/lib/wizard-api";
 import { cn } from "@/lib/utils";
-import WizardChat, { type Injected } from "@/components/wizard/WizardChat";
+import { stageWizardMessage } from "@/components/wizard/wizard-navigation";
 import { pct, WizardProvider, type WizardCtx } from "@/components/wizard/wizard-ui";
 import BriefCard from "@/components/wizard/cards/BriefCard";
 import CriteriaCard from "@/components/wizard/cards/CriteriaCard";
@@ -92,19 +93,18 @@ function JudgeProviderPicker({ id, detail, onSaved }: { id: string; detail: Mode
 /**
  * One eval, one page: Setup (brief, instructions, criteria, try it, API),
  * Inbox (triage and expert review, by topic), Golden set (coverage, pins,
- * hygiene, labeling) and Results (training report, agreement). The wizard
- * rides along in a drawer and every card works the same in both places.
+ * hygiene, labeling) and Results (training report, agreement). Wizard actions
+ * resume the same conversation in its dedicated full-page view.
  */
 export default function JudgeWorkspace({ id }: { id: string }) {
+  const router = useRouter();
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
   const [tab, setTab] = useState<Tab>("setup");
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [improving, setImproving] = useState(false);
-  const [drawer, setDrawer] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [inject, setInject] = useState<Injected | null>(null);
+  const [openingWizard, setOpeningWizard] = useState(false);
   const [proposals, setProposals] = useState<{ key: number; items: Discovery["insights"] } | null>(null);
 
   const load = useCallback(async () => {
@@ -117,29 +117,27 @@ export default function JudgeWorkspace({ id }: { id: string }) {
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   const openWizard = useCallback(async (message?: { text: string; kind: "message" | "event" }) => {
-    setDrawer(true);
-    let sid = sessionId;
-    if (!sid) {
-      try {
-        const existing = (await wzSessions()).sessions.find((s) => s.model_id === id);
-        sid = existing?.id ?? (await wzCreate(id)).id;
-        setSessionId(sid);
-      } catch (e) { setError(errorMessage(e)); return; }
-    }
-    if (message) setInject({ id: Date.now(), ...message });
-  }, [id, sessionId]);
+    setOpeningWizard(true); setError("");
+    try {
+      const existing = (await wzSessions()).sessions.find((s) => s.model_id === id);
+      const sid = existing?.id ?? (await wzCreate(id)).id;
+      if (message) stageWizardMessage(sid, { id: Date.now(), ...message });
+      router.push(`/reward-models/wizard/${sid}`);
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setOpeningWizard(false); }
+  }, [id, router]);
 
   const ctx: WizardCtx = useMemo(() => ({
     modelId: id,
     refresh,
     version,
     busy: false,
-    // Card events only matter to an open conversation; requests open the wizard.
+    // Workspace edits refresh here; requests continue in the full-page wizard.
     send: (text, kind = "message") => {
-      if (kind === "event") { refresh(); if (drawer && sessionId) setInject({ id: Date.now(), text, kind }); return; }
+      if (kind === "event") { refresh(); return; }
       void openWizard({ text, kind });
     },
-  }), [id, refresh, version, drawer, sessionId, openWizard]);
+  }), [id, refresh, version, openWizard]);
 
   async function improve() {
     setImproving(true); setError("");
@@ -181,14 +179,14 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set. To rewrite the criteria themselves, use Improve rubric under Results.">
                   {improving ? <><Loader2 className="animate-spin" />Retraining…</> : <><RefreshCw />Retrain</>}
                 </Button>
-                <Button size="sm" variant={drawer ? "secondary" : "default"} onClick={() => (drawer ? setDrawer(false) : void openWizard())}><Wand2 />Wizard</Button>
+                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard()}><Wand2 />{openingWizard ? "Opening…" : "Wizard"}</Button>
               </div>
             </header>
             {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
             {fresh && (
               <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-brand-500/30 bg-brand-500/5 px-4 py-3">
                 <p className="m-0 flex-1 text-[13px]">New eval. The wizard asks a few questions, helps you label a handful of examples, and sets up criteria with you.</p>
-                <Button size="sm" onClick={() => void openWizard({ text: "Help me set up this eval.", kind: "message" })}><Wand2 />Set it up with the wizard</Button>
+                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard({ text: "Help me set up this eval.", kind: "message" })}><Wand2 />Set it up with the wizard</Button>
               </div>
             )}
 
@@ -226,12 +224,6 @@ export default function JudgeWorkspace({ id }: { id: string }) {
             </div>
           </div>
         </div>
-        {drawer && (
-          <aside aria-label="Wizard" className="flex w-[440px] shrink-0 flex-col border-l border-border bg-background">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-2"><Wand2 className="size-3.5 text-brand-500" /><span className="text-[13px] font-semibold">Wizard</span><Button className="ml-auto" size="icon-sm" variant="ghost" aria-label="Close wizard" onClick={() => setDrawer(false)}><X /></Button></div>
-            <div className="min-h-0 flex-1">{sessionId ? <WizardChat key={sessionId} sessionId={sessionId} embedded inject={inject} onRefresh={refresh} /> : <p className="p-4 text-xs text-muted-foreground">Opening…</p>}</div>
-          </aside>
-        )}
       </div>
     </WizardProvider>
   );

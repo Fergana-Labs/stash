@@ -12,7 +12,7 @@ import type { User } from "@/lib/types";
 
 const PRIMARY = [
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") || path.startsWith("/reward-models/behaviors") },
-  { label: "Evals", href: "/reward-models/evals", match: (path: string) => path.startsWith("/reward-models/evals") || path.startsWith("/reward-models/models") || path.startsWith("/reward-models/intuitions") },
+  { label: "Evals", href: "/reward-models/evals", match: (path: string) => path.startsWith("/reward-models/evals") || path.startsWith("/reward-models/models") || path.startsWith("/reward-models/intuitions") || path.startsWith("/reward-models/wizard") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {
