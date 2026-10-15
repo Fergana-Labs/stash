@@ -138,7 +138,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
               <p className="mb-1 text-[10px] tracking-[.12em] text-muted-foreground uppercase">
                 Website design
               </p>
-              <h1 className="text-[22px] leading-tight font-semibold tracking-tight">
+              <h1 className="text-foreground text-[22px] leading-tight font-semibold tracking-tight">
                 From taste to a better website
               </h1>
             </div>
@@ -231,7 +231,9 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
           <div className="grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
             <section className="rounded border border-border">
               <header className="border-b border-border px-4 py-3">
-                <h2 className="text-sm font-medium">The setup conversation</h2>
+                <h2 className="text-foreground text-sm font-medium">
+                  The setup conversation
+                </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Sample setup · saved eval · {demo.reference_count} visual
                   examples
@@ -257,7 +259,9 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
             <div className="space-y-4">
               <section className="rounded border border-border p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-medium">What the eval checks</h2>
+                  <h2 className="text-foreground text-sm font-medium">
+                    What the eval checks
+                  </h2>
                   <span className="flex items-center gap-1 text-[11px] text-emerald-700">
                     <Check className="size-3" />
                     Saved
@@ -277,13 +281,13 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                 </p>
               </section>
               <section className="rounded border border-border p-4">
-                <h2 className="mb-3 text-sm font-medium">
+                <h2 className="text-foreground mb-3 text-sm font-medium">
                   Liked and disliked references
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
                   {["liked", "disliked"].map((label) => (
                     <div key={label}>
-                      <h3 className="mb-2 text-[11px] font-medium capitalize">
+                      <h3 className="text-foreground mb-2 text-[11px] font-medium capitalize">
                         {label}
                       </h3>
                       <div className="space-y-2">
@@ -321,7 +325,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
           <div className="grid items-start gap-5 lg:grid-cols-[.65fr_1.35fr]">
             <section className="overflow-hidden rounded border border-border">
               <header className="border-b border-border px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-medium">
+                <h2 className="text-foreground flex items-center gap-2 text-sm font-medium">
                   <GitBranch className="size-4" />
                   Eval-guided revisions
                 </h2>
@@ -378,7 +382,9 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                 onOpen={setEnlarged}
               />
               <section className="mt-3 rounded border border-border p-3">
-                <h3 className="mb-3 text-xs font-medium">Evaluator feedback</h3>
+                <h3 className="text-foreground mb-3 text-xs font-medium">
+                  Evaluator feedback
+                </h3>
                 <div className="space-y-3">
                   {demo.criteria.map((q) => {
                     const value = candidate.rubric[q.id]?.true;
@@ -424,7 +430,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
           <>
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-base font-medium">
+                <h2 className="text-foreground text-base font-medium">
                   Same product. A clearer first impression.
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -469,7 +475,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
           }}
         >
           <DialogContent className="max-h-[94vh] overflow-y-auto rounded-[4px] p-3 sm:max-w-[1400px]">
-            <DialogTitle className="text-xs">
+            <DialogTitle className="text-xs text-foreground">
               Gather · revision {enlarged?.iteration}
             </DialogTitle>
             {enlarged && (

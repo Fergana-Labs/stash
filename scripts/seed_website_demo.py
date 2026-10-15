@@ -34,6 +34,8 @@ from backend.config import settings
 from backend.services import llm
 from backend.services.intuition import builder, curation, fusion, service, wizard
 from backend.services.rm import (
+    step_labeler,
+    step_labeling,
     trace_completion,
     traces,
     workbench,
@@ -182,7 +184,95 @@ async def image_item(png: Path) -> dict:
 
 
 async def finish_trace(trace_id: UUID):
-    """Run the normal remote annotation and completion pipelines on this trace."""
+    """Score explicit fixture labels with native rules and live quality checks."""
+    assert settings.TYPESAFE_API_KEY and settings.ANTHROPIC_API_KEY
+    pool = database.get_pool()
+    trace, steps = await workbench_auto._read_trace(trace_id)
+    assert trace["owner_user_id"] == OWNER
+    assert trace["metadata"].get("dataset") == "website-design-demo-v1"
+    chunks = step_labeler.build_chunks(steps)
+    for chunk in chunks:
+        step = steps[chunk["idx"]]
+        if isinstance((step.get("metadata") or {}).get("label"), dict):
+            continue
+        label = dict.fromkeys(
+            (
+                "intent",
+                "verdict",
+                "verdict_target",
+                "sentiment",
+                "type",
+                "effect",
+                "result",
+                "is_output",
+                "outcome",
+                "stance",
+                "coverage",
+            )
+        )
+        label.update(
+            chunk_id=chunk["chunk_id"],
+            actor=chunk["actor"],
+            task_id="t1",
+            evidence=(chunk.get("result") or chunk.get("text") or "")[:180],
+            note="Synthetic demo event annotation. Native rules and live quality checks compute scores.",
+        )
+        if chunk["actor"] == "user":
+            label.update(intent="new_request", verdict="none", sentiment="neutral")
+        elif chunk["kind"] == "tool_call":
+            label.update(
+                type="tool_call",
+                is_output=False,
+                result="data",
+                tool=chunk["tool"],
+                effect="read"
+                if chunk["tool"] in ("read_file", "browser.screenshot")
+                else "side_effect",
+                duplicate_of=chunk.get("duplicate_of"),
+            )
+        elif (step.get("metadata") or {}).get("label_type") == "status_update":
+            label.update(type="status_update", is_output=False)
+        else:
+            label.update(
+                type="output", is_output=True, outcome="answer", stance="hedged", coverage="1/1"
+            )
+        step["metadata"] = {**(step.get("metadata") or {}), "label": label}
+        await pool.execute(
+            "UPDATE rm_trace_steps SET metadata=$2 WHERE id=$1", step["id"], step["metadata"]
+        )
+    result = await step_labeling.annotate(trace, steps)
+    async with pool.acquire() as conn, conn.transaction():
+        for step in steps:
+            reward = result["rewards"].get(str(step["idx"]))
+            if reward is not None:
+                await conn.execute(
+                    "UPDATE rm_trace_steps SET metadata=metadata || jsonb_build_object('reward',$2::jsonb) WHERE id=$1",
+                    step["id"],
+                    reward,
+                )
+        await conn.execute(
+            "UPDATE rm_traces SET metadata=metadata || $2::jsonb WHERE id=$1",
+            trace_id,
+            {
+                "rubric_summary": result["summary"],
+                "fixture_annotation_source": "synthetic website-demo-v1",
+                "credit_source": "native rules with live Jev quality checks",
+            },
+        )
+        await conn.execute(
+            """INSERT INTO rm_step_labels(trace_id,owner_user_id,fingerprint,labels,rewards,summary,chunks,label_model)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(trace_id) DO UPDATE SET
+            fingerprint=EXCLUDED.fingerprint,labels=EXCLUDED.labels,rewards=EXCLUDED.rewards,
+            summary=EXCLUDED.summary,chunks=EXCLUDED.chunks,label_model=EXCLUDED.label_model,labeled_at=now()""",
+            trace_id,
+            OWNER,
+            step_labeling.fingerprint(steps),
+            result["labels"],
+            result["rewards"],
+            result["summary"],
+            {c["chunk_id"]: step_labeling.chunk_hash(c) for c in chunks},
+            "synthetic website-demo-v1; live Jev quality checks",
+        )
     await workbench.queue_trace(OWNER, trace_id)
     await workbench_auto.process_trace(trace_id)
     evaluation = (await workbench_auto.detail(OWNER, trace_id))["current"]

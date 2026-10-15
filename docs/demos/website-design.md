@@ -24,7 +24,9 @@ and frontend, and install the frontend Playwright browser. Then run:
 The script refuses databases other than the loopback
 `stash_consolidated_local` database. It disables embedding models, fits only a
 tiny classifier on 16 examples, and calls remote providers for vision, judgments,
-HTML generation, trace labels, and completion estimates. It does not launch
+HTML generation, action-quality checks, and completion estimates. Trace event
+labels are explicit synthetic fixture annotations; numeric credits come from
+the normal scoring rules and live quality checks. It does not launch
 local LLM training or inference. It creates one new evaluator and trace, without
 replacing the other demo samples.
 
