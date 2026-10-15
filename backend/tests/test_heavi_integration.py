@@ -216,7 +216,7 @@ async def test_provider_visible_for_heavi_domain_and_workspace_scope(client, poo
 
     workspace = await workspace_service.create_workspace("Heavi", "heaviai.com")
     scope_key = await create_api_key(
-        workspace["scope_user_id"], name="test", key_type="machine", access="full"
+        workspace["scope_user_id"], name="test", key_type="developer", access="full"
     )
     scope_headers = {"Authorization": f"Bearer {scope_key}"}
     listing = await client.get("/api/v1/integrations", headers=scope_headers)

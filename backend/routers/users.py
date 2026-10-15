@@ -229,7 +229,9 @@ async def list_my_keys(current_user: dict = Depends(get_current_user)):
     rows = await pool.fetch(
         "SELECT id, name, access, created_at, last_used_at "
         "FROM user_api_keys "
-        "WHERE user_id = $1 AND revoked_at IS NULL "
+        "WHERE user_id = $1 "
+        "AND key_type IN ('password', 'manual', 'cli', 'invite', 'developer') "
+        "AND revoked_at IS NULL "
         "ORDER BY created_at DESC",
         current_user["id"],
     )
@@ -273,7 +275,9 @@ async def revoke_my_key(key_id: str, current_user: dict = Depends(get_current_us
     pool = get_pool()
     result = await pool.execute(
         "UPDATE user_api_keys SET revoked_at = now() "
-        "WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        "WHERE id = $1 AND user_id = $2 "
+        "AND key_type IN ('password', 'manual', 'cli', 'invite', 'developer') "
+        "AND revoked_at IS NULL",
         key_id,
         current_user["id"],
     )
