@@ -58,6 +58,10 @@ async def _check_scorers(owner_id: UUID, scorers: list[dict]) -> list[dict]:
     return out
 
 
+def _has_input(case_input) -> bool:
+    return any(m["content"].strip() for m in scoring.messages(case_input))
+
+
 async def list_sets(owner_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         """SELECT s.*, (SELECT count(*) FROM test_cases c WHERE c.set_id = s.id)::int AS case_count,
@@ -131,11 +135,16 @@ async def update_set(owner_id: UUID, set_id: UUID, changes: dict) -> dict:
     }
     if allowed:
         cols = ", ".join(f"{k} = ${i + 2}" for i, k in enumerate(allowed))
-        await get_pool().execute(
-            f"UPDATE test_sets SET {cols}, updated_at = now() WHERE id = $1",
-            set_id,
-            *allowed.values(),
-        )
+        try:
+            await get_pool().execute(
+                f"UPDATE test_sets SET {cols}, updated_at = now() WHERE id = $1",
+                set_id,
+                *allowed.values(),
+            )
+        except Exception as exc:
+            if "unique" in str(exc).lower():
+                raise ValueError("A test set with that name already exists") from exc
+            raise
     return await get_set(owner_id, set_id)
 
 
@@ -153,7 +162,7 @@ async def add_cases(owner_id: UUID, set_id: UUID, cases: list[dict]) -> list[dic
     rows = []
     async with pool.acquire() as conn, conn.transaction():
         for c in cases:
-            if not scoring.messages(c.get("input")) or not scoring.as_text(c["input"]).strip():
+            if not _has_input(c.get("input")):
                 raise ValueError("Every case needs an input")
             rows.append(
                 await conn.fetchrow(
@@ -225,6 +234,8 @@ async def update_case(owner_id: UUID, set_id: UUID, case_id: UUID, changes: dict
     sets = {k: v for k, v in changes.items() if k in ("name", "input", "expected")}
     if not sets:
         raise ValueError("Nothing to change")
+    if "input" in sets and not _has_input(sets["input"]):
+        raise ValueError("Every case needs an input")
     cols = ", ".join(f"{k} = ${i + 3}" for i, k in enumerate(sets))
     row = await get_pool().fetchrow(
         f"UPDATE test_cases SET {cols} WHERE id = $1 AND set_id = $2 RETURNING *",
@@ -292,6 +303,15 @@ async def start_run(
     return dict(run)
 
 
+def _scoring_error(exc: Exception) -> str:
+    from ..intuition.providers import ProviderError
+
+    # Provider errors are our own messages ("Jev request failed (HTTP 402)"); anything
+    # else may carry case text, so only its type is kept.
+    detail = str(exc)[:200] if isinstance(exc, ProviderError) else type(exc).__name__
+    return f"Scoring failed: {detail}"
+
+
 def compare(results: list[dict], baseline: dict[str, bool] | None, max_regressions: int) -> dict:
     """Pass rates, and against the baseline which cases broke and which got fixed."""
     n = len(results)
@@ -310,14 +330,16 @@ def compare(results: list[dict], baseline: dict[str, bool] | None, max_regressio
     }
     if baseline is None:
         return {**out, "baseline": None, "broke": [], "fixed": [], "gate": "pass"}
+    # A case this run couldn't score neither broke nor got fixed.
+    scored = [r for r in results if not r.get("error")]
     broke = [
         str(r["case_id"])
-        for r in results
+        for r in scored
         if baseline.get(str(r["case_id"])) is True and not r["passed"]
     ]
     fixed = [
         str(r["case_id"])
-        for r in results
+        for r in scored
         if baseline.get(str(r["case_id"])) is False and r["passed"]
     ]
     shared = [r for r in results if str(r["case_id"]) in baseline]
@@ -355,7 +377,7 @@ async def score_run(run_id: UUID) -> None:
                 error = None
             except Exception as exc:  # One case failing to score must not sink the run.
                 log.warning("Test case scoring failed: %s", type(exc).__name__)
-                scores, passed, error = [], False, f"Scoring failed: {type(exc).__name__}"
+                scores, passed, error = [], False, _scoring_error(exc)
             await pool.execute(
                 "UPDATE test_results SET scores = $2, passed = $3, error = $4 WHERE id = $1",
                 r["id"],
@@ -371,7 +393,8 @@ async def score_run(run_id: UUID) -> None:
             baseline = {
                 str(b["case_id"]): bool(b["passed"])
                 for b in await pool.fetch(
-                    "SELECT case_id, passed FROM test_results WHERE run_id = $1",
+                    # A case the baseline couldn't score says nothing about whether it passed.
+                    "SELECT case_id, passed FROM test_results WHERE run_id = $1 AND error IS NULL",
                     run["baseline_run_id"],
                 )
             }

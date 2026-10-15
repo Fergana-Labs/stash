@@ -15,12 +15,12 @@ import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { AddToTestSetDialog } from "@/components/test-sets/test-set-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import {
-  ActorChip, EnabledSwitch, FieldLabel, HitsChart, OutcomeTag, ReleaseDialog, SaveToEvalDialog, SeverityTag, dailyBuckets, hourlyBuckets, inputCls,
+  ActorChip, EnabledSwitch, FieldLabel, HitsChart, ReleaseDialog, SaveToEvalDialog, SeverityTag, dailyBuckets, hourlyBuckets, inputCls, selectCls,
 } from "@/components/behaviors/behavior-ui";
 import {
   ACTORS, SEVERITIES, compareAroundRelease, deleteBehavior, getBehavior, getBehaviorOverview, getTriage, humanize, listBehaviorHits, listReleases, promoteBehavior,
   reviewHit, searchBehaviorTraces, startTriage, stepWindow, traceStepHref, updateBehavior,
-  type Actor, type AlertConfig, type Behavior, type BehaviorInput, type BehaviorTrend, type ChannelKind, type Release, type ReleaseComparison,
+  type Actor, type AlertConfig, type Behavior, type BehaviorHit, type BehaviorInput, type BehaviorTrend, type ChannelKind, type Release, type ReleaseComparison,
   type SearchBehavior, type SearchResult, type Severity, type Triage, type Verdict,
 } from "@/lib/behaviors-api";
 import { cn } from "@/lib/utils";
@@ -148,9 +148,9 @@ export default function BehaviorClient({ id }: { id: string }) {
       <header className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">{total} hit{total === 1 ? "" : "s"} {hourly ? "by hour" : "by day"}</h2>
-          {trend && <p className="mt-0.5 text-xs text-muted-foreground">rate: {pct(scanned ? withHit / scanned : null)} of scanned traces ({withHit} of {scanned}) · {trend.last_7_days} hits in the last 7 days</p>}
+          {trend && <p className="mt-0.5 text-xs text-muted-foreground">In {pct(scanned ? withHit / scanned : null)} of scanned traces ({withHit} of {scanned}) · {trend.last_7_days} hits in the last 7 days</p>}
         </div>
-        <Select aria-label="Time range" value={String(days)} onChange={(v) => setDays(Number(v))} options={RANGES} className="h-8 w-36 text-xs" />
+        <Select aria-label="Time range" value={String(days)} onChange={(v) => setDays(Number(v))} options={RANGES} className="h-8 w-36 px-2 text-xs" />
       </header>
       {hourly && !hitTimes ? <p role="status" className="flex h-48 items-center justify-center text-xs text-muted-foreground">Loading hits…</p> : <HitsChart buckets={buckets} releases={releases} unit={hourly ? "hour" : "day"} />}
     </section>
@@ -162,7 +162,7 @@ export default function BehaviorClient({ id }: { id: string }) {
       <TriageCard behaviorId={id} />
     </div>
 
-    <DefinitionSection key={`${behavior.id}-${behavior.updated_at}`} behavior={behavior} onSave={patch} />
+    <DefinitionSection behavior={behavior} onSave={patch} />
     <SaveToEvalDialog open={adding} onOpenChange={setAdding} windows={confirmedWindows} />
   </EvalPageFrame>;
 }
@@ -193,7 +193,7 @@ function CompareCard({ behaviorId, releases, onReleased }: { behaviorId: string;
   return <section aria-label="Compare around a release" className="rounded border border-border p-4">
     <header className="mb-3 flex items-center justify-between gap-2">
       <h2 className="text-sm font-semibold">Compare around a release</h2>
-      {sorted.length > 0 && <Select aria-label="Release" value={chosen} onChange={setReleaseId} options={sorted.map((r) => ({ value: r.id, label: `${r.label}${r.agent ? ` · ${r.agent}` : ""}` }))} className="h-7 w-48 text-xs" />}
+      {sorted.length > 0 && <Select aria-label="Release" value={chosen} onChange={setReleaseId} options={sorted.map((r) => ({ value: r.id, label: `${r.label}${r.agent ? ` · ${r.agent}` : ""}` }))} className="h-7 w-48 px-2 text-xs" />}
     </header>
     {!sorted.length ? <p className="text-xs text-muted-foreground">No releases marked yet. <button type="button" className="underline" onClick={() => setMarking(true)}>Add a release marker</button> to compare this behavior’s rate before and after a change.</p>
       : error ? <p role="alert" className="text-xs text-destructive">{error}</p>
@@ -250,6 +250,15 @@ function TriageCard({ behaviorId }: { behaviorId: string }) {
   </section>;
 }
 
+/** The hit's own evidence, which is what a reviewer judges; the trace's last answer only when a hit has none. */
+function FlaggedCell({ quote, reason, fallback }: { quote: string | null; reason: string | null; fallback: string }) {
+  if (!quote) return <span className="line-clamp-3 text-muted-foreground">{fallback}</span>;
+  return <div className="grid gap-0.5">
+    <span className="line-clamp-3">“{quote}”</span>
+    {reason && <span className="line-clamp-2 text-[11px] text-muted-foreground" title={reason}>{reason}</span>}
+  </div>;
+}
+
 /** Traces with a hit: filter, open, and confirm or reject each hit. */
 function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days: number; onConfirmed: (windows: { trace_id: string; start_idx: number; end_idx: number }[]) => void }) {
   const [query, setQuery] = useState("");
@@ -259,6 +268,8 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
   const [busy, setBusy] = useState<string | null>(null);
   // Reviewer reasons by hit ID. Search rows don't carry them, so they come from the hits list.
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // What each hit flagged (its quote and the detector's reason), from the same list.
+  const [flagged, setFlagged] = useState<Record<string, Pick<BehaviorHit, "evidence" | "note">>>({});
   const [asking, setAsking] = useState<{ hitId: string; verdict: Verdict } | null>(null);
   const [testing, setTesting] = useState<{ trace_id: string; end_idx: number; title?: string } | null>(null);
   const [draft, setDraft] = useState("");
@@ -267,7 +278,9 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
     let cancelled = false;
     // Notes are an annotation on the table; it works without them.
     listBehaviorHits(behaviorId, { limit: 200 }).then(({ hits }) => {
-      if (!cancelled) setNotes(Object.fromEntries(hits.filter((h) => h.review_note).map((h) => [h.id, h.review_note!])));
+      if (cancelled) return;
+      setNotes(Object.fromEntries(hits.filter((h) => h.review_note).map((h) => [h.id, h.review_note!])));
+      setFlagged(Object.fromEntries(hits.map((h) => [h.id, { evidence: h.evidence, note: h.note }])));
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [behaviorId]);
@@ -275,10 +288,10 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
-      searchBehaviorTraces({ q: query, behaviors: [behaviorId], days, limit: 100 })
+      searchBehaviorTraces({ q: query, behaviors: [behaviorId], days, limit: 100, rerank: !!query.trim() })
         .then((r) => { if (!cancelled) { setRows(r.results); setError(""); } })
         .catch((e) => { if (!cancelled) setError(errorMessage(e)); });
-    }, query.trim() ? 300 : 0);
+    }, query.trim() ? 600 : 0);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [behaviorId, days, query]);
 
@@ -331,7 +344,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
     </div>
     {error && <p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
     <div className="overflow-x-auto rounded border border-border"><table aria-label="Hits" className="w-full min-w-[860px] table-fixed text-left text-xs">
-      <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th className="w-32">Timestamp</th><th className="w-28">Agent</th><th>Input</th><th>Output</th><th className="w-80 text-right">Review</th></tr></thead>
+      <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th className="w-32">Timestamp</th><th className="w-28">Agent</th><th>Input</th><th>What it flagged</th><th className="w-80 text-right">Review</th></tr></thead>
       <tbody>
         {shown.map((r) => {
           const hit = hitOf(r);
@@ -340,7 +353,7 @@ function HitTable({ behaviorId, days, onConfirmed }: { behaviorId: string; days:
               {hit && <div className="text-[10.5px]">{stepWindow(hit.start_idx, hit.end_idx)}</div>}</td>
             <td className="truncate">{r.agent ?? "—"}</td>
             <td><Link href={traceStepHref(r.trace_id, hit?.start_idx ?? 0)} className="line-clamp-2 hover:underline" title={r.title ?? undefined}>{r.input || r.title || "—"}</Link></td>
-            <td><span className="line-clamp-3 text-muted-foreground">{r.final_output || r.output || "—"}</span>{r.outcome && <div className="mt-1"><OutcomeTag outcome={r.outcome} /></div>}</td>
+            <td><FlaggedCell quote={(hit && flagged[hit.id]?.evidence?.[0]?.quote) || null} reason={(hit && flagged[hit.id]?.note) || null} fallback={r.final_output || r.output || "—"} /></td>
             <td className="text-right">{hit && <div className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
               {hit.review && <span className={cn("mr-1 self-center text-[11px]", hit.review === "confirmed" ? "text-success" : "text-muted-foreground")}>{humanize(hit.review)}</span>}
               {hit.review !== "confirmed" && <Button size="xs" variant="outline" disabled={busy === hit.id} onClick={() => void review(hit, "confirmed")}><Check />Confirm</Button>}
@@ -437,8 +450,8 @@ function EditForm({ behavior, onSave, onCancel }: { behavior: Behavior; onSave: 
     <div className="grid gap-3">
       <FieldLabel label="Name"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} /></FieldLabel>
       <div className="grid grid-cols-2 gap-3">
-        <FieldLabel label="Who does it"><Select aria-label="Actor" value={actor} onChange={(v) => setActor(v as Actor)} options={ACTORS} /></FieldLabel>
-        <FieldLabel label="Severity"><Select aria-label="Severity" value={severity} onChange={(v) => setSeverity(v as Severity)} options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))} /></FieldLabel>
+        <FieldLabel label="Who does it"><Select className={selectCls} aria-label="Actor" value={actor} onChange={(v) => setActor(v as Actor)} options={ACTORS} /></FieldLabel>
+        <FieldLabel label="Severity"><Select className={selectCls} aria-label="Severity" value={severity} onChange={(v) => setSeverity(v as Severity)} options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))} /></FieldLabel>
       </div>
       <FieldLabel label={builtIn ? "Note" : "Describe it in words"} hint={builtIn ? "Built-in: a rule decides what counts; this note is for people." : undefined}><Textarea value={definition} onChange={(e) => setDefinition(e.target.value)} rows={4} className="text-xs md:text-xs" /></FieldLabel>
       {!builtIn && <FieldLabel label="Example quotes" hint="One per line."><Textarea value={examples} onChange={(e) => setExamples(e.target.value)} rows={3} className="text-xs md:text-xs" /></FieldLabel>}

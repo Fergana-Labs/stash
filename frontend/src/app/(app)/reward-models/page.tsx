@@ -112,10 +112,11 @@ function Traces() {
     if (groupBy !== "none") return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      searchBehaviorTraces({ q: query, behaviors: filterKey ? filterKey.split(",") : [], days: searchDays, limit: SEARCH_LIMIT })
+      // Similarity alone ranks every trace, matching or not; the rerank keeps only real matches.
+      searchBehaviorTraces({ q: query, behaviors: filterKey ? filterKey.split(",") : [], days: searchDays, limit: SEARCH_LIMIT, rerank: !!query.trim() })
         .then((response) => { if (!cancelled) { setSearch({ key: searchKey, response }); setSearchError(""); } })
         .catch((e) => { if (!cancelled) setSearchError(errorMessage(e)); });
-    }, query.trim() ? 300 : 0);
+    }, query.trim() ? 600 : 0);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [query, filterKey, searchDays, searchKey, groupBy, traceCount]);
 

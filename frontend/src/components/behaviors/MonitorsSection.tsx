@@ -87,7 +87,7 @@ export default function MonitorsSection({ trends, error, onReload, focusedId, on
             <span className={cn("size-1.5 shrink-0 rounded-full", ACTOR_COLOR[t.behavior.actor].dot, !t.behavior.enabled && "opacity-40")} />
             <span className="min-w-0 flex-1 truncate font-medium"><SeverityDot severity={t.behavior.severity} />{t.behavior.name}{!t.behavior.enabled && <span className="ml-1.5 font-normal text-muted-foreground/70">Off</span>}</span>
             <span className="shrink-0 tabular-nums text-muted-foreground" title="Hits in the last 7 days">{t.last_7_days}</span>
-            <Sparkline series={t.series} className={cn("h-5 w-16 shrink-0", !t.behavior.enabled && "opacity-40")} />
+            <Sparkline series={t.series} className={cn("hidden h-5 w-16 shrink-0 sm:block", !t.behavior.enabled && "opacity-40")} />
           </button>;
         })}
       </div>}

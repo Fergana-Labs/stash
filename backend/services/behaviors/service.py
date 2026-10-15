@@ -14,7 +14,7 @@ import re
 from uuid import UUID
 
 from ...database import get_pool
-from ..intuition import builder
+from ..intuition import builder, curation
 from ..intuition import service as evals
 from . import alerts, builtin
 from .monitoring import _public
@@ -313,6 +313,16 @@ async def promote(owner_id: UUID, behavior_id: UUID) -> dict:
         ],
     )
     eval_id = UUID(str(detail["model"]["id"]))
+    # What the behavior already says; the costly mistake and must-nevers stay for a person.
+    await curation.save_brief(
+        owner_id,
+        eval_id,
+        {
+            "decision": f"Does a window of an agent trace show “{behavior['name']}”? Hits feed the behavior's monitor and alerts.",
+            "input": "A window of an agent trace: the steps a hit covers, with a little context before it.",
+            "labels": f"yes: the window shows it — {definition}\nno: it does not happen in the window, or only arguably.",
+        },
+    )
     reviewed = await get_pool().fetch(
         "SELECT * FROM behavior_hits WHERE behavior_id = $1 AND review IS NOT NULL ORDER BY created_at",
         behavior_id,

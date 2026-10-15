@@ -16,13 +16,16 @@ beforeEach(() => {
   api.fromTrace.mockResolvedValue({ id: "c1" });
 });
 
-it("prefills the agent's answer after the first user turn and sends that turn", async () => {
+it("shows the agent's answer without prefilling it, and sends the chosen turn", async () => {
   const onOpenChange = vi.fn();
   render(<AddToTestSetDialog open onOpenChange={onOpenChange} traceId="t1" steps={[
     step(0, "system", "You are helpful"), step(1, "user", "My blender broke"), step(2, "assistant", "", "lookup_order"),
     step(3, "assistant", "Refund issued."), step(4, "user", "Thanks"), step(5, "assistant", "Anytime"),
   ]} />);
   const expected = await screen.findByLabelText("What should the agent answer?");
+  expect(expected).toHaveValue("");
+  expect(screen.getByText("Refund issued.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Use this" }));
   expect(expected).toHaveValue("Refund issued.");
   fireEvent.change(expected, { target: { value: "A refund for order 5530." } });
   fireEvent.click(screen.getByRole("button", { name: "Add case" }));
@@ -32,7 +35,7 @@ it("prefills the agent's answer after the first user turn and sends that turn", 
 
 it("uses a behavior hit's end step and starts the expected answer empty", async () => {
   render(<AddToTestSetDialog open onOpenChange={() => {}} traceId="t2" uptoIdx={7} />);
-  const expected = await screen.findByPlaceholderText("What it should have said");
+  const expected = await screen.findByLabelText("What should the agent answer?");
   expect(expected).toHaveValue("");
   expect(screen.queryByText("Start from")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Add case" }));

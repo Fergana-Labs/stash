@@ -16,6 +16,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import typer
 from rich.table import Table
@@ -27,6 +28,8 @@ from .formatting import console, output_json
 test_app = typer.Typer(help="Regression-test your agent against a test set.", no_args_is_help=True)
 
 POLL_SECONDS = 2
+# Scoring runs as one worker task with a 30-minute hard limit; past that it is not coming.
+WAIT_SECONDS = 1900
 PASS, FAIL, ERROR = 0, 1, 2
 
 
@@ -44,7 +47,7 @@ def _fail(message: str) -> None:
 
 def _resolve(c: StashClient, ref: str) -> dict:
     try:
-        return c._get(f"/api/v1/test-sets/resolve/{ref}")
+        return c._get(f"/api/v1/test-sets/resolve/{quote(ref, safe='')}")
     except StashError as e:
         _fail(str(e))
 
@@ -55,7 +58,8 @@ def _stdin_for(case_input) -> tuple[str, str]:
     return json.dumps(case_input), "messages"
 
 
-def _run_case(command: str, case: dict, timeout: int) -> str:
+def _run_case(command: str, case: dict, timeout: int) -> tuple[str, str | None]:
+    """The command's answer for one case, and why it failed when it did."""
     stdin, fmt = _stdin_for(case["input"])
     env = {
         **os.environ,
@@ -74,21 +78,43 @@ def _run_case(command: str, case: dict, timeout: int) -> str:
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return f"[the command timed out after {timeout}s]"
+        return f"[the command timed out after {timeout}s]", f"timed out after {timeout}s"
     if done.returncode != 0:
-        return f"[the command exited {done.returncode}]\n{done.stderr[-2000:]}"
-    return done.stdout.strip()
+        tail = done.stderr.strip()[-2000:]
+        return f"[the command exited {done.returncode}]\n{tail}", (
+            f"exited {done.returncode}" + (f": {tail.splitlines()[-1]}" if tail else "")
+        )
+    return done.stdout.strip(), None
 
 
 def _wait(c: StashClient, run_id: str) -> dict:
+    deadline = time.monotonic() + WAIT_SECONDS
     while True:
         run = c._get(f"/api/v1/test-sets/runs/{run_id}")
         if run["status"] != "scoring":
             return run
+        if time.monotonic() > deadline:
+            _fail(f"Run {run_id} is still scoring after {WAIT_SECONDS // 60} minutes")
         time.sleep(POLL_SECONDS)
 
 
+def _why(result: dict) -> str:
+    return (
+        result.get("error")
+        or "; ".join(s["reason"] for s in result["scores"] if not s["passed"])
+        or ""
+    )
+
+
+def _table(title: str, style: str, rows: list[tuple[str, str]]) -> None:
+    table = Table(title=f"{title} ({len(rows)})", title_style=style, show_header=False, box=None)
+    for name, why in rows:
+        table.add_row(f"[{style}]•[/{style}] {name}", f"[dim]{why}[/dim]")
+    console.print(table)
+
+
 def _report(run: dict, as_json: bool) -> int:
+    """Print the run and return the exit code: 0 pass, 1 regression, 2 couldn't score."""
     summary = run.get("summary") or {}
     if as_json:
         output_json(run)
@@ -96,7 +122,9 @@ def _report(run: dict, as_json: bool) -> int:
         if not as_json:
             console.print(f"[red]Scoring failed: {run.get('error')}[/red]")
         return ERROR
-    names = {str(r["case_id"]): r["case_name"] or str(r["case_id"])[:8] for r in run["results"]}
+    results = {str(r["case_id"]): r for r in run["results"]}
+    names = {cid: r["case_name"] or cid[:8] for cid, r in results.items()}
+    errors = [cid for cid, r in results.items() if r.get("error")]
     if not as_json:
         rate = summary.get("pass_rate")
         base = (summary.get("baseline") or {}).get("pass_rate")
@@ -110,36 +138,32 @@ def _report(run: dict, as_json: bool) -> int:
         console.print(line)
         for title, key, style in (("Broke", "broke", "red"), ("Fixed", "fixed", "green")):
             if summary.get(key):
-                table = Table(
-                    title=f"{title} ({len(summary[key])})",
-                    title_style=style,
-                    show_header=False,
-                    box=None,
-                )
-                for cid in summary[key]:
-                    result = next(r for r in run["results"] if str(r["case_id"]) == cid)
-                    why = (
-                        "; ".join(s["reason"] for s in result["scores"] if not s["passed"])
-                        or result.get("error")
-                        or ""
-                    )
-                    table.add_row(f"[{style}]•[/{style}] {names[cid]}", f"[dim]{why}[/dim]")
-                console.print(table)
-        failing = [
-            r
-            for r in run["results"]
-            if not r["passed"] and str(r["case_id"]) not in set(summary.get("broke", []))
-        ]
-        if failing:
+                _table(title, style, [(names[cid], _why(results[cid])) for cid in summary[key]])
+        if errors:
+            _table("Couldn't score", "yellow", [(names[cid], _why(results[cid])) for cid in errors])
+        listed = set(summary.get("broke", [])) | set(errors)
+        failing = [cid for cid, r in results.items() if not r["passed"] and cid not in listed]
+        if failing and summary.get("baseline") is None:
+            # Nothing to compare with yet, so show what fails today.
+            _table("Failing", "red", [(names[cid], _why(results[cid])) for cid in failing])
+        elif failing:
             console.print(
                 f"[dim]{len(failing)} other failing case(s) also failed in the baseline or are new.[/dim]"
             )
-        verdict = summary.get("gate")
-        console.print(
-            "[green]Gate: pass[/green]"
-            if verdict == "pass"
-            else "[red]Gate: fail — cases regressed[/red]"
-        )
+        if errors:
+            console.print(
+                f"[yellow]{len(errors)} case(s) couldn't be scored — rerun the tests[/yellow]"
+            )
+        elif summary.get("baseline") is None:
+            console.print(
+                "[green]Gate: pass[/green] [dim](first run: nothing to compare with yet)[/dim]"
+            )
+        elif summary.get("gate") == "pass":
+            console.print("[green]Gate: pass[/green]")
+        else:
+            console.print("[red]Gate: fail — cases regressed[/red]")
+    if errors:
+        return ERROR
     return PASS if summary.get("gate") == "pass" else FAIL
 
 
@@ -209,7 +233,7 @@ def run(
     baseline: str = typer.Option(
         "",
         "--baseline",
-        help="Run id to compare against (default: the set's baseline, else the last run).",
+        help="Run id to compare against (default: the set's baseline, else the last run that passed).",
     ),
     timeout: int = typer.Option(300, "--timeout", help="Seconds per case."),
     as_json: bool = typer.Option(False, "--json"),
@@ -217,13 +241,22 @@ def run(
     """Run your agent on every case, score it, and compare with the baseline. Exits 1 on a regression."""
     with _client() as c:
         s = _resolve(c, test_set)
-        outputs = []
-        for i, case in enumerate(s["cases"], 1):
-            if not as_json:
-                console.print(f"[dim]{i}/{len(s['cases'])} {case.get('name') or case['id']}[/dim]")
-            outputs.append({"case_id": case["id"], "output": _run_case(command, case, timeout)})
-        if not outputs:
+        if not s["cases"]:
             _fail("This test set has no cases")
+        outputs, crashed = [], []
+        for i, case in enumerate(s["cases"], 1):
+            name = case.get("name") or case["id"]
+            if not as_json:
+                console.print(f"[dim]{i}/{len(s['cases'])} {name}[/dim]")
+            answer, problem = _run_case(command, case, timeout)
+            if problem:
+                crashed.append(problem)
+                if not as_json:
+                    console.print(f"[yellow]  the command {problem}[/yellow]")
+            outputs.append({"case_id": case["id"], "output": answer})
+        if len(crashed) == len(outputs):
+            # Nothing to score: the command is broken, not the agent's answers.
+            _fail(f"The command failed on every case ({crashed[0]}); nothing was uploaded")
         body = {"label": label or os.environ.get("GITHUB_SHA", "")[:12], "outputs": outputs}
         if baseline:
             body["baseline_run_id"] = baseline

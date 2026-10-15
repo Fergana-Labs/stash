@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles, Wand2, X } from "lucide-react";
+import { Loader2, RefreshCw, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import RefinePanel from "@/components/evals/RefinePanel";
@@ -178,8 +178,8 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set">
-                  {improving ? <><Loader2 className="animate-spin" />Improving…</> : <><Sparkles />Improve</>}
+                <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set. To rewrite the criteria themselves, use Improve rubric under Results.">
+                  {improving ? <><Loader2 className="animate-spin" />Retraining…</> : <><RefreshCw />Retrain</>}
                 </Button>
                 <Button size="sm" variant={drawer ? "secondary" : "default"} onClick={() => (drawer ? setDrawer(false) : void openWizard())}><Wand2 />Wizard</Button>
               </div>
@@ -192,14 +192,15 @@ export default function JudgeWorkspace({ id }: { id: string }) {
               </div>
             )}
 
-            <nav role="tablist" aria-label="Eval" className="mt-4 flex gap-1 border-b border-border">
+            <nav role="tablist" aria-label="Eval" className="scroll-thin mt-4 flex gap-1 border-b border-border max-sm:overflow-x-auto max-sm:overflow-y-hidden">
               {TABS.map((t) => (
-                <button key={t.id} role="tab" type="button" aria-selected={tab === t.id} title={t.hint} onClick={() => setTab(t.id)} className={cn("-mb-px border-b-2 px-3 py-2 text-[13px]", tab === t.id ? "border-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                <button key={t.id} role="tab" type="button" aria-selected={tab === t.id} title={t.hint} onClick={() => setTab(t.id)} className={cn("-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] whitespace-nowrap", tab === t.id ? "border-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
                   {t.label}
                   {t.id === "inbox" && inbox > 0 && <span className="ml-1.5 rounded-full bg-brand-500 px-1.5 py-px text-[10.5px] font-semibold text-white tabular-nums">{inbox}</span>}
                   {t.id === "golden" && <span className="ml-1.5 text-[11px] text-muted-foreground tabular-nums">{counts.labeled}</span>}
                 </button>
               ))}
+              <Link href={`/reward-models/evals/${id}/classic`} title="Production calls, monitoring and alerts, signals from other evals" className="ml-auto shrink-0 self-center px-2 text-[12px] whitespace-nowrap text-muted-foreground hover:text-foreground hover:underline">Monitoring &amp; usage →</Link>
             </nav>
 
             <div className="mt-4">

@@ -91,7 +91,7 @@ export interface Injected { id: number; text: string; kind: "message" | "event" 
 export default function WizardChat({ sessionId, embedded = false, inject = null, onRefresh }: { sessionId: string; embedded?: boolean; inject?: Injected | null; onRefresh?: () => void }) {
   const [entries, setEntries] = useState<TranscriptEntry[] | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
-  const [title, setTitle] = useState("New model");
+  const [title, setTitle] = useState("New eval");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [input, setInput] = useState("");
@@ -172,8 +172,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
         <div className="flex min-w-0 flex-1 flex-col">
           {!embedded && (
             <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
-              <Link href="/reward-models/wizard" className="text-xs text-muted-foreground hover:underline">Model wizard /</Link>
-              <h1 className="m-0 truncate text-sm font-semibold">{title}</h1>
+              <Link href="/reward-models/wizard" className="text-xs text-muted-foreground hover:underline">Eval wizard /</Link>
+              <h1 className="m-0 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
               {modelId && <Link href={`/reward-models/evals/${modelId}`} className="ml-auto text-xs text-muted-foreground hover:underline">Open eval page →</Link>}
             </header>
           )}

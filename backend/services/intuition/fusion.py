@@ -484,9 +484,15 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
 
 
 async def latest_report(owner_id: UUID, model_id: UUID) -> dict | None:
+    """The draft's report once it is trained, else the live version's: an untrained
+    draft (an edited or refined rubric) must not hide the report of what is live."""
     model = await service._model(owner_id, model_id)
-    version = await service._load_version(model["draft_version_id"] or model["active_version_id"])
-    return ((version or {}).get("metrics") or {}).get("report")
+    for version_id in (model["draft_version_id"], model["active_version_id"]):
+        version = await service._load_version(version_id) if version_id else None
+        report = ((version or {}).get("metrics") or {}).get("report")
+        if report:
+            return {**report, "is_live": version_id == model["active_version_id"]}
+    return None
 
 
 # ── Contrastive criteria discovery ───────────────────────────────────────

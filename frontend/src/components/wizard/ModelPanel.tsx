@@ -31,7 +31,7 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
   const counts = detail?.counts;
   return (
     <aside aria-label="Model" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border bg-surface/30 px-4 py-4 lg:block">
-      <h2 className="m-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Your model</h2>
+      <h2 className="m-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Your eval</h2>
       {!modelId || !detail || !v ? (
         <p className="mt-2 text-[12px] text-muted-foreground">Appears here once the wizard creates it.</p>
       ) : (

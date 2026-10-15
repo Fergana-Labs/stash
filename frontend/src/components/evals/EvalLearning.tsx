@@ -12,6 +12,19 @@ import {
 } from "@/lib/intuition-api";
 import { examplePreview } from "./eval-ui";
 
+const SIGNAL_IDS = new Set(["verdict", "embedding_probe"]);
+/**
+ * Same criteria once saved. jsonb reorders keys, saving drops unset fields (null eval_id), and a
+ * retrain re-adds the zero-shot verdict and embedding probe, so compare only the judge's criteria, canonically.
+ */
+export function sameRubric(a: unknown, b: unknown): boolean {
+  const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null).sort(([k1], [k2]) => k1.localeCompare(k2)).map(([k, x]) => [k, canon(x)]))
+    : v;
+  const criteria = (r: unknown) => (Array.isArray(r) ? r : []).filter((q: { id?: string; type?: string }) => !SIGNAL_IDS.has(q.id ?? "") && q.type !== "probe" && q.type !== "eval");
+  return JSON.stringify(canon(criteria(a))) === JSON.stringify(canon(criteria(b)));
+}
+
 const percent = (n: number | null | undefined) => n == null ? "—" : `${Math.round(n * 100)}%`;
 const CHECK_NAMES: Record<string, string> = {
   pinned_examples: "Pinned examples", no_flips: "Examples that got worse", accuracy_not_lower: "Held-out accuracy",
@@ -83,7 +96,7 @@ export function ImprovePanel({ id, detail, examples, busy, onChanged }: { id: st
   useEffect(() => { if (job?.status === "succeeded" && job.id !== finished) { setFinished(job.id); onChanged(); } }, [job, finished, onChanged]);
   const result = job?.status === "succeeded" ? job.result : null;
   const winner = result?.candidates.find((c) => c.name === result.winner);
-  const pending = !!winner && !!detail.draft && JSON.stringify(detail.draft.rubric) === JSON.stringify(winner.rubric) && !!detail.draft.gate;
+  const pending = !!winner && !!detail.draft && sameRubric(detail.draft.rubric, winner.rubric) && !!detail.draft.gate;
   async function apply(force: boolean) {
     setWorking(true); setError("");
     try {

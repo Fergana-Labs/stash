@@ -221,3 +221,21 @@ async def test_wizard_holds_the_brief_until_the_model_exists(client, fakes, scri
     brief = (await client.get(f"{MW}/models/{stored['model_id']}/brief", headers=auth)).json()["brief"]
     assert brief == {"decision": "Send or rewrite a reply", "costly_mistake": "Sending a rude one", "input": "A drafted reply"}
     assert stored["brief"] == {}
+
+
+async def test_report_falls_back_to_the_live_version_while_the_draft_is_untrained(client, fakes):
+    auth = await _auth(client)
+    model_id = await _shipped(client, auth)
+    report = (await client.get(f"{MW}/models/{model_id}/report", headers=auth)).json()["report"]
+    assert report["is_live"] and report["version"] == 1
+    # Editing the instructions opens an untrained draft; the live report still shows.
+    resp = await client.patch(
+        f"/api/v1/intuitions/{model_id}/draft", headers=auth, json={"description": "Stricter"}
+    )
+    assert resp.status_code == 200, resp.text
+    report = (await client.get(f"{MW}/models/{model_id}/report", headers=auth)).json()["report"]
+    assert report["is_live"] and report["version"] == 1
+    trained = await client.post(f"{MW}/models/{model_id}/train", headers=auth)
+    assert trained.status_code == 200, trained.text
+    report = (await client.get(f"{MW}/models/{model_id}/report", headers=auth)).json()["report"]
+    assert not report["is_live"] and report["version"] == 2

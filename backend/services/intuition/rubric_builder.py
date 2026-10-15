@@ -37,6 +37,7 @@ from ...database import get_pool
 from .. import llm
 from . import head as heads
 from . import improve, providers, service
+from . import probe as probes
 from .monitoring import _predicted
 from .spec import MAX_QUESTIONS, classes, feature_names
 
@@ -329,7 +330,7 @@ async def propose(
     prompt = (
         f"WHAT THE EVAL JUDGES:\n{version['description']}\n\n"
         f"LABELS: {json.dumps(version['labels'], ensure_ascii=False)}\n\n"
-        f"CURRENT RUBRIC:\n{json.dumps(version['rubric'], ensure_ascii=False)}\n\n"
+        f"CURRENT RUBRIC:\n{json.dumps([q for q in version['rubric'] if not is_signal(q)], ensure_ascii=False)}\n\n"
         f"CROSS-VALIDATED MISTAKES (true label, predicted, reviewer note, item):\n"
         + ("\n".join(json.dumps(e, ensure_ascii=False) for e in errors) or "none")
         + "\n\nPRODUCTION DISAGREEMENTS (feedback source, right label, judge said, note, item):\n"
@@ -349,14 +350,22 @@ async def propose(
     )
 
 
+def is_signal(q: dict) -> bool:
+    """Composed evals, the embedding probe and the zero-shot verdict: inputs to the head, not criteria to edit."""
+    return q["type"] in ("eval", "probe") or q["id"] in (heads.VERDICT_ID, probes.PROBE_ID)
+
+
 def apply(current: list[dict], proposal: Proposal) -> list[dict]:
     """The proposed rubric, keeping unchanged questions identical so their answers stay cached.
-    Composed and probe questions are signals, not judge questions: they are always kept."""
-    signals = [q for q in current if q["type"] in ("eval", "probe")]
+    Signals are always kept as they were, after the criteria; a proposal that echoes one is ignored."""
+    signals = [q for q in current if is_signal(q)]
     by_id = {q["id"]: q for q in current}
     taken = {q["id"] for q in signals}
+    signal_prompts = {q["prompt"] for q in signals}
     out = []
     for draft in proposal.questions:
+        if draft.id in taken or draft.prompt in signal_prompts:
+            continue
         q = service._question(draft, set(taken))
         old = by_id.get(draft.id)
         if (

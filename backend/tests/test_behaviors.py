@@ -298,7 +298,9 @@ def segment_embedder():
     embeddings.set_embedder(previous)
 
 
-async def test_search_finds_windows_and_filters_by_behavior(client, pool, segment_embedder):
+async def test_search_finds_windows_and_filters_by_behavior(
+    client, pool, segment_embedder, monkeypatch
+):
     auth = await _auth(client)
     owner = await _me(pool, auth)
     refund = await _trace(pool, owner)
@@ -317,6 +319,23 @@ async def test_search_finds_windows_and_filters_by_behavior(client, pool, segmen
     assert body["results"][0]["trace_id"] == str(refund)
     assert {s["start_idx"] for s in body["results"][0]["segments"]} == {0, 4}
     assert body["results"][0]["input"].startswith("Find the refund policy")
+    assert len(body["results"]) == 2  # similarity alone ranks every trace
+
+    async def keep_first(**kwargs):
+        assert "Final answer:" in kwargs["prompt"] and "(closest line:" in kwargs["prompt"]
+        return kwargs["output_model"](relevant=[0])
+
+    async def broken(**kwargs):
+        raise RuntimeError("model down")
+
+    params = {"q": "refund policy order lookup", "rerank": "true"}
+    monkeypatch.setattr(llm, "complete_structured", keep_first)
+    reranked = (await client.get(f"{B}/search", headers=auth, params=params)).json()
+    assert [r["trace_id"] for r in reranked["results"]] == [str(refund)]
+    # Without the rerank the similarity order still answers.
+    monkeypatch.setattr(llm, "complete_structured", broken)
+    fallback = await client.get(f"{B}/search", headers=auth, params=params)
+    assert fallback.status_code == 200 and len(fallback.json()["results"]) == 2
 
     behavior = (
         await client.post(
@@ -397,6 +416,8 @@ async def test_promote_and_export_make_eval_examples(client, pool):
     assert promoted.status_code == 201, promoted.text
     eval_id = promoted.json()["eval_id"]
     assert promoted.json()["examples"] == 1
+    brief = (await client.get(f"/api/v1/model-wizard/models/{eval_id}/brief", headers=auth)).json()
+    assert brief["missing"] == ["costly_mistake", "must_never"]
     examples = (await client.get(f"/api/v1/intuitions/{eval_id}/examples", headers=auth)).json()
     item = examples[0]["item"]
     assert examples[0]["label"] == "yes" and item["window"] == {"start": 4, "end": 4}

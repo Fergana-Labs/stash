@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select } from "@/components/ui/select";
 import { evalInputClass } from "@/components/evals/eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
+import { ApiError } from "@/lib/api";
 import { setHref, tsCaseFromTrace, tsCreate, tsList, type TestSetSummary } from "@/lib/test-sets-api";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,11 @@ export function EvalsViewToggle({ view }: { view: "evals" | "test-sets" }) {
     {item("evals", "/reward-models/evals", "Evals")}
     {item("test-sets", "/reward-models/evals/test-sets", "Test sets")}
   </nav>;
+}
+
+/** A missing or malformed id reads as "not found", not as a validation error. */
+export function notFoundMessage(e: unknown, message: string) {
+  return e instanceof ApiError && (e.status === 404 || e.status === 422) ? message : errorMessage(e);
 }
 
 export function GateBadge({ gate }: { gate: "pass" | "fail" }) {
@@ -37,6 +43,11 @@ export function conversationTurns(steps: RmStep[]) {
 const selectClass = "h-8 w-full min-w-0 px-2 text-xs";
 
 const NEW = "__new";
+const LAST_SET_KEY = "stash:test-sets:last";
+
+function lastSet(): string {
+  try { return localStorage.getItem(LAST_SET_KEY) ?? ""; } catch { return ""; }
+}
 
 /**
  * Turn a trace into a test case. From the trace page you pick which user turn
@@ -68,9 +79,15 @@ export function AddToTestSetDialog({ open, onOpenChange, traceId, steps, uptoIdx
   useEffect(() => {
     if (!open) return;
     setError("");
-    setExpected(steps && userTurns[0] ? answerAfter(userTurns[0].index) : "");
+    // Never prefill with what the agent said: on a failure trace that is the wrong
+    // answer, and saving it unedited would make the bug the expected behavior.
+    setExpected("");
     setTurnIdx(userTurns[0] ? String(userTurns[0].index) : "");
-    tsList().then((r) => { setSets(r.test_sets); setSetId((cur) => cur || r.test_sets[0]?.id || NEW); })
+    tsList().then((r) => {
+      setSets(r.test_sets);
+      const remembered = lastSet();
+      setSetId((cur) => cur || r.test_sets.find((s) => s.id === remembered)?.id || r.test_sets[0]?.id || NEW);
+    })
       .catch((e) => setError(errorMessage(e)));
     // Reset each time it opens; the trace's turns don't change while it is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,6 +99,7 @@ export function AddToTestSetDialog({ open, onOpenChange, traceId, steps, uptoIdx
       const target = setId === NEW ? await tsCreate({ name: newName.trim() }) : sets!.find((s) => s.id === setId)!;
       const upto = steps ? (turnIdx ? Number(turnIdx) : undefined) : uptoIdx;
       await tsCaseFromTrace(target.id, { trace_id: traceId, upto_idx: upto, expected: expected.trim() });
+      try { localStorage.setItem(LAST_SET_KEY, target.id); } catch { /* private mode */ }
       toast.success(`Added to ${target.name}`, { action: { label: "Open", onClick: () => router.push(setHref(target.id)) } });
       onOpenChange(false);
       if (setId === NEW) { setSets(null); setSetId(target.id); setNewName(""); }
@@ -107,13 +125,18 @@ export function AddToTestSetDialog({ open, onOpenChange, traceId, steps, uptoIdx
         <input autoFocus className={evalInputClass} value={newName} maxLength={120} onChange={(e) => setNewName(e.target.value)} placeholder="Support regressions" /></label>}
       {steps && <label className="grid gap-1"><span className="font-medium">Start from</span>
         {userTurns.length
-          ? <Select aria-label="Start from" className={selectClass} value={turnIdx} onChange={(v) => { setTurnIdx(v); setExpected(answerAfter(Number(v))); }}
+          ? <Select aria-label="Start from" className={selectClass} value={turnIdx} onChange={setTurnIdx}
             options={userTurns.map((t, i) => ({ value: String(t.index), label: `Message ${i + 1}: ${t.content.replace(/\s+/g, " ").slice(0, 70)}` }))} />
           : <span className="text-muted-foreground">This trace has no user message to start from.</span>}
       </label>}
       <div className="grid gap-1"><label className="grid gap-1"><span className="font-medium">What should the agent answer?</span>
         <textarea className={evalInputClass} rows={5} value={expected} maxLength={20_000} onChange={(e) => setExpected(e.target.value)}
-          placeholder={steps ? "The answer that counts as right" : "What it should have said"} /></label>
+          placeholder="The answer that counts as right" /></label>
+        {steps && turnIdx && answerAfter(Number(turnIdx)) && <div className="grid gap-1 rounded-md border border-border bg-muted/40 p-2">
+          <span className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">What the agent said
+            <button type="button" className="underline hover:text-foreground" onClick={() => setExpected(answerAfter(Number(turnIdx)))}>Use this</button></span>
+          <p className="line-clamp-4 whitespace-pre-wrap break-words">{answerAfter(Number(turnIdx))}</p>
+        </div>}
         <span className="text-[11px] text-muted-foreground">Runs pass when the answer says the same thing. Leave empty to rely only on the set’s evals.</span>
       </div>
     </div>}

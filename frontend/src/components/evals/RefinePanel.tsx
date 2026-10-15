@@ -7,7 +7,8 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import { imPromote, imRefineStatus, imStartRefine, type Example, type Gate, type ModelDetail, type RefineJob, type RefinePoint } from "@/lib/intuition-api";
 import { cn } from "@/lib/utils";
 import { humanize } from "@/lib/behaviors-api";
-import { promoteChecked, RegressionPanel } from "./EvalLearning";
+import { promoteChecked, RegressionPanel, sameRubric } from "./EvalLearning";
+export { sameRubric };
 
 const percent = (n: number | null | undefined) => n == null ? "—" : `${Math.round(n * 100)}%`;
 const ACCURACY = "#f97316";
@@ -21,15 +22,15 @@ export const editLabel = (kind: string) => EDIT_LABEL[kind] ?? humanize(kind);
 export function passLabel(p: RefinePoint): string {
   if (p.pass === 0) return "Baseline";
   if (!p.edits.length) return p.note ?? "No change";
-  return `${editLabel(p.edits[0].kind)}${p.edits.length > 1 ? ` +${p.edits.length - 1}` : ""}`;
+  return `${editLabel(p.edits[0].kind)}${p.edits.length > 1 ? ` +${p.edits.length - 1} more` : ""}`;
 }
 /** The run ended on a plateau: it finished and its last passes were rejected. */
 export const gainsExhausted = (curve: RefinePoint[], finished: boolean) => finished && curve.length > 1 && !curve.at(-1)!.accepted;
 
-/** Cross-validated accuracy by pass: accepted passes filled and labeled with their edit, rejected ones hollow and gray. */
+/** Cross-validated accuracy by pass: accepted passes filled, rejected ones hollow and gray; hover a point for its edit (the list below spells them out). */
 export function RefineCurve({ curve, finished = false }: { curve: RefinePoint[]; finished?: boolean }) {
   if (!curve.length) return null;
-  const W = 520, H = 170, L = 34, R = 70, T = 24, B = 24;
+  const W = 520, H = 170, L = 34, R = 50, T = 24, B = 24;
   const values = curve.map((p) => p.cv_accuracy).filter((v): v is number => v != null);
   const lo = Math.max(0, Math.min(0.5, ...values) - 0.05), hi = 1;
   const last = Math.max(1, curve.at(-1)!.pass);
@@ -45,13 +46,12 @@ export function RefineCurve({ curve, finished = false }: { curve: RefinePoint[];
       {[lo, (lo + hi) / 2, hi].map((t) => <g key={t}><line x1={L} x2={W - R} y1={y(t)} y2={y(t)} className="stroke-border" strokeWidth={0.5} /><text x={L - 4} y={y(t) + 3} textAnchor="end" className="fill-muted-foreground font-mono text-[8px]">{Math.round(t * 100)}%</text></g>)}
       {line && <polyline points={line} fill="none" stroke={ACCURACY} strokeWidth={1.75} />}
       {exhausted && end && <line x1={x(end.pass)} x2={x(last)} y1={y(end.cv_accuracy!)} y2={y(end.cv_accuracy!)} stroke={ACCURACY} strokeDasharray="3 3" strokeWidth={1.25} opacity={0.6} />}
-      {curve.filter((p) => p.cv_accuracy != null).map((p, i) => <g key={p.pass}>
-        <circle cx={x(p.pass)} cy={y(p.cv_accuracy!)} r={p.accepted ? 3.5 : 3} fill={p.accepted ? ACCURACY : "var(--background)"} stroke={p.accepted ? ACCURACY : "currentColor"} strokeWidth={1.25} className={p.accepted ? undefined : "text-muted-foreground/60"}>
+      {curve.filter((p) => p.cv_accuracy != null).map((p) => <g key={p.pass}>
+        <circle cx={x(p.pass)} cy={y(p.cv_accuracy!)} r={p.accepted ? 3.5 : 3} fill={p.accepted ? ACCURACY : undefined} stroke={p.accepted ? ACCURACY : "currentColor"} strokeWidth={1.25} className={p.accepted ? undefined : "fill-background text-muted-foreground/60"}>
           <title>{`${p.pass === 0 ? "Baseline" : `Pass ${p.pass}`} · ${passLabel(p)} · accuracy ${percent(p.cv_accuracy)} · ${p.pass === 0 ? "starting point" : p.accepted ? "kept" : "rejected"}`}</title>
         </circle>
-        {p.accepted && <text x={x(p.pass)} y={y(p.cv_accuracy!) - (i % 2 ? 14 : 7)} textAnchor="middle" className="fill-foreground text-[8px]">{passLabel(p)}</text>}
       </g>)}
-      {exhausted && end && <text x={x(last) + 6} y={y(end.cv_accuracy!) + 3} className="fill-muted-foreground text-[8.5px] font-medium">Gains exhausted</text>}
+      {exhausted && end && <text x={x(last)} y={y(end.cv_accuracy!) - 7} textAnchor="end" className="fill-muted-foreground text-[8.5px] font-medium">Gains exhausted</text>}
       {curve.map((p) => <text key={p.pass} x={x(p.pass)} y={H - 8} textAnchor="middle" className="fill-muted-foreground font-mono text-[8px]">{p.pass === 0 ? "base" : p.pass}</text>)}
     </svg>
     <figcaption className="mt-1 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
@@ -83,7 +83,7 @@ export default function RefinePanel({ id, detail, examples = [], busy = false, o
 
   const result = job?.status === "succeeded" ? job.result : null;
   const curve = result?.curve ?? job?.progress.curve ?? [];
-  const pending = !!result?.changed && !!detail.draft && JSON.stringify(detail.draft.rubric) === JSON.stringify(result.rubric) && !!detail.draft.gate;
+  const pending = !!result?.changed && !!detail.draft && sameRubric(detail.draft.rubric, result.rubric) && !!detail.draft.gate;
 
   async function start() {
     setError(""); setBlocked(null);
@@ -104,7 +104,7 @@ export default function RefinePanel({ id, detail, examples = [], busy = false, o
         {running ? <><Loader2 className="size-3 animate-spin" />Improving…</> : <><Layers className="size-3" />Improve rubric</>}
       </Button>
     </div>
-    <p className="text-xs text-muted-foreground">Edits the criteria pass by pass, aimed at the eval’s mistakes, production disagreements and contradicted claims. A pass is kept only if cross-validated accuracy improves; it stops when gains run out.</p>
+    <p className="text-xs text-muted-foreground">Edits the criteria pass by pass, aimed at the eval’s mistakes, production disagreements and contradicted claims. A pass is kept only if it lowers cross-validated log loss (more right answers, or the same answers given with better-calibrated confidence); it stops when gains run out.</p>
     {!detail.active && <p className="text-xs text-muted-foreground">Save the eval first.</p>}
     {running && <p role="status" className="text-xs">{job?.progress.message ?? "Working…"}</p>}
     {job?.status === "failed" && <p role="alert" className="text-xs text-destructive">{job.error}</p>}
@@ -116,9 +116,9 @@ export default function RefinePanel({ id, detail, examples = [], busy = false, o
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{p.pass === 0 ? "Baseline" : `Pass ${p.pass}`}</span>
           {p.pass > 0 && <span className={cn("rounded px-1.5 py-px text-[10.5px] font-medium", p.accepted ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>{p.accepted ? "Kept" : "Rejected"}</span>}
-          <span className="tabular-nums text-muted-foreground">accuracy {percent(p.cv_accuracy)} · {p.questions} questions</span>
+          <span className="tabular-nums text-muted-foreground">accuracy {percent(p.cv_accuracy)}{p.cv_log_loss != null ? ` · log loss ${p.cv_log_loss.toFixed(3)}` : ""} · {p.questions} questions</span>
         </div>
-        {p.edits.length > 0 && <ul className="mt-1 list-none space-y-0.5 p-0">{p.edits.map((e, i) => <li key={i} className="flex gap-1.5"><span className="shrink-0 rounded border border-border px-1 text-[10px] text-muted-foreground">{editLabel(e.kind)}</span><span className="min-w-0 text-muted-foreground">{e.rationale}</span></li>)}</ul>}
+        {p.edits.length > 0 && <ul className="mt-1 list-none space-y-0.5 p-0">{p.edits.map((e, i) => <li key={i} className="flex gap-1.5"><span className="shrink-0 self-start rounded border border-border px-1 text-[10px] text-muted-foreground">{editLabel(e.kind)}</span><span className="min-w-0 text-muted-foreground">{e.rationale}</span></li>)}</ul>}
         {p.note && <p className="mt-1 text-[11px] text-muted-foreground">{p.note}</p>}
       </li>)}
     </ol>}

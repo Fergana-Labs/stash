@@ -227,3 +227,30 @@ def test_compare_without_a_baseline_passes_the_gate():
         and summary["pass_rate"] == 0
         and summary["scorers"] == {"expected": 0.0}
     )
+
+
+def test_a_case_that_could_not_be_scored_neither_breaks_nor_counts_as_fixed():
+    results = [
+        {"case_id": "a", "scores": [], "passed": False, "error": "Scoring failed: X"},
+        {"case_id": "b", "scores": [], "passed": True, "error": None},
+    ]
+    summary = service.compare(results, {"a": True, "b": False}, 0)
+    assert summary["broke"] == [] and summary["fixed"] == ["b"] and summary["gate"] == "pass"
+    assert summary["errors"] == 1
+
+
+async def test_resolve_by_a_name_with_a_slash_and_edit_validation(client, queued):
+    auth = await _auth(client)
+    s = (await client.post(T, headers=auth, json={"name": "QA a/b"})).json()
+    resolved = await client.get(f"{T}/resolve/QA%20a%2Fb", headers=auth)
+    assert resolved.status_code == 200 and resolved.json()["id"] == s["id"]
+    other = (await client.post(T, headers=auth, json={"name": "Other"})).json()
+    assert (
+        await client.patch(f"{T}/{other['id']}", headers=auth, json={"name": "QA a/b"})
+    ).status_code == 422
+    case = (
+        await client.post(f"{T}/{s['id']}/cases", headers=auth, json={"cases": [{"input": "hi"}]})
+    ).json()["cases"][0]
+    assert (
+        await client.patch(f"{T}/{s['id']}/cases/{case['id']}", headers=auth, json={"input": " "})
+    ).status_code == 422

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { FieldLabel } from "@/components/behaviors/behavior-ui";
+import { FieldLabel, selectCls } from "@/components/behaviors/behavior-ui";
 import { COHORT_DIMENSIONS, getCohorts, humanize, type Cohort, type CohortBy, type CohortOverview } from "@/lib/behaviors-api";
 import { imEditDraft, imGet, imList, imMineProduction, type MinedCriteria, type ModelSummary, type RubricQuestion } from "@/lib/intuition-api";
 
@@ -92,7 +92,7 @@ function MineCriteriaDialog({ cohort, by, days, label, onClose }: { cohort: Coho
     <div className="grid gap-3">
       <div className="flex items-end gap-2">
         <div className="flex-1"><FieldLabel label="Eval">{evals && evals.length
-          ? <Select aria-label="Eval" value={evalId} onChange={(v) => { setEvalId(v); setMined(null); }} options={evals.map((m) => ({ value: m.id, label: m.name }))} />
+          ? <Select className={selectCls} aria-label="Eval" value={evalId} onChange={(v) => { setEvalId(v); setMined(null); }} options={evals.map((m) => ({ value: m.id, label: m.name }))} />
           : <p className="text-xs text-muted-foreground">{evals ? "No evals yet. Create one under Evals first." : "Loading evals…"}</p>}</FieldLabel></div>
         <Button size="sm" disabled={!evalId || busy} onClick={() => void mine()}>{busy && !mined ? "Mining…" : "Mine"}</Button>
       </div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/lib/intuition-api";
-import { fieldText } from "./im-helpers";
+import { readableText } from "./im-helpers";
 
 const LONG = 240;
 
@@ -11,7 +11,7 @@ const LONG = 240;
 export default function ItemView({ item, clamp = true, className }: { item: Item; clamp?: boolean; className?: string }) {
   const [expanded, setExpanded] = useState(false);
   const image = typeof item === "object" && typeof item.data_url === "string" && /^data:image\/(png|jpeg|webp|gif);base64,/.test(item.data_url) ? item.data_url : null;
-  const entries: [string | null, string][] = typeof item === "string" ? [[null, item]] : Object.entries(item).filter(([k]) => k !== "data_url").map(([k, v]) => [k, fieldText(v)]);
+  const entries: [string | null, string][] = typeof item === "string" ? [[null, item]] : Object.entries(item).filter(([k]) => k !== "data_url").map(([k, v]) => [k, readableText(v)]);
   const long = clamp && entries.some(([, text]) => text.length > LONG || text.split("\n").length > 4);
   const collapsed = long && !expanded;
 

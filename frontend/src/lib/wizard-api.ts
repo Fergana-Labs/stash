@@ -21,6 +21,8 @@ export interface WizardSession {
 export interface LeaderboardRow { name: string; detail: string; n: number; accuracy: number | null; log_loss: number | null; ece: number | null; shipping?: boolean }
 export interface TrainingReport {
   version: number;
+  /** The report belongs to the live version (the draft is untrained or absent): nothing to ship. */
+  is_live?: boolean;
   counts: { train: number; held_out: number; labels: Record<string, number> };
   holdout: Pick<Evaluation, "n" | "accuracy" | "log_loss" | "ece" | "confusion" | "rows" | "classification" | "by_difficulty"> & { accuracy_interval: [number, number] | null; reliability: NonNullable<Evaluation["reliability"]> };
   train_accuracy: number | null;

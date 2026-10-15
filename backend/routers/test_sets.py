@@ -111,7 +111,7 @@ async def create_set(body: CreateSet, user: dict = Depends(get_current_user)):
     )
 
 
-@router.get("/resolve/{ref}")
+@router.get("/resolve/{ref:path}")
 async def resolve(ref: str, user: dict = Depends(get_current_user)):
     found = await checked(service.resolve(user["id"], ref))
     return await checked(service.get_set(user["id"], found["id"]))

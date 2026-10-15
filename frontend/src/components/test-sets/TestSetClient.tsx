@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select } from "@/components/ui/select";
 import { EvalPageFrame, InlinePanel, evalInputClass } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
-import { GateBadge } from "@/components/test-sets/test-set-ui";
+import { GateBadge, notFoundMessage } from "@/components/test-sets/test-set-ui";
 import { imGet, imList, type ModelSummary } from "@/lib/intuition-api";
 import {
   effectiveBaseline, inputPreview, parseCasesJsonl, pct, runDelta, runHref, tsAddCases, tsDelete, tsDeleteCase, tsGet, tsUpdate, tsUpdateCase,
@@ -32,7 +32,7 @@ export default function TestSetClient({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   useBreadcrumbs([{ label: "Evals", href: "/reward-models/evals" }, { label: "Test sets", href: "/reward-models/evals/test-sets" }, { label: set?.name ?? "Test set" }], `test-set:${id}:${set?.name ?? ""}`);
 
-  const load = useCallback(async () => { try { setSet(await tsGet(id)); setError(""); } catch (e) { setError(errorMessage(e)); } }, [id]);
+  const load = useCallback(async () => { try { setSet(await tsGet(id)); setError(""); } catch (e) { setError(notFoundMessage(e, "This test set doesn’t exist or isn’t yours.")); } }, [id]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { imList().then((r) => setEvals(r.models)).catch(() => setEvals([])); }, []);
   const scoring = !!set?.runs.some((r) => r.status === "scoring");
@@ -58,24 +58,25 @@ export default function TestSetClient({ id }: { id: string }) {
   const scoredBy = set.scorers.map((s) => s.type === "expected" ? "Expected answer" : `${evalName(s.eval_id)} (passes: ${s.pass_labels.join(", ")})`).join(" · ");
 
   return <EvalPageFrame title={set.name} description={set.description || undefined}
-    actions={<Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void remove()}><Trash2 />Delete</Button>}>
+    actions={<div className="flex shrink-0 items-center gap-2"><Link href="/reward-models/evals/test-sets" className="text-xs text-muted-foreground hover:text-foreground hover:underline">← Test sets</Link>
+      <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void remove()}><Trash2 />Delete</Button></div>}>
     <p className="-mt-3 mb-6 text-xs text-muted-foreground">
       Scored by: <span className="text-foreground">{scoredBy}</span> · Allowed regressions: <span className="text-foreground tabular-nums">{set.max_regressions}</span>
       <button type="button" className="ml-2 underline hover:text-foreground" onClick={() => setEditing(true)}>Edit</button>
     </p>
-    <RunsSection set={set} onBaseline={(runId) => void patch({ baseline_run_id: runId }, "Baseline set")} />
+    <RunsSection set={set} onBaseline={(runId) => void patch({ baseline_run_id: runId }, runId ? "Baseline set" : "Baseline unpinned")} />
     <CasesSection set={set} onChanged={() => void load()} />
     <CiCard name={set.name} defaultOpen={!set.runs.length} />
     <ScoringDialog open={editing} onOpenChange={setEditing} set={set} evals={evals} onSave={(body) => patch(body)} />
   </EvalPageFrame>;
 }
 
-function RunsSection({ set, onBaseline }: { set: TestSet; onBaseline: (runId: string) => void }) {
+function RunsSection({ set, onBaseline }: { set: TestSet; onBaseline: (runId: string | null) => void }) {
   const router = useRouter();
   const baseline = effectiveBaseline(set);
   return <section aria-label="Runs" className="mb-8">
     <h2 className="mb-2 text-sm font-semibold">Runs</h2>
-    {!set.runs.length ? <p className="rounded border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">No runs yet. Run the set from CI (below) to record your agent’s answers; each run is compared with the one before it.</p>
+    {!set.runs.length ? <p className="rounded border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">No runs yet. Run the set from CI (below) to record your agent’s answers; each run is compared with the last run that passed.</p>
       : <div className="overflow-x-auto rounded border border-border"><table aria-label="Runs" className="w-full min-w-[720px] text-left text-xs">
         <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Run</th><th>When</th><th className="text-right">Passed</th><th className="text-right">Broke</th><th className="text-right">Fixed</th><th>Gate</th><th className="w-36" /></tr></thead>
         <tbody>{set.runs.map((r) => {
@@ -95,7 +96,9 @@ function RunsSection({ set, onBaseline }: { set: TestSet; onBaseline: (runId: st
             <td className={cn("text-right tabular-nums", s?.broke.length ? "font-medium text-destructive" : "text-muted-foreground")}>{s?.baseline ? s.broke.length : "—"}</td>
             <td className={cn("text-right tabular-nums", s?.fixed.length ? "font-medium text-success" : "text-muted-foreground")}>{s?.baseline ? s.fixed.length : "—"}</td>
             <td>{s?.baseline ? <GateBadge gate={s.gate} /> : <span className="text-muted-foreground" title="The first run has nothing to compare with.">—</span>}</td>
-            <td className="text-right">{!isBaseline && r.status === "done" && <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onBaseline(r.id)}>Use as baseline</Button>}</td>
+            <td className="text-right">{isBaseline && set.baseline_run_id
+              ? <Button size="xs" variant="ghost" className="text-muted-foreground" title="Go back to comparing with the latest run that passed" onClick={() => onBaseline(null)}>Unpin</Button>
+              : !isBaseline && r.status === "done" && <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onBaseline(r.id)}>Use as baseline</Button>}</td>
           </tr>;
         })}</tbody>
       </table></div>}
@@ -143,7 +146,7 @@ function CasesSection({ set, onChanged }: { set: TestSet; onChanged: () => void 
   }
 
   return <section aria-label="Cases" className="mb-8">
-    <div className="mb-2 flex items-center gap-2">
+    <div className="mb-2 flex flex-wrap items-center gap-2">
       <h2 className="text-sm font-semibold">Cases <span className="font-normal text-muted-foreground tabular-nums">{set.cases.length}</span></h2>
       <div className="ml-auto flex gap-2">
         <Button size="xs" variant="outline" onClick={() => file.current?.click()}><Upload />Import JSONL</Button>

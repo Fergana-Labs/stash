@@ -110,7 +110,7 @@ async def test_refine_keeps_a_better_rubric_and_drafts_it(client, fakes, monkeyp
     calls = []
 
     def judged(rubric):
-        return [q["id"] for q in rubric if q["type"] not in ("eval", "probe")]
+        return [q["id"] for q in rubric if not rubric_builder.is_signal(q)]
 
     async def propose(version, errors, production, contradicted, history, judges=None):
         calls.append(judged(version["rubric"]))
@@ -235,3 +235,39 @@ async def test_cohorts_and_criteria_mined_from_reactions(client, pool, monkeypat
 )
 def test_only_real_gains_are_kept(candidate, best, expected):
     assert rubric_builder.better(candidate, best) is expected
+
+
+def test_apply_never_turns_signals_into_criteria():
+    criterion = {
+        "id": "polite",
+        "type": "noul",
+        "prompt": "Is it polite?",
+        "criteria": {"true": "Polite", "false": "Rude"},
+    }
+    verdict = {
+        "id": "verdict",
+        "type": "choice",
+        "prompt": "Which label fits?",
+        "criteria": {"a": "A", "b": "B"},
+    }
+    probe = {
+        "id": "embedding_probe",
+        "type": "probe",
+        "prompt": "Learned from your labeled examples: which of them does this item most resemble?",
+        "criteria": {"a": "A", "b": "B"},
+        "version_id": "p1",
+    }
+    echoed = service._QuestionDraft(
+        id="embedding_probe",
+        type="noul",
+        prompt=probe["prompt"],
+        criteria=[
+            service._Criterion(key="true", description="A"),
+            service._Criterion(key="false", description="B"),
+        ],
+    )
+    proposal = _proposal([criterion, verdict], add=False)
+    proposal.questions.append(echoed)
+    out = rubric_builder.apply([criterion, verdict, probe], proposal)
+    assert [q["id"] for q in out] == ["polite", "verdict", "embedding_probe"]
+    assert out[1] is verdict and out[2] is probe

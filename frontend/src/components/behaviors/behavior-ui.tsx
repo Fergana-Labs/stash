@@ -192,12 +192,13 @@ export function groupBySession(results: SearchResult[]): { session: string | nul
 }
 
 const inputCls = "h-8 w-full rounded-md border border-border bg-transparent px-2 text-xs outline-none focus-visible:border-ring";
+const selectCls = "h-8 w-full px-2 text-xs";
 
 export function FieldLabel({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return <label className="grid gap-1 text-xs"><span className="font-medium">{label}</span>{children}{hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}</label>;
 }
 
-export { inputCls };
+export { inputCls, selectCls };
 
 /** Behaviors as one multi-select dropdown. */
 export function BehaviorMultiSelect({ behaviors, selected, onChange }: { behaviors: Pick<Behavior, "id" | "name" | "actor">[]; selected: Set<string>; onChange: (next: Set<string>) => void }) {
@@ -237,6 +238,7 @@ export function NewBehaviorDialog({ open, onOpenChange, onCreated }: { open: boo
   }, [open, templates]);
 
   function done(created: Behavior) {
+    toast.success(`Added “${created.name}”`, { description: "Existing traces are scanned for it in the background." });
     onCreated(created);
     onOpenChange(false);
     setName(""); setDefinition(""); setExamples(""); setVerify(false);
@@ -279,8 +281,8 @@ export function NewBehaviorDialog({ open, onOpenChange, onCreated }: { open: boo
     <div className="grid gap-3">
       <FieldLabel label="Name"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Refund promised without checking policy" /></FieldLabel>
       <div className="grid grid-cols-2 gap-3">
-        <FieldLabel label="Who does it"><Select aria-label="Actor" value={actor} onChange={(v) => setActor(v as Actor)} options={ACTORS} /></FieldLabel>
-        <FieldLabel label="Severity"><Select aria-label="Severity" value={severity} onChange={(v) => setSeverity(v as Severity)} options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))} /></FieldLabel>
+        <FieldLabel label="Who does it"><Select className={selectCls} aria-label="Actor" value={actor} onChange={(v) => setActor(v as Actor)} options={ACTORS} /></FieldLabel>
+        <FieldLabel label="Severity"><Select className={selectCls} aria-label="Severity" value={severity} onChange={(v) => setSeverity(v as Severity)} options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))} /></FieldLabel>
       </div>
       <FieldLabel label="Describe it in words" hint="What counts, in plain language. A model reads this to tag trace windows.">
         <Textarea value={definition} onChange={(e) => setDefinition(e.target.value)} rows={3} className="text-xs md:text-xs" />
@@ -325,7 +327,7 @@ export function ReleaseDialog({ open, onOpenChange, agents, onCreated }: { open:
       <FieldLabel label="Label"><input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="v2.3 prompt update" /></FieldLabel>
       <div className="grid grid-cols-2 gap-3">
         <FieldLabel label="Agent" hint="Optional">{agents.length
-          ? <Select aria-label="Agent" value={agent} onChange={setAgent} options={[{ value: "", label: "All agents" }, ...agents.map((a) => ({ value: a, label: a }))]} />
+          ? <Select className={selectCls} aria-label="Agent" value={agent} onChange={setAgent} options={[{ value: "", label: "All agents" }, ...agents.map((a) => ({ value: a, label: a }))]} />
           : <input className={inputCls} value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="All agents" />}</FieldLabel>
         <FieldLabel label="When"><input type="datetime-local" className={inputCls} value={at} onChange={(e) => setAt(e.target.value)} /></FieldLabel>
       </div>
@@ -389,14 +391,14 @@ export function SaveToEvalDialog({ open, onOpenChange, windows, onSaved }: { ope
 
   const choices = evals?.filter((m) => m.output_type === "choice") ?? [];
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md">
-    <DialogHeader><DialogTitle>Add to eval</DialogTitle><DialogDescription>{windows.length} trace window{windows.length === 1 ? "" : "s"} become labeled examples.</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>Add to eval</DialogTitle><DialogDescription>{windows.length === 1 ? "1 trace window becomes a labeled example." : `${windows.length} trace windows become labeled examples.`}</DialogDescription></DialogHeader>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {!evals && !error ? <p role="status" className="text-xs text-muted-foreground">Loading evals…</p>
       : !choices.length ? <p className="text-xs text-muted-foreground">No label evals yet. Create one under Evals first.</p>
       : <div className="grid gap-3">
-        <FieldLabel label="Eval"><Select aria-label="Eval" value={evalId} onChange={setEvalId} options={choices.map((m) => ({ value: m.id, label: m.name }))} /></FieldLabel>
+        <FieldLabel label="Eval"><Select className={selectCls} aria-label="Eval" value={evalId} onChange={setEvalId} options={choices.map((m) => ({ value: m.id, label: m.name }))} /></FieldLabel>
         <FieldLabel label="Label">{labels.length
-          ? <Select aria-label="Label" value={label} onChange={setLabel} options={labels.map((l) => ({ value: l, label: humanize(l) }))} />
+          ? <Select className={selectCls} aria-label="Label" value={label} onChange={setLabel} options={labels.map((l) => ({ value: l, label: humanize(l) }))} />
           : <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" />}</FieldLabel>
       </div>}
     <DialogFooter><Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button size="sm" disabled={!evalId || !label || saving || !windows.length} onClick={() => void save()}>{saving ? "Adding…" : "Add to eval"}</Button></DialogFooter>

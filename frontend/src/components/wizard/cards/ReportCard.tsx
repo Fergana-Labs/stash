@@ -91,7 +91,7 @@ export default function ReportCard() {
     <CardShell
       icon={BarChart3}
       title="Training report"
-      subtitle={report ? `Version ${report.version} · ${report.counts.train} training, ${report.counts.held_out} held-out` : undefined}
+      subtitle={report ? `Version ${report.version}${report.is_live ? " (live)" : ""} · ${report.counts.train} training, ${report.counts.held_out} held-out` : undefined}
       actions={<Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void retrain()}><RefreshCw className={cn(busy === "train" && "animate-spin")} />{busy === "train" ? "Training…" : "Retrain"}</Button>}
     >
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
@@ -176,7 +176,7 @@ export default function ReportCard() {
           )}
 
           <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-            <Button size="sm" disabled={!!busy} onClick={() => void ship()}><Rocket />{busy === "ship" ? "Shipping…" : report.gate.passed ? "Ship it" : "Ship anyway"}</Button>
+            {!report.is_live && <Button size="sm" disabled={!!busy} onClick={() => void ship()}><Rocket />{busy === "ship" ? "Shipping…" : report.gate.passed ? "Ship it" : "Ship anyway"}</Button>}
             <Button size="sm" variant="outline" disabled={!!busy} onClick={() => send("Harden the model against manipulation attempts.")}><ShieldCheck />Harden</Button>
             <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => send("Show me the examples it got wrong so I can check the labels.")}>Review mistakes</Button>
           </div>

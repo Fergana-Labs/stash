@@ -7,19 +7,20 @@ import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { GateBadge } from "@/components/test-sets/test-set-ui";
-import { pct, setHref, tsGet, tsGetRun, type CaseInput, type ResultRow, type RunDetail } from "@/lib/test-sets-api";
+import { GateBadge, notFoundMessage } from "@/components/test-sets/test-set-ui";
+import { pct, runHref, setHref, tsGet, tsGetRun, type CaseInput, type ResultRow, type RunDetail } from "@/lib/test-sets-api";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 3000;
 
-export type ResultStatus = "broke" | "fixed" | "pass" | "fail";
+export type ResultStatus = "broke" | "fixed" | "pass" | "fail" | "error";
 export function resultStatus(r: ResultRow): ResultStatus {
+  if (r.error) return "error";
   if (r.passed && r.baseline_passed === false) return "fixed";
   if (!r.passed && r.baseline_passed === true) return "broke";
   return r.passed ? "pass" : "fail";
 }
-const ORDER: Record<ResultStatus, number> = { broke: 0, fail: 1, fixed: 2, pass: 3 };
+const ORDER: Record<ResultStatus, number> = { broke: 0, fail: 1, error: 2, fixed: 3, pass: 4 };
 const FILTERS = [
   { value: "all", label: "All" }, { value: "broke", label: "Broke" }, { value: "fixed", label: "Fixed" }, { value: "failing", label: "Failing" },
 ] as const;
@@ -41,7 +42,9 @@ export function RunSummaryLine({ run }: { run: RunDetail }) {
   if (run.status === "failed" || !s) return <p className="text-xs text-destructive">{run.error ?? "Scoring failed"}</p>;
   return <p className="flex flex-wrap items-center gap-x-2 text-[13px]">
     <span><span className="font-medium tabular-nums">{s.passed}/{s.cases}</span> passed ({pct(s.pass_rate)})</span>
-    {s.baseline && <><span className="text-muted-foreground">·</span><span className="text-muted-foreground">baseline {pct(s.baseline.pass_rate)}</span>
+    {s.baseline && <><span className="text-muted-foreground">·</span>{run.baseline_run_id
+      ? <Link href={runHref(run.baseline_run_id)} className="text-muted-foreground hover:text-foreground hover:underline" title="Open the run this one is compared with">baseline {pct(s.baseline.pass_rate)}</Link>
+      : <span className="text-muted-foreground">baseline {pct(s.baseline.pass_rate)}</span>}
       <span className="text-muted-foreground">·</span><span className="inline-flex items-center gap-1.5">Gate: <GateBadge gate={s.gate} /></span></>}
     {s.errors > 0 && <><span className="text-muted-foreground">·</span><span className="text-destructive">{s.errors} couldn’t be scored</span></>}
   </p>;
@@ -58,7 +61,7 @@ export default function RunClient({ runId }: { runId: string }) {
     ...(run ? [{ label: setName || "Test set", href: setHref(run.set_id) }] : []), { label: run?.label || "Run" },
   ], `test-run:${runId}:${setName}:${run?.label ?? ""}`);
 
-  const load = useCallback(async () => { try { setRun(await tsGetRun(runId)); setError(""); } catch (e) { setError(errorMessage(e)); } }, [runId]);
+  const load = useCallback(async () => { try { setRun(await tsGetRun(runId)); setError(""); } catch (e) { setError(notFoundMessage(e, "This run doesn’t exist or isn’t yours.")); } }, [runId]);
   useEffect(() => { void load(); }, [load]);
   const setId = run?.set_id;
   useEffect(() => { if (setId) tsGet(setId).then((s) => setSetName(s.name)).catch((e) => toast.error(errorMessage(e))); }, [setId]);
@@ -75,7 +78,8 @@ export default function RunClient({ runId }: { runId: string }) {
   const shown = rows.filter((r) => matches(filter, r));
   const toggle = (id: string) => setOpen((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
-  return <EvalPageFrame title={`${setName ? `${setName} · ` : ""}${run.label || "Unlabeled run"}`}>
+  return <EvalPageFrame title={run.label || "Unlabeled run"}
+    actions={<Link href={setHref(run.set_id)} className="shrink-0 text-xs text-muted-foreground hover:text-foreground hover:underline">← {setName || "Test set"}</Link>}>
     <div className="-mt-3 mb-5"><RunSummaryLine run={run} /></div>
     <nav aria-label="Filter results" className="mb-3 flex gap-1 text-xs">{FILTERS.map((f) => {
       const n = rows.filter((r) => matches(f.value, r)).length;
@@ -107,8 +111,9 @@ export default function RunClient({ runId }: { runId: string }) {
 }
 
 export function StatusBadge({ status }: { status: ResultStatus }) {
-  const style = { broke: "bg-destructive/10 text-destructive", fail: "text-destructive", fixed: "bg-success/10 text-success", pass: "text-success" }[status];
-  return <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium", style)}>{status === "broke" ? "Broke" : status === "fixed" ? "Fixed" : status === "pass" ? "Pass" : "Fail"}</span>;
+  const style = { broke: "bg-destructive/10 text-destructive", fail: "text-destructive", error: "text-muted-foreground", fixed: "bg-success/10 text-success", pass: "text-success" }[status];
+  const label = { broke: "Broke", fail: "Fail", error: "Not scored", fixed: "Fixed", pass: "Pass" }[status];
+  return <span className={cn("inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium", style)}>{label}</span>;
 }
 
 function inputText(input: CaseInput) {

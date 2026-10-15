@@ -39,3 +39,16 @@ it("summarizes the run, lists what broke first, and filters by status", async ()
   expect(screen.getByText("Baseline (passed)")).toBeInTheDocument();
   expect(screen.getByText("old answer")).toBeInTheDocument();
 });
+
+it("marks a case that couldn't be scored apart from a failure and links the baseline run", async () => {
+  api.getRun.mockResolvedValueOnce({
+    id: "r3", set_id: "s1", label: "v3", status: "done", error: null, baseline_run_id: "r1", created_at: "", finished_at: "",
+    summary: { cases: 1, passed: 0, pass_rate: 0, errors: 1, scorers: {}, baseline: { pass_rate: 1, cases: 1 }, broke: [], fixed: [], gate: "pass" },
+    results: [{ ...result("refund", false, true), scores: [], error: "Scoring failed: Jev request failed (HTTP 402)" }],
+  } satisfies RunDetail);
+  render(<RunClient runId="r3" />);
+  expect(await screen.findByText("Not scored")).toBeInTheDocument();
+  expect(within(screen.getByRole("table", { name: "Results" })).queryByText("Broke")).toBeNull();
+  expect(screen.getByText("Scoring failed: Jev request failed (HTTP 402)")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "baseline 100%" })).toHaveAttribute("href", "/reward-models/evals/test-sets/runs/r1");
+});

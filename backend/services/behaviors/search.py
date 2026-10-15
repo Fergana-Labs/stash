@@ -10,6 +10,7 @@ An optional rerank asks Claude to keep only the traces that answer the query.
 
 from __future__ import annotations
 
+import logging
 import re
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from ..rm.monitoring import AGENT_SQL
 CANDIDATES = 200
 SEGMENTS_PER_TRACE = 3
 SNIPPET_CHARS = 600
+
+logger = logging.getLogger(__name__)
 
 
 def _filters(start: int) -> str:
@@ -159,9 +162,12 @@ class _Ranked(BaseModel):
 
 
 async def _rerank(q: str, results: list[dict]) -> list[dict]:
+    # Snippets are the start of each segment; the matching line and the final answer
+    # may sit past the cut, so they go in too.
     listing = "\n\n".join(
         f"#{i} {r['title'] or 'Untitled'} (behaviors: {', '.join(sorted({b['name'] for b in r['behaviors']})) or 'none'})\n"
-        + "\n---\n".join(s["snippet"] for s in r["segments"])
+        + "\n---\n".join(f"{s['snippet']}\n(closest line: {s['quote']})" for s in r["segments"])
+        + (f"\nFinal answer: {r['final_output']}" if r.get("final_output") else "")
         for i, r in enumerate(results)
     )
     ranked = await llm.complete_structured(
@@ -209,7 +215,11 @@ async def search(
     for r in results:
         r.pop("id", None)
     if q and rerank and results:
-        results = await _rerank(q, results)
+        try:
+            results = await _rerank(q, results)
+        except Exception:
+            # Without the rerank the similarity order still answers the query, just less sharply.
+            logger.exception("search rerank failed")
     return {
         "query": q,
         "mode": "semantic" if q and embeddings.is_configured() else "text" if q else "browse",

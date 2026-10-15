@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RubricQuestion } from "@/lib/intuition-api";
 import {
   describeFeature,
+  readableText,
   detectItemKeys,
   groupFeatures,
   invalidatedQuestions,
@@ -118,5 +119,19 @@ describe("metrics helpers", () => {
     expect(pYes({ true: 0.8, false: 0.2 })).toBe(0.8);
     expect(pYes({ false: 0.25 })).toBe(0.75);
     expect(pYes(undefined)).toBeNull();
+  });
+});
+
+describe("readableText", () => {
+  it("reads trace steps and messages as one line per turn", () => {
+    expect(readableText([
+      { role: "user", content: "Where is order 7755?" },
+      { role: "assistant", content: "", tool_name: "get_order", tool_input: { order_id: "7755" } },
+      { role: "tool", content: "{\"status\":\"shipped\"}" },
+    ])).toBe("user: Where is order 7755?\nassistant → get_order({\"order_id\":\"7755\"})\ntool: {\"status\":\"shipped\"}");
+  });
+  it("indents other structures and passes text through", () => {
+    expect(readableText({ a: 1 })).toBe("{\n  \"a\": 1\n}");
+    expect(readableText("hi")).toBe("hi");
   });
 });
