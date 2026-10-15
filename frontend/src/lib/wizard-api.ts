@@ -16,6 +16,13 @@ export type TranscriptEntry =
 export interface WizardSession {
   id: string; model_id: string | null; title: string; created_at: string; updated_at: string;
   transcript?: TranscriptEntry[]; model_name?: string | null;
+  status: "draft" | "saved"; draft_input?: string;
+}
+
+export function wizardSessionName(session: WizardSession): string {
+  if (session.model_name) return session.model_name;
+  if (!["New model", "New eval", "Untitled eval"].includes(session.title)) return session.title;
+  return session.draft_input?.trim().split("\n")[0].slice(0, 100) || "Untitled eval";
 }
 
 export interface LeaderboardRow { name: string; detail: string; n: number; accuracy: number | null; log_loss: number | null; ece: number | null; shipping?: boolean }
@@ -51,6 +58,7 @@ const post = <T>(path: string, body?: unknown) =>
 export const wzSessions = () => apiFetch<{ sessions: WizardSession[] }>(`${MW}/sessions`);
 export const wzCreate = (model_id?: string | null) => post<WizardSession>(`${MW}/sessions`, { model_id: model_id ?? null });
 export const wzGet = (id: string) => apiFetch<WizardSession>(`${MW}/sessions/${id}`);
+export const wzSaveDraft = (id: string, text: string) => apiFetch<{ saved: boolean }>(`${MW}/sessions/${id}/draft`, { method: "PATCH", body: JSON.stringify({ text }), keepalive: true });
 export const wzDelete = (id: string) => apiFetch<void>(`${MW}/sessions/${id}`, { method: "DELETE" });
 export const wzTrain = (modelId: string) => post<TrainingReport>(`${MW}/models/${modelId}/train`);
 export const wzReport = (modelId: string) => apiFetch<{ report: TrainingReport | null }>(`${MW}/models/${modelId}/report`);
@@ -130,6 +138,7 @@ export type WizardEvent =
   | { type: "progress"; id: string; stage: string; message: string; done: number; total: number }
   | ({ type: "card" } & Card)
   | { type: "model"; model_id: string; title: string }
+  | { type: "complete"; model_id: string }
   | { type: "done"; model_id: string | null }
   | { type: "error"; message: string };
 

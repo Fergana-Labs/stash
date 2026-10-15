@@ -9,30 +9,51 @@ import { Button } from "@/components/ui/button";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { EvalsViewToggle } from "@/components/test-sets/test-set-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
+import { wizardSessionName, wzSessions, type WizardSession } from "@/lib/wizard-api";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
+
+const actionClass = "h-[26px] gap-1.5 rounded-[4px] px-2 text-[11px] font-normal shadow-none [&_svg]:size-3";
 
 export default function EvalsPage() {
   useBreadcrumbs([{ label: "Evals" }], "evals");
   const [models, setModels] = useState<ModelSummary[] | null>(null);
+  const [sessions, setSessions] = useState<WizardSession[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const router = useRouter();
-  const load = useCallback(async () => { try { setModels((await imList()).models); setError(""); } catch (e) { setError(errorMessage(e)); } }, []);
+  const load = useCallback(async () => {
+    try {
+      const [evals, drafts] = await Promise.all([imList(), wzSessions()]);
+      setModels(evals.models); setSessions(drafts.sessions); setError("");
+    } catch (e) { setError(errorMessage(e)); }
+  }, []);
   useEffect(() => { void load(); }, [load]);
-  const visible = models?.filter((model) => `${model.name} ${model.active_description ?? model.draft_description ?? ""}`.toLowerCase().includes(query.toLowerCase())) ?? [];
-  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href="/reward-models/wizard">Build with the wizard</Link></Button><Button size="sm" asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
+  const rows = [
+    ...(models ?? []).map((model) => {
+      const session = sessions.find((s) => s.model_id === model.id);
+      return { id: model.id, name: model.name, draft: model.active_number == null,
+        href: model.active_number == null && session ? `/reward-models/wizard/${session.id}` : `/reward-models/evals/${model.id}`,
+        description: model.active_description ?? model.draft_description ?? "", examples: model.examples, metrics: model.active_metrics };
+    }),
+    ...sessions.filter((s) => !s.model_id).map((session) => ({
+      id: `wizard:${session.id}`, name: wizardSessionName(session), draft: true,
+      href: `/reward-models/wizard/${session.id}`, description: session.draft_input ?? "", examples: 0, metrics: null,
+    })),
+  ];
+  const visible = rows.filter((row) => `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()));
+  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-1.5"><Button size="xs" variant="outline" className={actionClass} asChild><Link href="/reward-models/wizard">Build with the wizard</Link></Button><Button size="xs" className={actionClass} asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
     <EvalsViewToggle view="evals" />
     {error && <p role="alert" className="text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p>}
     <div className="mb-3 flex items-center justify-between gap-3"><label className="flex h-8 w-64 items-center gap-2 rounded-md border border-border px-2"><Search className="size-3 text-muted-foreground" /><input aria-label="Search evals" placeholder="Search evals…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><span className="text-xs text-muted-foreground">{models ? `${visible.length} evals` : ""}</span></div>
-    <div className="overflow-x-auto rounded border border-border"><table aria-label="Evals" className="w-full min-w-[640px] text-left text-xs"><thead className="border-y border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Eval</th><th>Status</th><th className="text-right">Examples</th><th className="text-right">Holdout agreement</th></tr></thead><tbody>
+    <div className="overflow-x-auto rounded border border-border"><table aria-label="Evals" className="w-full min-w-[640px] text-left text-xs"><thead className="border-y border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Eval</th><th className="text-right">Examples</th><th className="text-right">Holdout agreement</th></tr></thead><tbody>
       {visible.map((model) => <tr key={model.id} className="h-11 cursor-pointer border-b border-border hover:bg-surface/60 [&>td]:px-3" onClick={(event) => {
         if ((event.target as HTMLElement).closest("a")) return;
-        router.push(`/reward-models/evals/${model.id}`);
+        router.push(model.href);
       }}>
-        <td><Link href={`/reward-models/evals/${model.id}`} className="block py-2 text-left font-medium">{model.name}</Link></td><td><span className="inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 text-[11px]"><span className={`size-1.5 rounded-full ${model.active_number === null ? "bg-muted-foreground/50" : "bg-success"}`} />{model.active_number === null ? "Not saved" : "Saved"}</span></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.active_metrics?.eval.accuracy == null ? "—" : `${Math.round(model.active_metrics.eval.accuracy * 100)}% · ${model.active_metrics.eval.n} checked`}</td>
+        <td><div className="flex items-center gap-2"><Link href={model.href} className="block py-2 text-left font-medium">{model.name}</Link>{model.draft && <span className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Draft</span>}</div></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.metrics?.eval.accuracy == null ? "—" : `${Math.round(model.metrics.eval.accuracy * 100)}% · ${model.metrics.eval.n} checked`}</td>
       </tr>)}
-      {!models && !error && <tr><td colSpan={4} className="py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
-      {models && !visible.length && <tr><td colSpan={4} className="py-8 text-muted-foreground">{models.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}
+      {!models && !error && <tr><td colSpan={3} className="py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
+      {models && !visible.length && <tr><td colSpan={3} className="py-8 text-muted-foreground">{rows.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}
     </tbody></table></div>
   </EvalPageFrame>;
 }

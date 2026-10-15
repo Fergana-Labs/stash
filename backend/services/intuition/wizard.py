@@ -26,6 +26,8 @@ import uuid
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+from anyio import CancelScope
+
 from ...config import settings
 from ...database import get_pool
 from .. import llm
@@ -86,8 +88,8 @@ judge cannot see.
 many there are and next to zero-shot Jev. Fewer than ~20 held out is an early estimate.
 9. People are the ceiling. If two people disagree on 20% of cases, 80% agreement with one of them \
 is the best a judge can do. When people disagree, fix the label definitions, not the judge.
-10. The eval is never done. Real traffic flows into the Inbox; corrections become golden examples; \
-recurring reasons become criteria; duplicates get pruned.
+10. This wizard is one-time setup. After the first trained version is saved, the user's own agent \
+can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -125,10 +127,9 @@ top drivers, whether pinned cases pass. open_golden if coverage is thin.
 J. Calibrate if anyone else judges these cases: invite_reviewer creates a private link; when they \
 are done, open_agreement and explain the ceiling (principle 9).
 K. Harden when inputs could be written by someone who wants a particular answer. Ship (promote) \
-when the gate passes. Then point to the playground and the API, and explain the loop: traffic \
-lands in the Inbox, triage it, corrections improve the next version.
-After shipping: open_inbox to review what it decided on real traffic (confirm or correct, with a \
-reason), suggest_criteria_from_corrections when reviewers have given reasons, and train again.
+when the gate passes and the user is ready. Successful publication opens the finished eval.
+After shipping, setup is complete. Stop here. Ongoing changes belong to the user's own agent \
+through MCP; do not continue this chat as an ongoing editing agent.
 
 The CURRENT STATE below shows the brief and what it is missing; work toward a complete brief \
 before training, but never block the user -- if they want to rush, note what is missing and go.
@@ -440,18 +441,22 @@ def _session(row) -> dict:
 
 async def create_session(owner_id: UUID, model_id: UUID | None = None) -> dict:
     if model_id is not None:
-        await service._model(owner_id, model_id)
+        model = await service._model(owner_id, model_id)
+        if model["active_version_id"]:
+            raise service.Conflict("Setup is complete. Edit this eval through MCP.")
     row = await get_pool().fetchrow(
         "INSERT INTO intuition_wizard_sessions (owner_user_id, model_id) VALUES ($1, $2) RETURNING *",
         owner_id,
         model_id,
     )
-    return _session(row)
+    return await get_session(owner_id, row["id"])
 
 
 async def list_sessions(owner_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
-        """SELECT s.id, s.model_id, s.title, s.created_at, s.updated_at, m.name AS model_name
+        """SELECT s.id, s.model_id, s.title, s.created_at, s.updated_at, m.name AS model_name,
+                  CASE WHEN m.active_version_id IS NULL THEN 'draft' ELSE 'saved' END AS status,
+                  s.draft_input
              FROM intuition_wizard_sessions s
              LEFT JOIN intuition_models m ON m.id = s.model_id
             WHERE s.owner_user_id = $1 ORDER BY s.updated_at DESC LIMIT 50""",
@@ -462,13 +467,28 @@ async def list_sessions(owner_id: UUID) -> list[dict]:
 
 async def get_session(owner_id: UUID, session_id: UUID) -> dict:
     row = await get_pool().fetchrow(
-        "SELECT * FROM intuition_wizard_sessions WHERE id = $1 AND owner_user_id = $2",
+        """SELECT s.*, m.name AS model_name,
+                  CASE WHEN m.active_version_id IS NULL THEN 'draft' ELSE 'saved' END AS status
+             FROM intuition_wizard_sessions s LEFT JOIN intuition_models m ON m.id = s.model_id
+            WHERE s.id = $1 AND s.owner_user_id = $2""",
         session_id,
         owner_id,
     )
     if row is None:
         raise service.NotFound("Wizard session not found")
     return _session(row)
+
+
+async def save_draft(owner_id: UUID, session_id: UUID, text: str) -> dict:
+    await get_session(owner_id, session_id)
+    await get_pool().execute(
+        """UPDATE intuition_wizard_sessions SET draft_input = $3, updated_at = now()
+             WHERE id = $1 AND owner_user_id = $2""",
+        session_id,
+        owner_id,
+        text,
+    )
+    return {"saved": True}
 
 
 async def delete_session(owner_id: UUID, session_id: UUID) -> None:
@@ -609,10 +629,12 @@ async def run_tool(
         )
         session["model_id"] = str(detail["model"]["id"])
         session["title"] = args["name"][:160]
+        await _save(session)
         brief = {**session["brief"], **_brief_fields(args.get("brief") or {})}
         if brief:
             await curation.save_brief(owner_id, UUID(session["model_id"]), brief)
         session["brief"] = {}
+        await _save(session)
         return {"created": True, "model_id": session["model_id"]}, None
     if name == "save_brief":
         if not session["model_id"]:
@@ -808,6 +830,9 @@ async def stream_turn(
     owner_id: UUID, session_id: UUID, text: str, kind: str = "message"
 ) -> AsyncIterator[dict]:
     session = await get_session(owner_id, session_id)
+    if session["status"] == "saved":
+        raise service.Conflict("Setup is complete. Edit this eval through MCP.")
+    _repair_dangling(session["messages"])
     session["transcript"].append({"role": "user", "kind": kind, "text": text})
     said = text if kind == "message" else f"[card] {text}"
     last = session["messages"][-1] if session["messages"] else None
@@ -818,8 +843,18 @@ async def stream_turn(
         session["messages"].append({"role": "user", "content": said})
     parts: list[dict] = []
     session["transcript"].append({"role": "assistant", "parts": parts})
-    client = llm._get_client()
+    if session["title"] in ("New model", "New eval", "Untitled eval") and kind == "message":
+        session["title"] = (text.strip().splitlines() or ["Untitled eval"])[0][:100]
+    # Persist the user's progress before any provider call, including a failed or interrupted turn.
+    await _save(session)
+    if kind == "message":
+        await get_pool().execute(
+            "UPDATE intuition_wizard_sessions SET draft_input = '' WHERE id = $1 AND draft_input = $2",
+            session_id,
+            text,
+        )
     try:
+        client = llm._get_client()
         for _ in range(MAX_TURNS):
             state = await status(owner_id, session["model_id"], session["brief"])
             system = (
@@ -930,6 +965,21 @@ async def stream_turn(
                         "is_error": is_error,
                     }
                 )
+                if use.name == "promote" and not is_error:
+                    # Publishing the first usable version ends the one-time setup.
+                    for pending_use in uses[len(results) :]:
+                        results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": pending_use.id,
+                                "content": "Setup completed; continue via MCP.",
+                                "is_error": True,
+                            }
+                        )
+                    session["messages"].append({"role": "user", "content": results})
+                    await _save(session)
+                    yield {"type": "complete", "model_id": session["model_id"]}
+                    return
             session["messages"].append({"role": "user", "content": results})
         yield {"type": "done", "model_id": session["model_id"]}
     except Exception as exc:  # noqa: BLE001
@@ -940,8 +990,10 @@ async def stream_turn(
         parts.append({"type": "text", "text": f"\n\n_{message}_"})
         yield {"type": "error", "message": message}
     finally:
-        _repair_dangling(session["messages"])
-        await _save(session)
+        # A disconnected streaming response cancels the request scope; finish the draft save.
+        with CancelScope(shield=True):
+            _repair_dangling(session["messages"])
+            await _save(session)
 
 
 def _repair_dangling(messages: list[dict]) -> None:

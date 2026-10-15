@@ -42,6 +42,10 @@ class Message(Body):
     kind: Literal["message", "event"] = "message"
 
 
+class DraftInput(Body):
+    text: str = Field(max_length=20000)
+
+
 class Discover(Body):
     count: int = Field(default=4, ge=1, le=6)
     guidance: str = Field(default="", max_length=2000)
@@ -101,6 +105,11 @@ async def get_session(session_id: UUID, user: User):
     return session
 
 
+@router.patch("/sessions/{session_id}/draft")
+async def save_session_draft(session_id: UUID, req: DraftInput, user: User):
+    return await checked(wizard.save_draft(user["id"], session_id, req.text))
+
+
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(session_id: UUID, user: User):
     await checked(wizard.delete_session(user["id"], session_id))
@@ -108,9 +117,11 @@ async def delete_session(session_id: UUID, user: User):
 
 @router.post("/sessions/{session_id}/messages")
 async def send_message(session_id: UUID, req: Message, user: User):
+    session = await checked(wizard.get_session(user["id"], session_id))
+    if session["status"] == "saved":
+        raise HTTPException(409, "Setup is complete. Edit this eval through MCP.")
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(503, "The wizard needs ANTHROPIC_API_KEY on the server")
-    await checked(wizard.get_session(user["id"], session_id))
 
     async def events():
         async for event in wizard.stream_turn(user["id"], session_id, req.text, req.kind):

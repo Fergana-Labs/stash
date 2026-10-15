@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
 import { imGet, type ModelDetail } from "@/lib/intuition-api";
 import { wzReport, type TrainingReport } from "@/lib/wizard-api";
 import { pct, userCriteria } from "./wizard-ui";
@@ -49,7 +47,6 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
             <Step done={!!detail.active} label="Live" detail={detail.active ? `version ${detail.active.number}` : undefined} />
           </ul>
           {!detail.judge.configured && <p className="mt-4 rounded-md border border-yellow-500/30 bg-yellow-500/8 px-2 py-1.5 text-[11px]">The Jev judge isn’t configured on this server (TYPESAFE_API_KEY), so training will fail.</p>}
-          <Link href={`/reward-models/evals/${detail.model.id}`} className="mt-4 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground hover:underline">Open in Evals <ExternalLink className="size-3" /></Link>
         </>
       )}
     </aside>

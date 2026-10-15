@@ -467,3 +467,112 @@ async def test_wizard_tool_errors_reach_the_wizard_not_the_user(client, fakes, s
     assert (
         await client.get(f"/api/v1/model-wizard/sessions/{session['id']}", headers=other)
     ).status_code == 404
+
+
+async def test_wizard_drafts_persist_before_a_model_exists_and_are_owner_scoped(client):
+    auth = await _auth(client)
+    session = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json={})).json()
+    assert session["status"] == "draft" and session["model_id"] is None
+    url = f"/api/v1/model-wizard/sessions/{session['id']}"
+    text = "Review support refunds\nKeep exceptions separate from policy."
+    assert (
+        await client.patch(url + "/draft", headers=auth, json={"text": text})
+    ).status_code == 200
+    restored = (await client.get(url, headers=auth)).json()
+    assert restored["draft_input"] == text and restored["transcript"] == []
+    listed = (await client.get("/api/v1/model-wizard/sessions", headers=auth)).json()["sessions"]
+    assert listed[0]["id"] == session["id"] and listed[0]["status"] == "draft"
+    assert listed[0]["draft_input"] == text
+    other = await _auth(client)
+    assert (
+        await client.patch(url + "/draft", headers=other, json={"text": "overwrite"})
+    ).status_code == 404
+    assert (await client.get(url, headers=auth)).json()["draft_input"] == text
+
+
+async def test_interrupted_wizard_turn_remains_a_resumable_draft(client, pool, scripted_claude):
+    from uuid import UUID
+
+    script, _ = scripted_claude
+    auth = await _auth(client)
+    session = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json={})).json()
+    sid = UUID(session["id"])
+    owner = await pool.fetchval(
+        "SELECT owner_user_id FROM intuition_wizard_sessions WHERE id=$1", sid
+    )
+    await wizard.save_draft(owner, sid, "Review refund policy")
+    script.append([_text("Which mistakes are most costly?")])
+    turn = wizard.stream_turn(owner, sid, "Review refund policy")
+    first = await anext(turn)
+    assert first["type"] == "text"
+    # Progress already exists while the response is still streaming.
+    snapshot = await wizard.get_session(owner, sid)
+    assert snapshot["transcript"][0]["text"] == "Review refund policy"
+    # A new composer draft written during the stream must survive the turn's final save.
+    await wizard.save_draft(owner, sid, "False approvals are worse")
+    from anyio import CancelScope
+
+    with CancelScope() as scope:
+        scope.cancel()
+        await turn.aclose()
+    restored = await wizard.get_session(owner, sid)
+    assert restored["status"] == "draft" and restored["model_id"] is None
+    assert restored["title"] == "Review refund policy"
+    assert restored["draft_input"] == "False approvals are worse"
+    assert restored["transcript"][1]["parts"][0]["text"]
+
+
+async def test_wizard_keeps_progress_when_client_initialization_fails(client, pool, monkeypatch):
+    from uuid import UUID
+
+    auth = await _auth(client)
+    session = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json={})).json()
+    sid = UUID(session["id"])
+    owner = await pool.fetchval(
+        "SELECT owner_user_id FROM intuition_wizard_sessions WHERE id=$1", sid
+    )
+
+    def fail():
+        raise RuntimeError("Provider unavailable")
+
+    monkeypatch.setattr(llm, "_get_client", fail)
+    events = [event async for event in wizard.stream_turn(owner, sid, "Check completion evidence")]
+    assert events[-1]["type"] == "error"
+    restored = await wizard.get_session(owner, sid)
+    assert restored["transcript"][0]["text"] == "Check completion evidence"
+    assert restored["status"] == "draft"
+
+
+async def test_publishing_finishes_setup_and_blocks_later_wizard_edits(
+    client, fakes, scripted_claude
+):
+    from uuid import UUID
+
+    auth = await _auth(client)
+    model_id = await _model_with_examples(client, auth)
+    # All grading and embeddings are deterministic tiny fakes in this fixture.
+    owner = (await client.get("/api/v1/users/me", headers=auth)).json()["id"]
+    await fusion.train(UUID(owner), UUID(model_id))
+    session = (
+        await client.post(
+            "/api/v1/model-wizard/sessions", headers=auth, json={"model_id": model_id}
+        )
+    ).json()
+    script, seen = scripted_claude
+    script += [[_use(1, "promote", {})], [_text("Do not keep chatting after completion")]]
+    url = f"/api/v1/model-wizard/sessions/{session['id']}"
+    response = await client.post(url + "/messages", headers=auth, json={"text": "Save this eval"})
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1] == {"type": "complete", "model_id": model_id}
+    assert len(seen) == 1
+    saved = (await client.get(url, headers=auth)).json()
+    assert saved["status"] == "saved"
+    assert (
+        await client.post(url + "/messages", headers=auth, json={"text": "Change the criteria"})
+    ).status_code == 409
+    assert (
+        await client.post(
+            "/api/v1/model-wizard/sessions", headers=auth, json={"model_id": model_id}
+        )
+    ).status_code == 409

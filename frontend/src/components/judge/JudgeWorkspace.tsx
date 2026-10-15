@@ -25,6 +25,7 @@ import ExamplesPanel from "./ExamplesPanel";
 import HowItWorks from "./HowItWorks";
 import InboxPanel from "./InboxPanel";
 import ResultsPanel from "./ResultsPanel";
+import EditViaMcp from "./EditViaMcp";
 import UseIt from "./UseIt";
 
 type Tab = "sandbox" | "setup" | "inbox" | "golden" | "results" | "how";
@@ -90,7 +91,7 @@ function JudgeProviderPicker({ id, detail, onSaved }: { id: string; detail: Mode
  * One eval, one page: Setup (brief, instructions, criteria, try it, API),
  * Inbox (triage and expert review, by topic), Golden set (coverage, pins,
  * hygiene, labeling) and Results (training report, agreement). Wizard actions
- * resume the same conversation in its dedicated full-page view.
+ * resume unfinished setup; completed evals hand ongoing requests to MCP.
  */
 export default function JudgeWorkspace({ id }: { id: string }) {
   const router = useRouter();
@@ -101,6 +102,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [improving, setImproving] = useState(false);
+  const [mcpRequest, setMcpRequest] = useState<{ id: number; text: string } | null>(null);
   const [openingWizard, setOpeningWizard] = useState(false);
   const [proposals, setProposals] = useState<{ key: number; items: Discovery["insights"] } | null>(null);
 
@@ -114,6 +116,10 @@ export default function JudgeWorkspace({ id }: { id: string }) {
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   const openWizard = useCallback(async (message?: { text: string; kind: "message" | "event" }) => {
+    if (detail?.active) {
+      setMcpRequest({ id: Date.now(), text: message?.text ?? "Make the changes I request to this eval." });
+      return;
+    }
     setOpeningWizard(true); setError("");
     try {
       const existing = (await wzSessions()).sessions.find((s) => s.model_id === id);
@@ -122,14 +128,14 @@ export default function JudgeWorkspace({ id }: { id: string }) {
       router.push(`/reward-models/wizard/${sid}`);
     } catch (e) { setError(errorMessage(e)); }
     finally { setOpeningWizard(false); }
-  }, [id, router]);
+  }, [id, router, detail?.active]);
 
   const ctx: WizardCtx = useMemo(() => ({
     modelId: id,
     refresh,
     version,
     busy: false,
-    // Workspace edits refresh here; requests continue in the full-page wizard.
+    // Workspace edits refresh here; ongoing agent requests are handed off through MCP.
     send: (text, kind = "message") => {
       if (kind === "event") { refresh(); return; }
       void openWizard({ text, kind });
@@ -176,7 +182,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set. To rewrite the criteria themselves, use Improve rubric under Results.">
                   {improving ? <><Loader2 className="animate-spin" />Retraining…</> : <><RefreshCw />Retrain</>}
                 </Button>
-                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard()}>{openingWizard ? "Opening…" : "Wizard"}</Button>
+                {live ? <EditViaMcp id={id} name={detail.model.name} request={mcpRequest} /> : <Button size="sm" disabled={openingWizard} onClick={() => void openWizard()}>{openingWizard ? "Opening…" : "Resume setup"}</Button>}
               </div>
             </header>
             {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}

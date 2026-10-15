@@ -7,7 +7,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { wzCreate, wzSessions, type WizardSession } from "@/lib/wizard-api";
+import { wizardSessionName, wzCreate, wzSessions, type WizardSession } from "@/lib/wizard-api";
 
 export default function WizardPage() {
   useBreadcrumbs([{ label: "Eval wizard" }], "evals");
@@ -31,7 +31,7 @@ export default function WizardPage() {
       <table aria-label="Eval wizard sessions" className="w-full min-w-[480px] text-left text-xs">
         <thead className="border-b border-border bg-surface text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Eval</th><th className="w-44 text-right">Last updated</th></tr></thead>
         <tbody>{sessions.map((s) => <tr key={s.id} className="border-b border-border last:border-b-0 hover:bg-surface/60">
-          <td className="px-3"><Link href={`/reward-models/wizard/${s.id}`} className="block py-2.5 font-medium hover:underline">{s.model_name ?? (s.title === "New model" ? "Untitled eval" : s.title)}</Link></td>
+          <td className="px-3"><div className="flex items-center gap-2"><Link href={s.status === "saved" && s.model_id ? `/reward-models/evals/${s.model_id}` : `/reward-models/wizard/${s.id}`} className="py-2.5 font-medium hover:underline">{wizardSessionName(s)}</Link>{s.status !== "saved" && <span className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Draft</span>}</div></td>
           <td className="px-3 text-right tabular-nums whitespace-nowrap text-muted-foreground"><time dateTime={s.updated_at}>{new Date(s.updated_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</time></td>
         </tr>)}</tbody>
       </table>
