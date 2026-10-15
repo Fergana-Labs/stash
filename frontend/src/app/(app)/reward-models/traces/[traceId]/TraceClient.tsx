@@ -335,6 +335,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              {trace.metadata?.website_demo != null && <Link href={`/reward-models/demos/website/${traceId}`} className="inline-flex h-7 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-surface">Website comparison</Link>}
               <TraceEval trace={trace} />
               <AddToTestSetButton traceId={traceId} steps={trace.steps} title={trace.title} />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
