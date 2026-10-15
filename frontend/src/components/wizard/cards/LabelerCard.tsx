@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Pin, Sparkles, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { evalSurfaceClass } from "@/components/evals/eval-ui";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ItemView from "@/components/intuitions/ItemView";
 import { errorMessage } from "@/components/reward-models/rm-text";
@@ -136,7 +138,7 @@ export function Labeler({ which = "needs_review", onDone }: { which?: Which; onD
 export function LabelerModal({ open, onOpenChange, which = "needs_review" }: { open: boolean; onOpenChange: (open: boolean) => void; which?: Which }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className={cn(evalSurfaceClass, "max-h-[90vh] overflow-y-auto sm:max-w-2xl")}>
         <DialogHeader>
           <DialogTitle>{which === "mistakes" ? "Check the examples it got wrong" : "Label examples"}</DialogTitle>
           <DialogDescription>Pick the right answer for each one, the way you would on the job. Add a reason when it is a close call: reasons teach it more than labels. Suggested labels are only guesses until you accept them.</DialogDescription>

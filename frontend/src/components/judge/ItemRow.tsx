@@ -15,8 +15,8 @@ export function ItemRow({ item, itemB, badges, decision, open, onToggle, childre
   item: Item; itemB?: Item | null; badges?: ReactNode; decision: ReactNode; open: boolean; onToggle: () => void; children?: ReactNode;
 }) {
   return (
-    <li className={cn("rounded-lg border bg-background transition-colors", open ? "border-foreground/25 shadow-sm" : "border-border hover:border-foreground/20")}>
-      <div role="button" tabIndex={0} aria-expanded={open} onClick={onToggle} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) onToggle(); }} className="flex cursor-pointer items-start gap-3 px-3.5 py-3">
+    <li className={cn("rounded border bg-background transition-colors", open ? "border-foreground/25" : "border-border hover:border-foreground/20")}>
+      <div role="button" tabIndex={0} aria-expanded={open} onClick={onToggle} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) onToggle(); }} className="flex cursor-pointer items-start gap-3 px-3 py-2.5">
         <div className="min-w-0 flex-1">
           {itemB ? (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -42,7 +42,7 @@ export function FilterChips<T extends string>({ value, options, onChange }: { va
   return (
     <div role="tablist" className="flex flex-wrap gap-1.5">
       {options.map((o) => (
-        <button key={o.id} role="tab" type="button" aria-selected={value === o.id} title={o.title} onClick={() => onChange(o.id)} className={cn("rounded-full border px-2.5 py-1 text-[12px]", value === o.id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground")}>
+        <button key={o.id} role="tab" type="button" aria-selected={value === o.id} title={o.title} onClick={() => onChange(o.id)} className={cn("rounded border px-2.5 py-1 text-[12px]", value === o.id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground")}>
           {o.label}{o.count != null && <span className="ml-1 tabular-nums opacity-70">{o.count}</span>}
         </button>
       ))}

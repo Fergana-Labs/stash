@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
+import { evalSurfaceClass } from "@/components/evals/eval-ui";
 import RefinePanel from "@/components/evals/RefinePanel";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { BRIEF_MARKER, imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
@@ -162,9 +163,9 @@ export default function JudgeWorkspace({ id }: { id: string }) {
 
   return (
     <WizardProvider value={ctx}>
-      <div className="flex h-full min-h-0">
+      <div className={cn(evalSurfaceClass, "flex h-full min-h-0 bg-background")}>
         <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl px-6 pt-5 pb-10">
+          <div className="mx-auto max-w-5xl px-5 pt-4 pb-8">
             <Link href="/reward-models/evals" className="text-xs text-muted-foreground hover:underline">Evals /</Link>
             <header className="mt-1 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">

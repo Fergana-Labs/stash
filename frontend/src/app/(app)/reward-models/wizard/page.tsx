@@ -26,12 +26,15 @@ export default function WizardPage() {
   return <EvalPageFrame title="Eval wizard" description="Build an eval by talking it through: a handful of labels, no ML required." actions={<Button size="sm" disabled={creating} onClick={() => void start()}>New eval</Button>}>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {!sessions && !error && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
-    {sessions && sessions.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No wizard sessions yet. <button className="underline" onClick={() => void start()}>Start one</button>.</div>}
-    {sessions && sessions.length > 0 && <ul className="m-0 list-none divide-y divide-border rounded border border-border p-0">
-      {sessions.map((s) => <li key={s.id}><Link href={`/reward-models/wizard/${s.id}`} className="flex items-center gap-3 px-3 py-2.5 text-xs hover:bg-surface/60">
-        <span className="font-medium">{s.model_name ?? (s.title === "New model" ? "Untitled eval" : s.title)}</span>
-        <span className="ml-auto text-muted-foreground">{new Date(s.updated_at).toLocaleString()}</span>
-      </Link></li>)}
-    </ul>}
+    {sessions && sessions.length === 0 && <div className="rounded border border-dashed border-border p-6 text-center text-xs text-muted-foreground">No wizard sessions yet. <button className="underline" onClick={() => void start()}>Start one</button>.</div>}
+    {sessions && sessions.length > 0 && <div className="overflow-x-auto rounded border border-border">
+      <table aria-label="Eval wizard sessions" className="w-full min-w-[480px] text-left text-xs">
+        <thead className="border-b border-border bg-surface text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Eval</th><th className="w-44 text-right">Last updated</th></tr></thead>
+        <tbody>{sessions.map((s) => <tr key={s.id} className="border-b border-border last:border-b-0 hover:bg-surface/60">
+          <td className="px-3"><Link href={`/reward-models/wizard/${s.id}`} className="block py-2.5 font-medium hover:underline">{s.model_name ?? (s.title === "New model" ? "Untitled eval" : s.title)}</Link></td>
+          <td className="px-3 text-right tabular-nums whitespace-nowrap text-muted-foreground"><time dateTime={s.updated_at}>{new Date(s.updated_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</time></td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
   </EvalPageFrame>;
 }

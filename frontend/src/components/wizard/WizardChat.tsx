@@ -6,6 +6,8 @@ import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, Sparkles, Square 
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
+import { evalSurfaceClass } from "@/components/evals/eval-ui";
+import { cn } from "@/lib/utils";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { evalReadFile, imAddExamples, type NewExample } from "@/lib/intuition-api";
 import { applyEvent, streamWizard, wzGet, type AssistantPart, type Card, type TranscriptEntry } from "@/lib/wizard-api";
@@ -175,7 +177,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
 
   return (
     <WizardProvider value={ctx}>
-      <div className="flex h-full min-h-0">
+      <div className={cn(evalSurfaceClass, "flex h-full min-h-0 bg-background")}>
         <div className="flex min-w-0 flex-1 flex-col">
           {!embedded && (
             <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
@@ -191,14 +193,14 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                   <h2 className="m-0 text-lg font-semibold tracking-tight">What judgment call should it make?</h2>
                   <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would.</p>
                   <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
-                    {STARTERS.map((s) => <button key={s} type="button" disabled={busy} onClick={() => send(s)} className="rounded-lg border border-border px-3 py-2.5 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
+                    {STARTERS.map((s) => <button key={s} type="button" disabled={busy} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
                   </div>
                 </div>
               )}
               {entries?.map((entry, i) => entry.role === "user" ? (
                 entry.kind === "event"
-                  ? <div key={i} className="my-3 flex justify-end"><span className="rounded-full border border-border bg-surface/60 px-2.5 py-1 text-[11.5px] text-muted-foreground"><Check className="mr-1 inline size-3" />{entry.text}</span></div>
-                  : <div key={i} className="my-4 flex justify-end"><div className="max-w-[80%] rounded-2xl rounded-br-sm bg-foreground px-3.5 py-2 text-[13px] whitespace-pre-wrap text-background">{entry.text}</div></div>
+                  ? <div key={i} className="my-3 flex justify-end"><span className="rounded border border-border bg-surface/60 px-2.5 py-1 text-[11.5px] text-muted-foreground"><Check className="mr-1 inline size-3" />{entry.text}</span></div>
+                  : <div key={i} className="my-4 flex justify-end"><div className="max-w-[80%] rounded bg-foreground px-3 py-2 text-[13px] whitespace-pre-wrap text-background">{entry.text}</div></div>
               ) : (
                 <div key={i} className="my-3">
                   {entry.parts.map((part, j) => part.type === "text"
@@ -213,7 +215,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
             </div>
           </div>
           <form className="border-t border-border px-5 py-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5 focus-within:border-foreground/30">
+            <div className="mx-auto flex max-w-3xl items-end gap-2 rounded border border-border bg-background px-2 py-1.5 focus-within:border-foreground/30">
               <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title={modelId ? "Attach files as examples (images, PDFs, docs)" : "Describe your model first"} disabled={!!attaching} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
               <input ref={fileInput} type="file" multiple hidden accept=".txt,.md,.json,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => { if (e.target.files?.length) void attach(e.target.files); e.target.value = ""; }} />
               <textarea

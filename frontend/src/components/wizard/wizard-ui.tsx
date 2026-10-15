@@ -26,16 +26,16 @@ export const userCriteria = (rubric: RubricQuestion[]) => rubric.filter((q) => !
 
 export function CardShell({ icon: Icon, title, subtitle, actions, children, className }: { icon: LucideIcon; title: string; subtitle?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section aria-label={title} className={cn("my-2 overflow-hidden rounded-lg border border-border bg-background shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 duration-200", className)}>
-      <header className="flex items-center gap-2.5 border-b border-border bg-surface/50 px-3.5 py-2.5">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand-500/10 text-brand-600 dark:text-brand-400"><Icon className="size-3.5" /></span>
+    <section aria-label={title} className={cn("my-2 overflow-hidden rounded border border-border bg-background motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 duration-200", className)}>
+      <header className="flex items-center gap-2 border-b border-border bg-surface/50 px-3 py-2">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <h3 className="m-0 truncate text-[13px] font-semibold">{title}</h3>
           {subtitle && <p className="m-0 truncate text-[11.5px] text-muted-foreground">{subtitle}</p>}
         </div>
         {actions}
       </header>
-      <div className="p-3.5">{children}</div>
+      <div className="p-3">{children}</div>
     </section>
   );
 }
