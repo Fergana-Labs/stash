@@ -226,7 +226,7 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install backend dependencies
-        run: pip install -r backend/requirements-dev.txt
+        run: pip install -r backend/requirements-dev.txt -e .
 
       - name: Run Alembic migrations
         env:
