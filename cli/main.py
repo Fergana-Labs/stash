@@ -3502,7 +3502,10 @@ def sources_sync(
     if _use_json(as_json):
         output_json(data)
         return
-    console.print(f"[green]Sync queued[/green]  [dim]task: {data.get('task_id')}[/dim]")
+    if data["status"] == "in_progress":
+        console.print("Sync in progress")
+        return
+    console.print(f"[green]Sync queued[/green]  [dim]task: {data['task_id']}[/dim]")
 
 
 @sources_app.command("rm")
