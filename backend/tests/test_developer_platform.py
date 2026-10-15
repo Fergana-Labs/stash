@@ -912,3 +912,44 @@ async def test_key_list_and_revoke(client: AsyncClient, pool):
     # Revoking an already-revoked key is a 404, not a silent success.
     again = await client.delete(f"/api/v1/me/developer/keys/{keys[0]['id']}", headers=scope)
     assert again.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("external_id", [None, "new_customer", "org_acme"])
+async def test_external_overview_skips_unrelated_work(client, pool, monkeypatch, external_id):
+    """Each research command must avoid work for invisible customers and skills."""
+    from backend.routers import user_knowledge
+    from backend.services import memory_service
+
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("acme-session", user_id="org_acme", user_name="Acme"),
+            _event("beta-session", user_id="org_beta", user_name="Beta"),
+        ],
+    )
+    original = memory_service.list_scope_sessions
+    calls = []
+
+    async def scoped_sessions(owner_id, viewer_id, *, end_user_external_id=None):
+        calls.append(end_user_external_id)
+        assert end_user_external_id == "org_acme"
+        rows = await original(owner_id, viewer_id, end_user_external_id=end_user_external_id)
+        assert [row["session_id"] for row in rows] == ["acme-session"]
+        return rows
+
+    async def unexpected_skills(*args):
+        pytest.fail("External VFS must not load skills that it cannot expose")
+
+    monkeypatch.setattr(memory_service, "list_scope_sessions", scoped_sessions)
+    monkeypatch.setattr(user_knowledge, "_list_sidebar_skills", unexpected_skills)
+    body = {"script": "find /sessions -type f"}
+    if external_id is not None:
+        body["user_id"] = external_id
+    resp = await client.post("/api/v1/me/vfs", json=body, headers=_auth(machine_key))
+    assert resp.status_code == 200, resp.text
+    assert "beta-session" not in resp.json()["stdout"]
+    assert calls == (["org_acme"] if external_id == "org_acme" else [])
