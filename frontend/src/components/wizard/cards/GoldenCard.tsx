@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Award, Pin, PinOff, Trash2 } from "lucide-react";
+import { Award, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ItemView from "@/components/intuitions/ItemView";
 import { errorMessage } from "@/components/reward-models/rm-text";
@@ -52,17 +52,12 @@ export default function GoldenCard() {
   }, [modelId]);
   useEffect(() => { void load(); }, [load, version]);
 
-  if (!modelId) return <CardShell icon={Award} title="Golden set"><NeedsModel /></CardShell>;
+  if (!modelId) return <CardShell icon={Award} title="Health check"><NeedsModel /></CardShell>;
   const byId = new Map(examples.map((e) => [e.id, e]));
   const labels = health?.coverage.map((c) => c.label) ?? [];
   const max = Math.max(1, ...(health?.coverage.map((c) => c.total) ?? [1]));
-  const pinned = examples.filter((e) => e.pinned);
   const changed = () => { void load(); refresh(); };
 
-  async function unpin(e: Example) {
-    if (!modelId) return;
-    try { await imEditExample(modelId, e.id, { pinned: false }); changed(); } catch (err) { setError(errorMessage(err)); }
-  }
 
   return (
     <CardShell
@@ -95,24 +90,6 @@ export default function GoldenCard() {
               {health.issues.map((i) => <li key={i} className="rounded-md border border-yellow-500/30 bg-yellow-500/8 px-2.5 py-1.5 text-[11.5px] text-yellow-900 dark:text-yellow-200">{i}</li>)}
             </ul>
           )}
-
-          <section>
-            <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Pinned · must never break</h4>
-            {pinned.length === 0
-              ? <p className="m-0 text-[12px] text-muted-foreground">None yet. Pin a case from the expert queue or the examples table; no new version can ship if it gets a pinned case wrong.</p>
-              : (
-                <ul className="m-0 list-none space-y-1.5 p-0">
-                  {pinned.map((e) => (
-                    <li key={e.id} className="flex items-start gap-2 rounded-md border border-border px-2.5 py-1.5">
-                      <Pin className="mt-0.5 size-3 shrink-0 text-brand-500" />
-                      <div className="max-h-24 min-w-0 flex-1 overflow-hidden"><ItemView item={e.item} /></div>
-                      <span className="font-mono text-[11px]">{e.label}</span>
-                      <Button size="xs" variant="ghost" aria-label="Unpin" onClick={() => void unpin(e)}><PinOff /></Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-          </section>
 
           {health.lookalikes.length > 0 && (
             <section>

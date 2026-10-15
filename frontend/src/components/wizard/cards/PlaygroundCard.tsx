@@ -9,6 +9,7 @@ import { ContributionBars, ProbabilityBars } from "@/components/intuitions/Proba
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { imAddExamples, imGet, imPredict, type Item, type ModelDetail, type Prediction } from "@/lib/intuition-api";
 import { CardShell, NeedsModel, pct, useWizard } from "../wizard-ui";
+import { LabelPicker, labelSpace, showLabel } from "../labels";
 
 /** Try any input -- text, JSON, an image or document -- and see the decision and why. */
 export default function PlaygroundCard({ item: initialItem, prediction: initialPrediction }: { item?: Item; prediction?: Prediction }) {
@@ -19,6 +20,7 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [corrected, setCorrected] = useState("");
+  const [pick, setPick] = useState<string | null>(null);
   // The wizard's try_item opens the card on its input; "Try another" switches to free input.
   const [fixed, setFixed] = useState(initialItem !== undefined);
 
@@ -28,7 +30,10 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
   const draftReady = detail?.draft && !detail.draft.head_stale;
   const which: "draft" | "active" = draftReady ? "draft" : "active";
   const served = which === "draft" ? detail?.draft : detail?.active;
-  const labels = detail?.model.output_type === "choice" ? (served?.labels ?? []).map((l) => l.id) : ["good", "bad"];
+  const space = detail ? labelSpace(detail) : null;
+  const multi = space?.kind === "multi";
+  // Multi-issue: explain the issue it is most sure about; otherwise the chosen label.
+  const explained = prediction && multi ? Object.entries(prediction.probabilities).sort((a, b) => b[1] - a[1])[0]?.[0] : prediction?.label;
 
   async function run() {
     if (!modelId || item === null) return;
@@ -41,7 +46,7 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
     try {
       await imAddExamples(modelId, [{ item, label }]);
       setCorrected(label); refresh();
-      send(`Added a playground input as a labeled example (${label}); the model had said ${prediction?.label}.`, "event");
+      send(`Added a playground input as a labeled example (${showLabel(label)}); the model had said ${showLabel(prediction?.label)}.`, "event");
     } catch (e) { setError(errorMessage(e)); }
   }
 
@@ -56,16 +61,17 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
       {error && <p role="alert" className="m-0 mt-2 text-[11.5px] text-destructive">{error}</p>}
       {prediction && served && (
         <div className="mt-3 space-y-3 border-t border-border pt-3">
-          <p className="m-0 text-[13px]"><span className="font-semibold">{prediction.label}</span> <span className="text-muted-foreground">· {pct(prediction.confidence)} confident</span></p>
-          <ProbabilityBars probabilities={prediction.probabilities} highlight={prediction.label} />
+          <p className="m-0 text-[13px]"><span className="font-semibold">{showLabel(prediction.label, space?.kind)}</span> <span className="text-muted-foreground">· {pct(prediction.confidence)} confident</span></p>
+          {multi && <p className="m-0 text-[11px] text-muted-foreground">Each bar is the chance that issue applies, judged independently.</p>}
+          <ProbabilityBars probabilities={prediction.probabilities} highlight={multi ? undefined : prediction.label} />
           <div>
-            <div className="mb-1 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">Why</div>
-            <ContributionBars contributions={prediction.contributions[prediction.label] ?? prediction.contributions.score} rubric={served.rubric} limit={5} />
+            <div className="mb-1 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">Why{multi && explained ? ` (${explained})` : ""}</div>
+            <ContributionBars contributions={(explained && prediction.contributions[explained]) || prediction.contributions.score} rubric={served.rubric} limit={5} />
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
-            {corrected ? <span>Saved as {corrected}. It will learn from it next time you train.</span> : <>
-              <span>Should be:</span>
-              {labels.map((l) => <Button key={l} size="xs" variant="outline" onClick={() => void correct(l)}>{l}</Button>)}
+          <div className="space-y-1.5 text-[12px] text-muted-foreground">
+            {corrected ? <span>Saved as {showLabel(corrected)}. It will learn from it next time you train.</span> : space && <>
+              <span>Wrong? Save the right answer as an example:</span>
+              <LabelPicker space={space} value={pick} keyboard={false} commitLabel="Save as example" onPick={(label, go) => { setPick(label); if (go) void correct(label); }} />
             </>}
           </div>
         </div>

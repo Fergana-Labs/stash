@@ -44,7 +44,7 @@ class Body(BaseModel):
 
 class CreateModel(Body):
     name: str = Field(min_length=1, max_length=160)
-    output_type: Literal["choice", "preference"]
+    output_type: Literal["choice", "preference", "multi"]
     description: str = Field(default="", max_length=6000)
     labels: list[dict] = Field(default_factory=list)
     rubric: list[dict] = Field(default_factory=list)
@@ -110,6 +110,8 @@ class EditExample(Body):
 class Generate(Body):
     count: int = Field(default=6, ge=1, le=20)
     guidance: str = Field(default="", max_length=2000)
+    # Suggest a label (and why) for each item; they still wait for a person to accept.
+    propose: bool = True
 
 
 class Predict(Body):
@@ -369,7 +371,14 @@ async def add_examples(model_id: UUID, req: AddExamples, user: User):
 
 @router.post("/{model_id}/examples/generate", status_code=201)
 async def generate(model_id: UUID, req: Generate, user: User):
-    return await checked(service.generate_examples(user["id"], model_id, req.count, req.guidance))
+    return await checked(
+        service.generate_examples(user["id"], model_id, req.count, req.guidance, req.propose)
+    )
+
+
+@router.post("/{model_id}/examples/accept-suggestions")
+async def accept_suggestions(model_id: UUID, user: User):
+    return {"accepted": await checked(service.accept_suggestions(user["id"], model_id))}
 
 
 @router.patch("/{model_id}/examples/{example_id}")

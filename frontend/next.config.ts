@@ -114,6 +114,10 @@ const nextConfig: NextConfig = {
           destination: `${backend}/api/v1/:path*`,
         },
         {
+          source: "/mcp/intuitions",
+          destination: `${backend}/mcp/intuitions`,
+        },
+        {
           source: "/skill/:path*",
           destination: `${backend}/skill/:path*`,
         },

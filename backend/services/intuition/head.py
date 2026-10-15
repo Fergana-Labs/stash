@@ -7,6 +7,8 @@ the decision" and users can edit weights by hand.
 choice:     softmax(W f + b) over the output labels (multinomial logistic).
 preference: score = w . f + b. Pairs use P(a beats b) = sigmoid(score_a - score_b)
             (Bradley-Terry; b cancels); good/bad items use sigmoid(score).
+multi:      one independent sigmoid(w_k . f + b_k) per issue; the decision is the set
+            of issues above 0.5, and its probability is the product over issues.
 
 All fitting is L-BFGS on a few dozen parameters, so it runs inline in the API.
 
@@ -27,9 +29,18 @@ import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 from scipy.special import expit, log_softmax
 
+from .spec import issues_label, issues_of
+
 GATE_LOG_LOSS_SLACK = 0.02
 MIN_GATE_EXAMPLES = 4
 VERDICT_ID = "verdict"
+
+
+def verdict_id(issue: str) -> str:
+    """Multi-issue models ask Jev one zero-shot yes/no question per issue."""
+    return f"{VERDICT_ID}-{issue}"
+
+
 PRIOR_STRENGTH = 4.0
 
 
@@ -123,8 +134,37 @@ def compare(head: dict, features_a: list[float], features_b: list[float]) -> dic
     }
 
 
+def predict_multi(head: dict, features: list[float]) -> dict:
+    f = np.asarray(features, dtype=float)
+    p = expit(_choice_logits(head, f))
+    found = [c for c, pk in zip(head["classes"], p) if pk >= 0.5]
+    contributions = (np.asarray(head["weights"]) * f) / head["temperature"]
+    return {
+        "kind": "multi",
+        "label": issues_label(found),
+        "issues": found,
+        # Per issue, independently: P(this issue applies).
+        "probabilities": {c: float(pk) for c, pk in zip(head["classes"], p)},
+        "confidence": float(np.prod(np.maximum(p, 1 - p))),
+        "contributions": {
+            c: {n: float(v) for n, v in zip(head["feature_names"], row)}
+            for c, row in zip(head["classes"], contributions)
+        },
+    }
+
+
+def multi_probability(head: dict, features: list[float], label: str) -> float:
+    p = expit(_choice_logits(head, np.asarray(features, dtype=float)))
+    truth = issues_of(label)
+    return float(np.prod([pk if c in truth else 1 - pk for c, pk in zip(head["classes"], p)]))
+
+
 def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str]:
     """Probability assigned to the row's true label, and the predicted label."""
+    if output_type == "multi":
+        return multi_probability(head, row["f"], row["label"]), predict_multi(head, row["f"])[
+            "label"
+        ]
     if output_type == "choice":
         out = predict_choice(head, row["f"])
         return out["probabilities"][row["label"]], out["label"]
@@ -140,9 +180,15 @@ def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str
 
 def verdict_prior(output_type: str, feature_names: list[str], classes: list[str]) -> np.ndarray:
     """Weights that reproduce the zero-shot verdict; zeros when there is no verdict question."""
-    prior = np.zeros((len(classes) if output_type == "choice" else 1, len(feature_names)))
+    prior = np.zeros(
+        (len(classes) if output_type in ("choice", "multi") else 1, len(feature_names))
+    )
     index = {name: i for i, name in enumerate(feature_names)}
-    if output_type == "choice":
+    if output_type == "multi":
+        for c, cls in enumerate(classes):
+            if verdict_id(cls) in index:
+                prior[c, index[verdict_id(cls)]] = PRIOR_STRENGTH
+    elif output_type == "choice":
         for c, cls in enumerate(classes):
             if f"{VERDICT_ID}={cls}" in index:
                 prior[c, index[f"{VERDICT_ID}={cls}"]] = PRIOR_STRENGTH
@@ -210,6 +256,26 @@ def fit(
         weights = result.x[: len(classes) * n_feat].reshape(len(classes), n_feat)
         bias = result.x[len(classes) * n_feat :]
         bias = bias - bias.mean()  # softmax is shift-invariant; center for readability
+        converged, iterations = bool(result.success), int(result.nit)
+    elif output_type == "multi":
+        # One binary logistic per issue, each under its own verdict prior.
+        X = np.asarray([r["f"] for r in rows], dtype=float).reshape(len(rows), n_feat)
+        D = np.zeros((0, n_feat))
+        weights, bias, converged, iterations = [], [], True, 0
+        for c, cls in enumerate(classes):
+            y = np.asarray([1 if cls in issues_of(r["label"]) else 0 for r in rows])
+            b0_c = b0 if prior[c].any() else 0.0
+            result = minimize(
+                _preference_loss,
+                np.concatenate([prior[c], [b0_c]]),
+                args=(D, X, y, l2, prior[c], bias_l2, b0_c),
+                jac=True,
+                method="L-BFGS-B",
+            )
+            weights.append(result.x[:-1])
+            bias.append(result.x[-1])
+            converged, iterations = converged and bool(result.success), iterations + int(result.nit)
+        weights, bias = np.asarray(weights), np.asarray(bias)
     else:
         pairs = [r for r in rows if r["kind"] == "pair"]
         items = [r for r in rows if r["kind"] == "item"]
@@ -227,6 +293,7 @@ def fit(
             method="L-BFGS-B",
         )
         weights, bias = result.x[:-1].reshape(1, n_feat), result.x[-1:]
+        converged, iterations = bool(result.success), int(result.nit)
     return {
         "feature_names": feature_names,
         "classes": classes,
@@ -236,8 +303,8 @@ def fit(
         "l2": l2,
         "edited": False,
         "fit": {
-            "converged": bool(result.success),
-            "iterations": int(result.nit),
+            "converged": converged,
+            "iterations": iterations,
             "train_rows": len(rows),
         },
     }
@@ -350,7 +417,9 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
     correct = [predicted == r["label"] for r, _, predicted in scored]
     confidences = []
     for r, p_true, predicted in scored:
-        if output_type == "choice":
+        if output_type == "multi":
+            confidences.append(predict_multi(head, r["f"])["confidence"])
+        elif output_type == "choice":
             confidences.append(predict_choice(head, r["f"])["confidence"])
         else:
             confidences.append(max(p_true, 1 - p_true))
@@ -360,9 +429,24 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
         confusion = {c: dict.fromkeys(head["classes"], 0) for c in head["classes"]}
         for r, _, predicted in scored:
             confusion[r["label"]][predicted] += 1
+    per_issue = None
+    if output_type == "multi":
+        # Exact-match accuracy is strict; per issue, how often the judge got that issue right.
+        per_issue = {
+            c: float(
+                np.mean(
+                    [
+                        (c in issues_of(r["label"])) == (c in issues_of(pred))
+                        for r, _, pred in scored
+                    ]
+                )
+            )
+            for c in head["classes"]
+        }
     return {
         "n": len(scored),
         "accuracy": float(np.mean(correct)),
+        "per_issue": per_issue,
         "log_loss": float(-np.mean([math.log(max(p, 1e-9)) for _, p, _ in scored])),
         "ece": float(ece),
         "reliability": reliability,

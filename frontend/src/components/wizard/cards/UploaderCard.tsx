@@ -59,7 +59,7 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
     imGet(modelId).then((d) => {
       const v = d.draft ?? d.active;
       setOutputType(d.model.output_type);
-      setLabels(d.model.output_type === "choice" ? (v?.labels ?? []).map((l) => l.id) : ["good", "bad"]);
+      setLabels(d.model.output_type === "preference" ? ["good", "bad"] : [...(v?.labels ?? []).map((l) => l.id), ...(d.model.output_type === "multi" ? ["none"] : [])]);
     }).catch((e) => setError(errorMessage(e)));
   }, [modelId]);
 

@@ -36,6 +36,7 @@ from ...database import get_pool
 from .. import llm
 from . import fusion, service
 from . import probe as probes
+from .spec import NO_ISSUES, compose_description, issues_of, normalize_label
 
 OWNER = "owner"
 MAX_TOPIC_ITEMS = 400
@@ -102,6 +103,11 @@ async def save_brief(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     await get_pool().execute(
         "UPDATE intuition_models SET brief = $2 WHERE id = $1", model_id, merged
     )
+    # Compile the brief into what the judge reads (a new draft when it changes).
+    model = await service._model(owner_id, model_id)
+    version = await service._load_version(model["draft_version_id"] or model["active_version_id"])
+    if version and compose_description(version["description"], merged) != version["description"]:
+        await service.update_draft(owner_id, model_id, {"description": version["description"]})
     return await get_brief(owner_id, model_id)
 
 
@@ -115,15 +121,19 @@ def predicted_label(output: dict) -> str | None:
 async def queue(
     owner_id: UUID, model_id: UUID, which: str, topic: str | None = None, limit: int = 50
 ) -> list[dict]:
-    status = {"triage": "unreviewed", "expert": "escalated"}[which]
-    rows = await service.list_predictions(
-        owner_id, model_id, status, limit=limit if topic is None else 500
-    )
+    if which == "all":
+        # One inbox: anything not yet reviewed, including items flagged earlier.
+        rows = await service.list_predictions(owner_id, model_id, "unreviewed", limit=500)
+        rows += await service.list_predictions(owner_id, model_id, "escalated", limit=500)
+    else:
+        status = {"triage": "unreviewed", "expert": "escalated"}[which]
+        rows = await service.list_predictions(owner_id, model_id, status, limit=500)
     rows = [r for r in rows if "error" not in r["output"]]
+    rows.sort(key=lambda r: (r["confidence"] is None, r["confidence"] or 0))
     if topic is not None:
         members = await _topic_members(model_id)
-        rows = [r for r in rows if members["predictions"].get(str(r["id"])) == topic][:limit]
-    return rows
+        rows = [r for r in rows if members["predictions"].get(str(r["id"])) == topic]
+    return rows[:limit]
 
 
 async def triage(
@@ -294,6 +304,7 @@ async def link_view(token: str) -> dict:
     )
     return {
         "model": link["name"],
+        "output_type": link["output_type"],
         "reviewer": link["reviewer"],
         "instructions": version["description"],
         "label_boundaries": brief.get("labels"),
@@ -305,7 +316,9 @@ async def link_view(token: str) -> dict:
 async def rate(token: str, example_id: UUID, label: str, note: str = "") -> dict:
     link = await _link(token)
     view = await link_view(token)
-    if label not in {lab["id"] for lab in view["labels"]}:
+    if view["output_type"] == "multi":
+        label = normalize_label("multi", "item", view["labels"], label)
+    elif label not in {lab["id"] for lab in view["labels"]}:
         raise ValueError("Pick one of the labels shown")
     if str(example_id) not in {i["id"] for i in view["items"]}:
         raise service.NotFound("This item is not part of the review")
@@ -604,18 +617,25 @@ async def health(owner_id: UUID, model_id: UUID) -> dict:
     version = await service._load_version(model["draft_version_id"] or model["active_version_id"])
     examples = await service._examples(model_id)
     labeled = [e for e in examples if e["label"] and not e["needs_review"]]
-    labels = (
-        [lab["id"] for lab in version["labels"]]
-        if model["output_type"] == "choice"
-        else ["good", "bad"]
-    )
-    by_label = Counter(e["label"] for e in labeled)
+    multi = model["output_type"] == "multi"
+    if multi:
+        labels = [lab["id"] for lab in version["labels"]] + [NO_ISSUES]
+    elif model["output_type"] == "choice":
+        labels = [lab["id"] for lab in version["labels"]]
+    else:
+        labels = ["good", "bad"]
+
+    def has(example_label: str, lab: str) -> bool:
+        if multi and lab != NO_ISSUES:
+            return lab in issues_of(example_label)
+        return example_label == lab
+
     coverage = [
         {
             "label": lab,
-            "total": by_label.get(lab, 0),
-            "held_out": sum(e["label"] == lab and e["split"] == "eval" for e in labeled),
-            "pinned": sum(e["label"] == lab and e["pinned"] for e in labeled),
+            "total": sum(has(e["label"], lab) for e in labeled),
+            "held_out": sum(has(e["label"], lab) and e["split"] == "eval" for e in labeled),
+            "pinned": sum(has(e["label"], lab) and e["pinned"] for e in labeled),
         }
         for lab in labels
     ]

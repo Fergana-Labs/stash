@@ -45,13 +45,20 @@ from .. import llm
 from . import builder, providers, selection, service
 from . import head as heads
 from . import probe as probes
-from .spec import MAX_QUESTIONS
+from .spec import MAX_QUESTIONS, MAX_SEEDS, NO_ISSUES, issues_label, issues_of
 
 log = logging.getLogger(__name__)
 
 Progress = Callable[[str, str, int, int], None]
 VERDICT_ID = heads.VERDICT_ID
 SIGNAL_IDS = (VERDICT_ID, probes.PROBE_ID)
+
+
+def is_signal(qid: str) -> bool:
+    """Questions the wizard maintains itself: the zero-shot verdict(s) and the probe."""
+    return qid in SIGNAL_IDS or qid.startswith(f"{VERDICT_ID}-")
+
+
 # From "learn freely" to "stay near the zero-shot verdict"; CV picks how far labels move it.
 L2_GRID = (0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 CV_FOLDS = 4
@@ -66,6 +73,21 @@ ATTACKS_PER_SET = 6
 
 def _quiet(_stage: str, _message: str, _done: int = 0, _total: int = 0) -> None:
     return None
+
+
+def verdict_questions(output_type: str, description: str, labels: list[dict]) -> list[dict]:
+    """Jev asked the task itself, zero-shot: one question, or one yes/no per issue."""
+    if output_type == "multi":
+        return [
+            {
+                "id": heads.verdict_id(label["id"]),
+                "type": "noul",
+                "prompt": f"Taking the whole context into account, does this item have this issue: {label.get('description') or label['id']}?",
+                "criteria": {"true": "The issue applies", "false": "The issue does not apply"},
+            }
+            for label in labels
+        ]
+    return [verdict_question(output_type, description, labels)]
 
 
 def verdict_question(output_type: str, description: str, labels: list[dict]) -> dict:
@@ -86,7 +108,7 @@ def verdict_question(output_type: str, description: str, labels: list[dict]) -> 
 
 def user_questions(rubric: list[dict]) -> list[dict]:
     """The criteria the user owns; the wizard maintains the verdict and probe itself."""
-    return [q for q in rubric if q["id"] not in SIGNAL_IDS]
+    return [q for q in rubric if not is_signal(q["id"])]
 
 
 # ── Train ────────────────────────────────────────────────────────────────
@@ -161,7 +183,9 @@ def signal_columns(
     not label order, so positions cannot be trusted.
     """
     index = {n: i for i, n in enumerate(names)}
-    if output_type == "choice":
+    if output_type == "multi":
+        wanted = [heads.verdict_id(c) if qid == VERDICT_ID else f"{qid}={c}" for c in classes]
+    elif output_type == "choice":
         wanted = [f"{qid}={c}" for c in classes]
     else:
         wanted = [qid] if qid in index else [f"{qid}=good"]
@@ -172,7 +196,13 @@ def direct_eval(output_type: str, classes: list[str], rows: list[dict], cols: li
     """Score rows by a signal's own probabilities (no fitting): zero-shot Jev, or the probe."""
     scored = []
     for r in rows:
-        if output_type == "choice":
+        if output_type == "multi":
+            p = np.asarray([r["f"][i] for i in cols], dtype=float)
+            truth = issues_of(r["label"])
+            predicted = issues_label(c for c, pk in zip(classes, p) if pk >= 0.5)
+            p_true = float(np.prod([pk if c in truth else 1 - pk for c, pk in zip(classes, p)]))
+            confidence = float(np.prod(np.maximum(p, 1 - p)))
+        elif output_type == "choice":
             p = np.asarray([r["f"][i] for i in cols], dtype=float)
             p = p / (p.sum() or 1)
             probs = dict(zip(classes, p))
@@ -232,7 +262,7 @@ def leaderboard(output_type, names, classes, train, held, shipped: dict, l2: flo
                 **direct_eval(output_type, classes, held, probe_cols),
             }
         )
-    criteria = _columns(names, lambda q: q not in SIGNAL_IDS)
+    criteria = _columns(names, lambda q: not is_signal(q))
     labels_ok = output_type != "choice" or len({r["label"] for r in train}) >= 2
     if criteria and train and labels_ok:
         sub = [names[i] for i in criteria]
@@ -311,10 +341,10 @@ def drivers(version: dict, head: dict, rows: list[dict]) -> list[dict]:
                 "question": qid,
                 "prompt": prompts.get(qid, qid),
                 "share": v / total,
-                "kind": "verdict"
-                if qid == VERDICT_ID
-                else "probe"
+                "kind": "probe"
                 if qid == probes.PROBE_ID
+                else "verdict"
+                if is_signal(qid)
                 else "criterion",
             }
             for qid, v in by_question.items()
@@ -395,12 +425,14 @@ async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> 
         if e["split"] == "train" and e["label"] and not e["needs_review"]
     ]
     seed_ids = [
-        e["id"] for e in selection.seeds(train_examples, limit=max(2, len(train_examples) // 2))
+        e["id"]
+        for e in selection.seeds(
+            train_examples, limit=min(MAX_SEEDS, max(2, len(train_examples) // 2))
+        )
     ]
-    criteria = user_questions(draft["rubric"])[: MAX_QUESTIONS - 2]
-    rubric = criteria + [
-        verdict_question(model["output_type"], draft["description"], draft["labels"])
-    ]
+    verdicts = verdict_questions(model["output_type"], draft["description"], draft["labels"])
+    criteria = user_questions(draft["rubric"])[: MAX_QUESTIONS - 1 - len(verdicts)]
+    rubric = criteria + verdicts
     warnings = []
     probe_info = None
     progress("probe", "Fitting the embedding probe", 0, 0)
@@ -726,6 +758,9 @@ async def harden(
         target = target or draft["classes"][0]
         if target not in draft["classes"]:
             raise ValueError(f"Target must be one of {', '.join(draft['classes'])}")
+    elif model["output_type"] == "multi":
+        # An attacker wants their item to pass: no issues found.
+        target = NO_ISSUES
     else:
         target = "good"
     examples = [

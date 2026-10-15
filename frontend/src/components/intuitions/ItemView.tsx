@@ -1,41 +1,121 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { FileText } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/lib/intuition-api";
 import { readableText } from "./im-helpers";
 
 const LONG = 240;
+/** Field pairs that read as a conversation: who asked, then who answered. */
+const TURNS: [string, string][] = [
+  ["question", "answer"], ["customer", "reply"], ["prompt", "response"], ["input", "output"],
+  ["query", "response"], ["user", "assistant"], ["message", "reply"], ["ticket", "response"],
+];
+const FILE_KEYS = new Set(["kind", "name", "content", "data_url", "extraction"]);
+const IMAGE = /^data:image\/(png|jpeg|webp|gif);base64,/;
 
-/** Read-only rendering of an item: plain text, or one labeled block per object key. */
-export default function ItemView({ item, clamp = true, className }: { item: Item; clamp?: boolean; className?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const image = typeof item === "object" && typeof item.data_url === "string" && /^data:image\/(png|jpeg|webp|gif);base64,/.test(item.data_url) ? item.data_url : null;
-  const entries: [string | null, string][] = typeof item === "string" ? [[null, item]] : Object.entries(item).filter(([k]) => k !== "data_url").map(([k, v]) => [k, readableText(v)]);
-  const long = clamp && entries.some(([, text]) => text.length > LONG || text.split("\n").length > 4);
-  const collapsed = long && !expanded;
+const humanize = (key: string) => key.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
+function parse(item: Item): Item {
+  if (typeof item !== "string") return item;
+  const text = item.trim();
+  if (text.startsWith("{") && text.endsWith("}")) {
+    try { const parsed = JSON.parse(text); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>; } catch { /* plain text */ }
+  }
+  return item;
+}
+
+function Clamp({ text, clamp, className }: { text: string; clamp: boolean; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const long = clamp && (text.length > LONG || text.split("\n").length > 4);
   return (
-    <div className={cn("min-w-0 space-y-1.5", className)}>
-      {/* Inline data previews belong to the saved eval input. */}
+    <div className="min-w-0">
+      <p className={cn("m-0 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-foreground", long && !open && "line-clamp-3", className)}>{text || <span className="text-muted-foreground italic">empty</span>}</p>
+      {long && <button type="button" onClick={() => setOpen((v) => !v)} className="text-[11.5px] text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground">{open ? "Show less" : "Show more"}</button>}
+    </div>
+  );
+}
+
+function Bubble({ who, side, children }: { who: string; side: "in" | "out"; children: ReactNode }) {
+  return (
+    <div className={cn("flex min-w-0 flex-col", side === "out" && "items-end")}>
+      <span className="mb-0.5 text-[10.5px] text-muted-foreground">{who}</span>
+      <div className={cn("max-w-[92%] min-w-0 rounded-xl px-3 py-1.5", side === "in" ? "rounded-tl-sm bg-raised" : "rounded-tr-sm bg-brand-500/10")}>{children}</div>
+    </div>
+  );
+}
+
+/** An uploaded file: the image itself (or the file name), with what the judge reads one click away. */
+function FileItem({ item }: { item: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const name = typeof item.name === "string" ? item.name : item.kind === "image" ? "Image" : "Document";
+  const image = typeof item.data_url === "string" && IMAGE.test(item.data_url) ? item.data_url : null;
+  const content = typeof item.content === "string" ? item.content : "";
+  return (
+    <div className="min-w-0 space-y-1.5">
+      {/* Inline data previews belong to the saved input. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {image && <img src={image} alt={typeof item === "object" && typeof item.name === "string" ? item.name : "Eval input"} className="max-h-64 max-w-full rounded-md border border-border object-contain" />}
-      {entries.map(([key, text], i) => (
-        <div key={key ?? i} className="min-w-0">
-          {key !== null && <div className="mb-0.5 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">{key}</div>}
-          <p className={cn("m-0 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-foreground", collapsed && "line-clamp-3")}>
-            {text || <span className="text-muted-foreground italic">empty</span>}
-          </p>
+      {image ? <img src={image} alt={name} className="max-h-64 max-w-full rounded-md border border-border object-contain" /> : (
+        <div className="flex items-center gap-2 text-[12.5px]"><FileText className="size-4 text-muted-foreground" />{name}</div>
+      )}
+      {content && (
+        <>
+          <button type="button" onClick={() => setOpen((v) => !v)} className="block text-[11.5px] text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground">
+            {open ? "Hide" : item.kind === "image" ? "What the judge sees" : "Show text"}
+          </button>
+          {open && <div className="prose prose-sm max-h-72 max-w-none overflow-y-auto rounded-md border border-border bg-surface/40 px-3 py-2 text-[12px] dark:prose-invert [&_h1]:text-[13px] [&_h2]:text-[12.5px] [&_h3]:text-[12px]"><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Read-only rendering of an input, made for people rather than JSON: uploaded
+ * files as the file, question/answer-shaped objects as a conversation, chat
+ * transcripts as bubbles, other objects as labeled fields, text as text.
+ */
+export default function ItemView({ item: raw, clamp = true, className }: { item: Item; clamp?: boolean; className?: string }) {
+  const item = parse(raw);
+  if (typeof item === "string") {
+    const qa = /^\s*Q:\s*([\s\S]*?)\n?\s*A:\s*([\s\S]*)$/.exec(item);
+    if (qa) {
+      return <div className={cn("min-w-0 space-y-1.5", className)}><Bubble who="Question" side="in"><Clamp text={qa[1].trim()} clamp={clamp} /></Bubble><Bubble who="Answer" side="out"><Clamp text={qa[2].trim()} clamp={clamp} /></Bubble></div>;
+    }
+    return <div className={cn("min-w-0", className)}><Clamp text={item} clamp={clamp} /></div>;
+  }
+  if ((item.kind === "image" || item.kind === "document") && Object.keys(item).every((k) => FILE_KEYS.has(k))) {
+    return <div className={className}><FileItem item={item} /></div>;
+  }
+  const messages = Array.isArray(item.messages) ? (item.messages as { role?: string; content?: unknown }[]) : null;
+  const keys = Object.keys(item);
+  const pair = TURNS.find(([a, b]) => keys.includes(a) && keys.includes(b));
+  const rest = keys.filter((k) => k !== "messages" && k !== "data_url" && !(pair && pair.includes(k)));
+  return (
+    <div className={cn("min-w-0 space-y-2", className)}>
+      {messages && (
+        <div className="space-y-1.5">
+          {messages.map((m, i) => <Bubble key={i} who={humanize(String(m.role ?? "message"))} side={m.role === "assistant" ? "out" : "in"}><Clamp text={readableText(m.content)} clamp={clamp} /></Bubble>)}
         </div>
-      ))}
-      {long && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="text-[11.5px] text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
-        >
-          {expanded ? "Show less" : "Show more"}
-        </button>
+      )}
+      {pair && (
+        <div className="space-y-1.5">
+          <Bubble who={humanize(pair[0])} side="in"><Clamp text={readableText(item[pair[0]])} clamp={clamp} /></Bubble>
+          <Bubble who={humanize(pair[1])} side="out"><Clamp text={readableText(item[pair[1]])} clamp={clamp} /></Bubble>
+        </div>
+      )}
+      {rest.length > 0 && (
+        <dl className="m-0 space-y-1.5">
+          {rest.map((key) => (
+            <div key={key} className="min-w-0">
+              <dt className="text-[11px] font-medium text-muted-foreground">{humanize(key)}</dt>
+              <dd className="m-0"><Clamp text={readableText(item[key])} clamp={clamp} /></dd>
+            </div>
+          ))}
+        </dl>
       )}
     </div>
   );

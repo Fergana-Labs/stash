@@ -34,6 +34,7 @@ from scipy.optimize import minimize_scalar
 from ...database import get_pool
 from .. import embeddings
 from . import providers
+from .spec import issues_of
 
 MIN_ROWS = 4
 RIDGES = (0.03, 0.1, 0.3, 1.0, 3.0)
@@ -86,7 +87,11 @@ async def embed(items: list) -> np.ndarray:
 
 
 def targets(output_type: str, classes: list[str], labels: list[str]) -> np.ndarray:
-    """Centered one-hot for choice models; +-1 (good/bad) for preference models."""
+    """Centered one-hot for choice; +-1 per issue for multi; +-1 (good/bad) for preference."""
+    if output_type == "multi":
+        return np.asarray(
+            [[1.0 if c in issues_of(label) else -1.0 for c in classes] for label in labels]
+        )
     if output_type == "choice":
         index = {c: i for i, c in enumerate(classes)}
         y = np.zeros((len(labels), len(classes)))
@@ -97,6 +102,8 @@ def targets(output_type: str, classes: list[str], labels: list[str]) -> np.ndarr
 
 def probabilities(output_type: str, scores: np.ndarray, scale: float) -> np.ndarray:
     z = np.atleast_2d(scores) * scale
+    if output_type == "multi":
+        return 1 / (1 + np.exp(-z))  # independent P(issue) per column
     if output_type == "choice":
         z = z - z.max(axis=1, keepdims=True)
         e = np.exp(z)
@@ -107,6 +114,9 @@ def probabilities(output_type: str, scores: np.ndarray, scale: float) -> np.ndar
 
 def _nll(output_type: str, scores: np.ndarray, y: np.ndarray, scale: float) -> float:
     p = probabilities(output_type, scores, scale)
+    if output_type == "multi":
+        p_true = np.where(y > 0, p, 1 - p)
+        return float(-np.mean(np.log(np.clip(p_true, 1e-9, 1))))
     if output_type == "choice":
         truth = y.argmax(axis=1)
     else:
@@ -145,13 +155,16 @@ def solve(output_type: str, X: np.ndarray, y: np.ndarray) -> dict:
                 "loo_log_loss": loss,
             }
     probs = probabilities(output_type, best["loo_scores"], best["scale"])
+    if output_type == "multi":
+        best["loo_accuracy"] = float(np.mean(np.all((probs >= 0.5) == (y > 0), axis=1)))
+        return best
     truth = y.argmax(axis=1) if output_type == "choice" else np.where(y[:, 0] > 0, 0, 1)
     best["loo_accuracy"] = float(np.mean(probs.argmax(axis=1) == truth))
     return best
 
 
 def options(output_type: str, classes: list[str]) -> list[str]:
-    return list(classes) if output_type == "choice" else ["good", "bad"]
+    return list(classes) if output_type in ("choice", "multi") else ["good", "bad"]
 
 
 # ── Fit and serve ────────────────────────────────────────────────────────
@@ -164,7 +177,9 @@ def training_items(output_type: str, examples: list[dict]) -> tuple[list, list[s
         if e["label"] is None or e["needs_review"] or e["split"] != "train":
             continue
         if e["kind"] == "pair":
-            winner, loser = (e["item"], e["item_b"]) if e["label"] == "a" else (e["item_b"], e["item"])
+            winner, loser = (
+                (e["item"], e["item_b"]) if e["label"] == "a" else (e["item_b"], e["item"])
+            )
             items += [winner, loser]
             labels += ["good", "bad"]
         else:
@@ -176,7 +191,7 @@ def training_items(output_type: str, examples: list[dict]) -> tuple[list, list[s
 async def fit(model_id: UUID, output_type: str, classes: list[str], examples: list[dict]) -> dict:
     """Fit and store a probe on the model's labeled training examples."""
     items, labels = training_items(output_type, examples)
-    if len(items) < MIN_ROWS or len(set(labels)) < 2:
+    if len(items) < MIN_ROWS or (len(set(labels)) < 2 and output_type != "multi"):
         raise ProbeUnavailable(
             f"The probe needs at least {MIN_ROWS} labeled training examples of two kinds"
         )
@@ -196,6 +211,7 @@ async def fit(model_id: UUID, output_type: str, classes: list[str], examples: li
         "ridge": solved["ridge"],
         "loo_accuracy": solved["loo_accuracy"],
         "loo_log_loss": solved["loo_log_loss"],
+        "output_type": output_type,
     }
     row = await get_pool().fetchrow(
         """INSERT INTO intuition_probes (model_id, embedder, dims, classes, weights, scale, loo, metrics)
@@ -214,10 +230,19 @@ async def fit(model_id: UUID, output_type: str, classes: list[str], examples: li
 
 def question(probe: dict, output_type: str, labels: list[dict]) -> dict:
     described = {label["id"]: label.get("description") or label["id"] for label in labels}
-    if output_type == "choice":
-        criteria = {o: f"Resembles your examples labeled {described.get(o, o)}" for o in probe["options"]}
+    if output_type == "multi":
+        criteria = {
+            o: f"Resembles your examples with {described.get(o, o)}" for o in probe["options"]
+        }
+    elif output_type == "choice":
+        criteria = {
+            o: f"Resembles your examples labeled {described.get(o, o)}" for o in probe["options"]
+        }
     else:
-        criteria = {"good": "Resembles the outputs you preferred", "bad": "Resembles the outputs you rejected"}
+        criteria = {
+            "good": "Resembles the outputs you preferred",
+            "bad": "Resembles the outputs you rejected",
+        }
     return {
         "id": PROBE_ID,
         "type": "probe",
@@ -248,9 +273,17 @@ async def answer(version: dict, question: dict, item) -> dict:
         except ProbeUnavailable as exc:
             raise providers.ProviderError(str(exc), retryable=True) from exc
         weights = np.asarray(row["weights"])
-        # Preference probes have one score column (good vs bad); choice probes one per class.
-        output_type = "preference" if weights.shape[1] == 1 else "choice"
+        # Preference probes have one score column (good vs bad); choice and multi one per class.
+        output_type = row["metrics"].get("output_type") or (
+            "preference" if weights.shape[1] == 1 else "choice"
+        )
         scores = x @ weights
         p = probabilities(output_type, scores[None, :], row["scale"])[0]
         probs = dict(zip(row["classes"], p.tolist()))
+    if (row["metrics"] or {}).get("output_type") == "multi":
+        # Independent per-issue probabilities: they do not sum to 1.
+        return {
+            "type": "probe",
+            "probabilities": {o: float(probs[o]) for o in question["criteria"]},
+        }
     return providers._checked({o: float(probs[o]) for o in question["criteria"]}, question)

@@ -18,7 +18,7 @@ from uuid import UUID
 
 from ...database import get_pool
 from . import service
-from .spec import valid_example_labels
+from .spec import normalize_label
 
 SOURCES = ("human", "outcome", "downstream")
 TRUTH_ORDER_SQL = "CASE f.source WHEN 'human' THEN 0 WHEN 'outcome' THEN 1 ELSE 2 END"
@@ -79,9 +79,7 @@ async def record(
         raise service.Conflict("This call failed, so there is no decision to give feedback on")
     if label is not None:
         kind = "pair" if prediction["kind"] == "compare" else "item"
-        allowed = valid_example_labels(model["output_type"], kind, prediction["labels"])
-        if label not in allowed:
-            raise ValueError(f"Label must be one of {', '.join(allowed)}")
+        label = normalize_label(model["output_type"], kind, prediction["labels"], label)
     row = await get_pool().fetchrow(
         """INSERT INTO intuition_feedback (model_id, prediction_id, label, value, source, note)
            VALUES ($1, $2, $3, $4, $5, $6) RETURNING *""",

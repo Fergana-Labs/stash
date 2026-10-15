@@ -35,8 +35,9 @@ from .spec import (
     Question,
     VersionSpec,
     classes,
+    compose_description,
     feature_names,
-    valid_example_labels,
+    normalize_label,
 )
 
 DEFAULT_L2 = 0.005
@@ -282,6 +283,8 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     model = await _model(owner_id, model_id)
     draft = await ensure_draft(owner_id, model_id)
     merged = {k: changes.get(k, draft[k]) for k in ("description", "labels", "rubric")}
+    # The judge always reads the brief: it is re-attached under any edited instructions.
+    merged["description"] = compose_description(merged["description"], model.get("brief") or {})
     if "rubric" in changes:
         from . import composition
 
@@ -349,14 +352,13 @@ def _split_for(item, item_b) -> str:
 
 def _check_label(
     model: dict, labels: list[dict], kind: str, label: str | None, needs_review: bool
-) -> None:
-    allowed = valid_example_labels(model["output_type"], kind, labels)
+) -> str | None:
+    """The label in canonical form (multi-issue labels are sorted), or ValueError."""
     if label is None:
         if not needs_review:
             raise ValueError("Unlabeled examples must be marked needs_review")
-        return
-    if label not in allowed:
-        raise ValueError(f"Label must be one of {', '.join(allowed)}")
+        return None
+    return normalize_label(model["output_type"], kind, labels, label)
 
 
 async def _current_labels(model: dict) -> list[dict]:
@@ -373,14 +375,14 @@ async def add_examples(
     for e in examples:
         kind = "pair" if e.get("item_b") is not None else "item"
         needs_review = bool(e.get("needs_review", False))
-        _check_label(model, labels, kind, e.get("label"), needs_review)
+        label = _check_label(model, labels, kind, e.get("label"), needs_review)
         rows.append(
             (
                 model_id,
                 kind,
                 e["item"],
                 e.get("item_b"),
-                e.get("label"),
+                label,
                 e.get("source", source),
                 e.get("split") or _split_for(e["item"], e.get("item_b")),
                 needs_review,
@@ -416,7 +418,7 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
     if row is None:
         raise NotFound("Example not found")
     merged = {**dict(row), **changes}
-    _check_label(
+    merged["label"] = _check_label(
         model, await _current_labels(model), merged["kind"], merged["label"], merged["needs_review"]
     )
     updated = await get_pool().fetchrow(
@@ -1010,7 +1012,9 @@ async def predict(
                 run_link,
             )
         raise
-    if model["output_type"] == "choice":
+    if model["output_type"] == "multi":
+        output = heads.predict_multi(version["head"], features)
+    elif model["output_type"] == "choice":
         output = heads.predict_choice(version["head"], features)
     else:
         output = heads.predict_preference_item(version["head"], features)
@@ -1153,30 +1157,45 @@ async def review_prediction(
 # ── Assisted improvement (Claude) ────────────────────────────────────────
 
 
+class _GeneratedItem(BaseModel):
+    item: str = Field(
+        description="The input: plain text, or a JSON object string when a shape is given"
+    )
+    label: str | None = Field(
+        default=None,
+        description="Your proposed label (multi-issue: issue ids joined by '+', or 'none')",
+    )
+    reason: str = Field(default="", description="One short sentence: why that label")
+
+
 class _Generated(BaseModel):
-    items: list[str] = Field(min_length=1)
+    items: list[_GeneratedItem] = Field(min_length=1)
 
 
-def _generated_items(raw: list[str], keys: list[str]) -> list:
+def _generated_items(raw: list[_GeneratedItem], keys: list[str]) -> list[tuple]:
     if not keys:
-        return raw
+        return [(g.item, g) for g in raw]
     items = []
-    for text in raw:
+    for g in raw:
         try:
-            parsed = json.loads(text)
+            parsed = json.loads(g.item)
         except ValueError:
             continue
         if isinstance(parsed, dict) and sorted(parsed) == keys:
-            items.append(parsed)
+            items.append((parsed, g))
     if not items:
         raise Conflict("Claude did not return items in this model's format; try again")
     return items
 
 
 async def generate_examples(
-    owner_id: UUID, model_id: UUID, count: int, guidance: str
+    owner_id: UUID, model_id: UUID, count: int, guidance: str, propose: bool = True
 ) -> list[dict]:
-    """Draft new items for the user to label; suggested labels come from the current head."""
+    """Draft new items aimed at the label boundaries; with `propose`, suggest a label for each.
+
+    Suggestions are never trusted on their own: the examples stay `needs_review`
+    until a person accepts or changes the label (one at a time, or all at once).
+    """
     model = await _model(owner_id, model_id)
     version = await _load_version(model["draft_version_id"] or model["active_version_id"])
     existing = [e for e in await _examples(model_id) if e["kind"] == "item"]
@@ -1190,56 +1209,63 @@ async def generate_examples(
         if keys
         else f"Write {count} new items as plain strings."
     )
+    if model["output_type"] == "multi":
+        labels_text = (
+            f"ISSUES (any subset can apply; 'none' if none): {json.dumps(version['labels'])}"
+        )
+    else:
+        labels_text = f"OUTPUT LABELS: {json.dumps(version['labels'] or ['good', 'bad'])}"
     result = await llm.complete_structured(
         system=(
             "You write realistic test items for a user's judgment model. Items must look like real "
-            "inputs the model will receive, vary in difficulty, and include borderline cases."
+            "inputs the model will receive, vary in difficulty, and concentrate on the boundaries "
+            "between labels, where a careful person would have to think. "
+            + (
+                "For each item, propose the label you think the user would give and why, in one sentence."
+                if propose
+                else "Leave label empty."
+            )
         ),
         prompt=(
-            f"WHAT THE MODEL JUDGES:\n{version['description']}\n\n"
-            f"OUTPUT LABELS: {json.dumps(version['labels'] or ['good', 'bad'])}\n\n"
+            f"WHAT THE MODEL JUDGES:\n{version['description']}\n\n{labels_text}\n\n"
             f"EXISTING ITEMS (match their format, do not copy them):\n"
             f"{json.dumps([e['item'] for e in sample], ensure_ascii=False)}\n\n"
             f"GUIDANCE FROM THE USER: {guidance or '(none)'}\n\n{shape}"
         ),
         output_model=_Generated,
         tier=llm.ModelTier.QUALITY,
-        max_tokens=4096,
+        max_tokens=6000,
     )
-    created = await add_examples(
-        owner_id,
-        model_id,
-        [
+    rows = []
+    for item, g in _generated_items(result.items[:count], keys):
+        label = None
+        if propose and g.label:
+            try:
+                label = normalize_label(model["output_type"], "item", version["labels"], g.label)
+            except ValueError:
+                label = None
+        rows.append(
             {
                 "item": item,
-                "label": None,
+                "label": label,
                 "needs_review": True,
-                "note": "Generated; confirm or change the label",
+                "note": f"Suggested {label}: {g.reason}" if label else "Generated; needs a label",
             }
-            for item in _generated_items(result.items[:count], keys)
-        ],
-        "generated",
-    )
-    if not version["head_stale"]:
-        for example in created:
-            try:
-                suggestion = await predict(
-                    owner_id,
-                    model_id,
-                    example["item"],
-                    which="draft" if model["draft_version_id"] else "active",
-                    caller="generator",
-                    log=False,
-                )
-            except providers.ProviderError:
-                continue  # The item stays unlabeled; the reviewer labels it from scratch.
-            await get_pool().execute(
-                "UPDATE intuition_examples SET label = $2, note = $3 WHERE id = $1",
-                UUID(example["id"]),
-                suggestion["label"],
-                f"Generated; suggested {suggestion['label']} at {suggestion['confidence']:.0%} — confirm or change",
-            )
+        )
+    created = await add_examples(owner_id, model_id, rows, "generated")
     return await _examples(model_id, [e["id"] for e in created])
+
+
+async def accept_suggestions(owner_id: UUID, model_id: UUID) -> int:
+    """Accept every pending suggested label at once (the user's call, from a button)."""
+    await _model(owner_id, model_id)
+    result = await get_pool().execute(
+        """UPDATE intuition_examples SET needs_review = false
+            WHERE model_id = $1 AND needs_review AND label IS NOT NULL""",
+        model_id,
+    )
+    await _invalidate_draft(model_id)
+    return int(result.split()[-1])
 
 
 class _Criterion(BaseModel):

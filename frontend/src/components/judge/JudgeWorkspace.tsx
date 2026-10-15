@@ -7,36 +7,34 @@ import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import RefinePanel from "@/components/evals/RefinePanel";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
+import { BRIEF_MARKER, imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
 import { Select } from "@/components/ui/select";
 import { wzCreate, wzFromCorrections, wzReport, wzSessions, wzTrain, type TrainingReport } from "@/lib/wizard-api";
 import { cn } from "@/lib/utils";
 import WizardChat, { type Injected } from "@/components/wizard/WizardChat";
 import { pct, WizardProvider, type WizardCtx } from "@/components/wizard/wizard-ui";
-import AgreementCard from "@/components/wizard/cards/AgreementCard";
 import BriefCard from "@/components/wizard/cards/BriefCard";
 import CriteriaCard from "@/components/wizard/cards/CriteriaCard";
-import ExamplesCard from "@/components/wizard/cards/ExamplesCard";
-import GoldenCard from "@/components/wizard/cards/GoldenCard";
-import InboxCard from "@/components/wizard/cards/InboxCard";
-import LabelerCard from "@/components/wizard/cards/LabelerCard";
 import PlaygroundCard from "@/components/wizard/cards/PlaygroundCard";
-import ReportCard from "@/components/wizard/cards/ReportCard";
-import TopicsCard from "@/components/wizard/cards/TopicsCard";
-import UploaderCard from "@/components/wizard/cards/UploaderCard";
 import type { Discovery } from "@/lib/wizard-api";
+import ExamplesPanel from "./ExamplesPanel";
+import HowItWorks from "./HowItWorks";
+import InboxPanel from "./InboxPanel";
+import ResultsPanel from "./ResultsPanel";
+import UseIt from "./UseIt";
 
-type Tab = "setup" | "inbox" | "golden" | "results";
+type Tab = "setup" | "inbox" | "golden" | "results" | "how";
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: "setup", label: "Setup", hint: "What it decides and how" },
   { id: "inbox", label: "Inbox", hint: "Review what it decided" },
   { id: "golden", label: "Golden set", hint: "The examples it learns from" },
   { id: "results", label: "Results", hint: "How well it agrees with you" },
+  { id: "how", label: "How it works", hint: "How to build, use and connect an eval" },
 ];
 
 /** The text the judge reads. Edits apply to the next version (Improve). */
 function Instructions({ id, detail, onSaved }: { id: string; detail: ModelDetail; onSaved: () => void }) {
-  const current = (detail.draft ?? detail.active)?.description ?? "";
+  const [current, fromBrief = ""] = ((detail.draft ?? detail.active)?.description ?? "").split(BRIEF_MARKER);
   const [text, setText] = useState(current);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -49,7 +47,8 @@ function Instructions({ id, detail, onSaved }: { id: string; detail: ModelDetail
     <section aria-label="Instructions" className="rounded-lg border border-border p-3.5">
       <div className="mb-1.5 flex items-center justify-between gap-2"><h3 className="m-0 text-[13px] font-semibold">Instructions the judge reads</h3>{text !== current && <Button size="xs" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>}</div>
       <textarea aria-label="Instructions the judge reads" rows={6} maxLength={6000} value={text} onChange={(e) => setText(e.target.value)} className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[12.5px] leading-5 outline-none focus:border-foreground/40" />
-      <p className="m-0 mt-1 text-[11px] text-muted-foreground">Carry the label boundaries, the costly mistake and the must-never cases from the brief here; the wizard can write it for you.</p>
+      {fromBrief && <details className="mt-2 text-[11.5px] text-muted-foreground"><summary className="cursor-pointer">Also included automatically from the eval brief</summary><p className="whitespace-pre-wrap">{fromBrief}</p></details>}
+      <p className="m-0 mt-1 text-[11px] text-muted-foreground">The judge reads these instructions together with the eval brief. Editing the brief updates that context automatically.</p>
       {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
     </section>
   );
@@ -178,6 +177,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <UseIt detail={detail} onShipped={refresh} />
                 <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set. To rewrite the criteria themselves, use Improve rubric under Results.">
                   {improving ? <><Loader2 className="animate-spin" />Retraining…</> : <><RefreshCw />Retrain</>}
                 </Button>
@@ -219,18 +219,10 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                   </div>
                 </div>
               )}
-              {tab === "inbox" && <div className="flex flex-col gap-4 [&>section]:my-0"><InboxCard queue={counts.inbox ? "triage" : counts.escalated ? "expert" : "triage"} /><TopicsCard /></div>}
-              {tab === "golden" && (
-                <div className="grid items-start gap-4 lg:grid-cols-2">
-                  <div className="min-w-0 flex flex-col gap-4 [&>section]:my-0"><GoldenCard /></div>
-                  <div className="min-w-0 flex flex-col gap-4 [&>section]:my-0">
-                    {counts.needs_review > 0 && <LabelerCard which="needs_review" />}
-                    <UploaderCard prompt="Add real examples, especially hard and borderline ones." />
-                    <ExamplesCard />
-                  </div>
-                </div>
-              )}
-              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ReportCard /><RefinePanel id={id} detail={detail} onChanged={refresh} /><AgreementCard /></div>}
+              {tab === "inbox" && <InboxPanel />}
+              {tab === "golden" && <ExamplesPanel />}
+              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ResultsPanel /><RefinePanel id={id} detail={detail} onChanged={refresh} /></div>}
+              {tab === "how" && <HowItWorks id={id} name={detail.model.name} />}
             </div>
           </div>
         </div>
