@@ -6,7 +6,8 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceTable";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronDown, Search, Trash2 } from "lucide-react";
+import { Popover } from "radix-ui";
 import { Select } from "@/components/ui/select";
 import { rmListAllTraces } from "@/lib/api";
 import { traceScore, traceScoreLabel, traceCredits } from "./trace-metrics";
@@ -63,6 +64,7 @@ function LatestTraceTable({
   deletingId,
   selectionDisabled = false,
   toolbar,
+  toolbarActions,
   matches = null,
   behaviorsByTrace,
 }: {
@@ -75,10 +77,13 @@ function LatestTraceTable({
   selectionDisabled?: boolean;
   /** Controls rendered at the start of the filter row (browse search, behavior filter…). */
   toolbar?: ReactNode;
+  /** Actions at the right edge of the trace filter row. */
+  toolbarActions?: ReactNode;
   matches?: TraceMatches | null;
   /** Behavior hits and outcomes per trace, for the Behaviors column of the plain list. */
   behaviorsByTrace?: Map<string, SearchResult>;
 }) {
+  const [dateOpen, setDateOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [assessmentFilter, setAssessmentFilter] = useState("all");
   const [filters, setFilters] = useState<TraceFilters>({ source: "all", from: "", through: "" });
@@ -145,6 +150,8 @@ function LatestTraceTable({
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
   const hiddenSelected = traces.filter((trace) => selected.has(trace.id)).length - selectedVisible;
   const hasFilters = filters.source !== "all" || !!filters.from || !!filters.through;
+  const dateLabel = (value: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+  const dateSummary = filters.from && filters.through ? `${dateLabel(filters.from)} – ${dateLabel(filters.through)}` : filters.from ? `Since ${dateLabel(filters.from)}` : filters.through ? `Until ${dateLabel(filters.through)}` : "Imported date";
   const invalidDates = !!filters.from && !!filters.through && filters.from > filters.through;
 
   function changeFilters(next: Partial<TraceFilters>) {
@@ -168,9 +175,9 @@ function LatestTraceTable({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div role="group" aria-label="Trace filters" className="mb-1.5 flex flex-wrap items-center gap-1.5">
         {toolbar}
-        {mode === "picker" && <label className="flex h-7 w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
+        {mode === "picker" && <label className="flex h-[26px] w-56 items-center gap-1.5 rounded-[4px] border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
             value={query}
@@ -182,12 +189,12 @@ function LatestTraceTable({
             }}
             placeholder="Search traces"
             aria-label="Search titles and trace content"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>}
-        {mode === "browse" && <Select aria-label="Filter traces" value={assessmentFilter} onChange={(value) => { setAssessmentFilter(value); anchor.current = null; }} className="h-7 min-w-32 px-2 text-[12px]" options={[{ value: "all", label: "All traces" }, { value: "scored", label: "Scored" }, { value: "unscored", label: "Unscored" }]} />}
+        {mode === "browse" && <Select aria-label="Filter traces" value={assessmentFilter} onChange={(value) => { setAssessmentFilter(value); anchor.current = null; }} className="h-[26px] w-24 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:text-[11px]" options={[{ value: "all", label: "All traces" }, { value: "scored", label: "Scored" }, { value: "unscored", label: "Unscored" }]} />}
         <div className="flex items-center gap-1">
-          <Select aria-label="Filter by source" value={filters.source} onChange={(source) => changeFilters({ source })} className="h-7 max-w-60 min-w-36 px-2 text-[12px]" options={[
+          <Select aria-label="Filter by source" value={filters.source} onChange={(source) => changeFilters({ source })} className="h-[26px] w-28 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:text-[11px]" options={[
             { value: "all", label: "All sources" },
             ...sources.map((trace) => ({ value: traceSourceKey(trace), label: traceSourceName(trace) })),
           ]} />
@@ -198,17 +205,25 @@ function LatestTraceTable({
             onRenamed={(name) => setSourceNames((current) => ({ ...current, [filters.source]: name }))}
           />}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-          <span>Imported</span>
-          <input type="date" aria-label="Imported from" value={filters.from} max={filters.through || undefined} onChange={(e) => changeFilters({ from: e.target.value })} className="h-7 rounded-md border border-border bg-background px-2 text-foreground" />
-          <span>to</span>
-          <input type="date" aria-label="Imported through" value={filters.through} min={filters.from || undefined} onChange={(e) => changeFilters({ through: e.target.value })} className="h-7 rounded-md border border-border bg-background px-2 text-foreground" />
-          {hasFilters && <Button variant="ghost" size="xs" onClick={() => changeFilters({ source: "all", from: "", through: "" })}>Clear filters</Button>}
-        </div>
+        <Popover.Root open={dateOpen} onOpenChange={setDateOpen}>
+          <Popover.Trigger asChild>
+            <button type="button" aria-label="Filter by imported date" title={dateSummary} className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-[4px] border px-2 text-[11px] whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30", filters.from || filters.through ? "border-foreground/30 bg-surface text-foreground" : "border-border bg-background text-muted-foreground")}><CalendarDays className="size-3" />{dateSummary}<ChevronDown className="size-3" /></button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content align="start" sideOffset={5} aria-label="Imported date range" className="z-50 w-64 rounded-[4px] border border-border bg-popover p-3 text-xs text-popover-foreground shadow-sm outline-none">
+              <h3 className="mb-3 text-xs font-medium">Imported date</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="grid gap-1 text-[11px] text-muted-foreground">From<input type="date" aria-label="Imported from" value={filters.from} max={filters.through || undefined} onChange={(e) => changeFilters({ from: e.target.value })} className="h-7 min-w-0 rounded-[4px] border border-border bg-background px-1.5 text-[11px] text-foreground" /></label>
+                <label className="grid gap-1 text-[11px] text-muted-foreground">Through<input type="date" aria-label="Imported through" value={filters.through} min={filters.from || undefined} onChange={(e) => changeFilters({ through: e.target.value })} className="h-7 min-w-0 rounded-[4px] border border-border bg-background px-1.5 text-[11px] text-foreground" /></label>
+              </div>
+              <div className="mt-3 flex justify-between gap-2"><Button variant="ghost" size="xs" onClick={() => changeFilters({ from: "", through: "" })}>Clear dates</Button><Popover.Close asChild><Button variant="outline" size="xs">Done</Button></Popover.Close></div>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+        {hasFilters && <Button variant="ghost" size="xs" className="h-[26px] px-1.5 text-[11px]" onClick={() => changeFilters({ source: "all", from: "", through: "" })}>Clear filters</Button>}
 
-        <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
-          {searching ? "Searching…" : `${visible.length} trace${visible.length === 1 ? "" : "s"}${matches?.mode === "semantic" ? " · semantic" : matches?.mode === "text" ? " · text match" : ""}`}
-        </span>
+
+        {toolbarActions && <div className="ml-auto flex items-center">{toolbarActions}</div>}
       </div>
 
       {(mode === "picker" || selected.size > 0) && <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
@@ -217,7 +232,7 @@ function LatestTraceTable({
       </div>}
       {invalidDates && <p role="alert" className="mb-3 text-xs text-red-600">The end date must be on or after the start date.</p>}
       {searchError && <p role="alert" className="mb-3 text-sm text-red-600">{searchError}</p>}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-[4px] border border-border">
         <table aria-label="Traces" className={cn("w-full table-fixed border-collapse text-[13px]", browse ? "min-w-[1400px]" : "min-w-[1140px]")}>
           <thead>
             <tr className={cn("border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase", mode === "browse" && "h-7 [&>th]:py-0")}>
@@ -278,6 +293,9 @@ function LatestTraceTable({
           <p className="m-0 px-3 py-6 text-center text-[12.5px] text-muted-foreground">No traces match.</p>
         )}
       </div>
+        <p className="m-0 mt-1.5 text-right text-[11px] text-muted-foreground tabular-nums">
+          {searching ? "Searching…" : `${visible.length} trace${visible.length === 1 ? "" : "s"}${matches?.mode === "semantic" ? " · semantic" : matches?.mode === "text" ? " · text match" : ""}`}
+        </p>
     </div>
   );
 }

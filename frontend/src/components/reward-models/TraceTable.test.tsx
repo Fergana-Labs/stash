@@ -143,9 +143,12 @@ it("filters by source and date, and renames a source without changing its ID", a
   render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
   fireEvent.click(screen.getByRole("combobox", { name: "Filter by source" }));
   fireEvent.click(await screen.findByRole("option", { name: "Codex" }));
+  fireEvent.click(screen.getByRole("button", { name: "Filter by imported date" }));
   fireEvent.change(screen.getByLabelText("Imported from"), { target: { value: "2026-10-08" } });
   fireEvent.change(screen.getByLabelText("Imported through"), { target: { value: "2026-10-09" } });
   expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual(["Trace 3"]);
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(screen.getByRole("button", { name: "Filter by imported date" })).toHaveTextContent("Oct 8 – Oct 9");
   fireEvent.click(screen.getByRole("button", { name: "Rename source" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Source name" }), { target: { value: "Henry’s Codex" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));

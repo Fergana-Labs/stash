@@ -12,7 +12,7 @@ import { CardShell, NeedsModel, pct, useWizard } from "../wizard-ui";
 import { LabelPicker, labelSpace, showLabel } from "../labels";
 
 /** Try any input -- text, JSON, an image or document -- and see the decision and why. */
-export default function PlaygroundCard({ item: initialItem, prediction: initialPrediction }: { item?: Item; prediction?: Prediction }) {
+export default function PlaygroundCard({ item: initialItem, prediction: initialPrediction, editable = false, title = "Try it" }: { item?: Item; prediction?: Prediction; editable?: boolean; title?: string }) {
   const { modelId, send, refresh, version } = useWizard();
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [item, setItem] = useState<Item | null>(initialItem ?? null);
@@ -22,10 +22,10 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
   const [corrected, setCorrected] = useState("");
   const [pick, setPick] = useState<string | null>(null);
   // The wizard's try_item opens the card on its input; "Try another" switches to free input.
-  const [fixed, setFixed] = useState(initialItem !== undefined);
+  const [fixed, setFixed] = useState(initialItem !== undefined && !editable);
 
   useEffect(() => { if (modelId) imGet(modelId).then(setDetail).catch((e) => setError(errorMessage(e))); }, [modelId, version]);
-  if (!modelId) return <CardShell icon={FlaskConical} title="Try it"><NeedsModel /></CardShell>;
+  if (!modelId) return <CardShell icon={FlaskConical} title={title}><NeedsModel /></CardShell>;
 
   const draftReady = detail?.draft && !detail.draft.head_stale;
   const which: "draft" | "active" = draftReady ? "draft" : "active";
@@ -51,9 +51,9 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
   }
 
   return (
-    <CardShell icon={FlaskConical} title="Try it" subtitle={detail ? `${which === "draft" ? "Trained draft" : "Live version"}${served ? ` v${served.number}` : ""}` : undefined}>
+    <CardShell icon={FlaskConical} title={title} subtitle={detail ? `${which === "draft" ? "Trained draft" : "Live version"}${served ? ` v${served.number}` : ""}` : undefined}>
       {detail && !served?.head && !draftReady && <p className="m-0 mb-2 text-[12px] text-muted-foreground">Train the model first; then try inputs here.</p>}
-      {fixed && item !== null ? <ItemView item={item} className="mb-2" /> : <EvalInput initialItem={null} onChange={setItem} disabled={busy} />}
+      {fixed && item !== null ? <ItemView item={item} className="mb-2" /> : <EvalInput initialItem={editable ? initialItem ?? null : null} onChange={(next) => { setItem(next); setPrediction(null); setCorrected(""); setPick(null); }} disabled={busy} />}
       <div className="mt-2 flex gap-2">
         <Button size="sm" disabled={busy || item === null || !(draftReady || detail?.active)} onClick={() => void run()}>{busy ? "Running…" : prediction ? "Run again" : "Run"}</Button>
         {fixed && <Button size="sm" variant="ghost" onClick={() => { setFixed(false); setPrediction(null); setItem(null); }}>Try another</Button>}

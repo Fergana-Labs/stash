@@ -176,29 +176,19 @@ function Traces() {
   });
 
   const controls = <>
-    {groupBy === "none" && <><label className="flex h-7 w-72 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
+    {groupBy === "none" && <><label className="flex h-[26px] min-w-40 flex-1 items-center gap-1.5 rounded-[4px] border border-border bg-background px-2 sm:max-w-60 focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/10">
       <Search className="size-3.5 text-muted-foreground" />
-      <input aria-label="Search traces" placeholder="Search traces by what happened…" value={query} onChange={(e) => setQuery(e.target.value)}
-        className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground" />
+      <input aria-label="Search traces" placeholder="Search traces…" value={query} onChange={(e) => setQuery(e.target.value)}
+        className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground" />
     </label>
     <BehaviorMultiSelect behaviors={trends?.map((t) => t.behavior) ?? []} selected={filter} onChange={setFilter} /></>}
-    <Select aria-label="Time range" value={range} onChange={setRange} options={RANGES} className="h-7 w-32 px-2 text-[12px]" />
-    <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">Group by<Select aria-label="Group by" value={groupBy} onChange={(v) => setGroupBy(v as CohortBy | "none")} options={GROUP_BY} className="h-7 w-32 px-2 text-[12px] text-foreground" /></span>
+    <Select aria-label="Time range" value={range} onChange={setRange} options={RANGES} className="h-[26px] w-24 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:rounded-[2px] [&_[role=option]]:text-[11px]" />
+    <Select aria-label="Group by" value={groupBy} onChange={(v) => setGroupBy(v as CohortBy | "none")} options={GROUP_BY.map((option) => ({ ...option, label: `Group: ${option.label}` }))} className="h-[26px] w-32 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:rounded-[2px] [&_[role=option]]:text-[11px]" />
   </>;
 
   return (
     <TraceDropzone onImported={() => void load()}>
-      <RmPage
-        wide
-        title="Traces"
-        description="Your agents’ production traces, and the behaviors Stash watches for in them."
-        actions={(
-          <>
-            <ConnectAgentDialog />
-            <ImportTracesDialog onImported={() => void load()} />
-          </>
-        )}
-      >
+      <RmPage wide title="Traces">
         <MonitorsSection
           trends={trends}
           error={trendsError}
@@ -206,11 +196,13 @@ function Traces() {
           focusedId={focusedId}
           onFocus={(id) => setFilter(new Set(id ? [id] : []))}
           agents={agents}
+          actions={<ConnectAgentDialog />}
         />
         {traces === null ? (
           <RmListSkeleton />
         ) : traces.length === 0 ? (
           <div className="py-24 text-center">
+            <div className="mb-3 flex justify-center"><ImportTracesDialog onImported={() => void load()} /></div>
             <p className="m-0 text-[16px] font-medium text-foreground">Drop trace files or folders anywhere here</p>
             <p className="m-0 mt-2 text-[13px] text-muted-foreground">JSON, JSONL, or NDJSON. Or connect your agent to send runs automatically.</p>
           </div>
@@ -234,7 +226,7 @@ function Traces() {
             )}
             {searchError && groupBy === "none" && <p role="alert" className="mb-2 text-xs text-destructive">{searchError}</p>}
             {groupBy !== "none" ? <>
-              <div className="mb-3 flex flex-wrap items-center gap-3">{controls}</div>
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">{controls}<div className="ml-auto"><ImportTracesDialog onImported={() => void load()} /></div></div>
               <CohortsSection by={groupBy} days={overviewDays} />
             </> : <TraceTable
               traces={shownTraces ?? []}
@@ -245,6 +237,7 @@ function Traces() {
               selectionDisabled={!!deleting}
               deletingId={deleting}
               toolbar={controls}
+              toolbarActions={<ImportTracesDialog onImported={() => void load()} />}
               matches={matches}
               behaviorsByTrace={behaviorsByTrace}
             />}

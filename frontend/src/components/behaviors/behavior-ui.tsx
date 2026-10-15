@@ -205,11 +205,11 @@ export function BehaviorMultiSelect({ behaviors, selected, onChange }: { behavio
   const names = behaviors.filter((b) => selected.has(b.id)).map((b) => b.name);
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <button type="button" aria-label="Behavior filter" className={cn("inline-flex h-7 max-w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[12px]", selected.size ? "text-foreground" : "text-muted-foreground")}>
+      <button type="button" aria-label="Behavior filter" className={cn("inline-flex h-[26px] max-w-40 items-center gap-1.5 rounded-[4px] border border-border bg-background px-2 text-[11px]", selected.size ? "text-foreground" : "text-muted-foreground")}>
         <span className="truncate">{!selected.size ? "Behavior: any" : names.length === 1 ? names[0] : `${names.length} behaviors`}</span><ChevronDown className="size-3 shrink-0" />
       </button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+    <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto rounded-[4px]">
       {behaviors.map((b) => <DropdownMenuCheckboxItem key={b.id} checked={selected.has(b.id)} onSelect={(e) => e.preventDefault()}
         onCheckedChange={(on) => { const next = new Set(selected); if (on) next.add(b.id); else next.delete(b.id); onChange(next); }} className="text-xs">
         <span className={cn("size-1.5 shrink-0 rounded-full", ACTOR_COLOR[b.actor].dot)} />{b.name}

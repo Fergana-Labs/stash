@@ -17,7 +17,8 @@ export function EvalPageFrame({ title, description, actions, children }: { title
 
 export function examplePreview(item: Item): string {
   if (typeof item === "string") return item;
-  for (const key of ["reply", "output", "content", "title", "name"]) {
+  if (item.kind === "image" || item.kind === "document") return String(item.name || (item.kind === "image" ? "Image" : "Document"));
+  for (const key of ["reply", "output", "content", "text", "title", "name"]) {
     if (typeof item[key] === "string") return item[key];
   }
   return JSON.stringify(item);

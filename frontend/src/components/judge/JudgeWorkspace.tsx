@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import AutosaveTextarea from "@/components/evals/AutosaveTextarea";
+import EvalAdvanced from "@/components/evals/EvalAdvanced";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import { evalSurfaceClass } from "@/components/evals/eval-ui";
 import RefinePanel from "@/components/evals/RefinePanel";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { BRIEF_MARKER, imEditDraft, imGet, type JudgeProvider, type ModelDetail } from "@/lib/intuition-api";
+import { BRIEF_MARKER, imEditDraft, imGet, type JudgeProvider, type Item, type ModelDetail } from "@/lib/intuition-api";
 import { Select } from "@/components/ui/select";
 import { wzCreate, wzFromCorrections, wzReport, wzSessions, wzTrain, type TrainingReport } from "@/lib/wizard-api";
 import { cn } from "@/lib/utils";
@@ -25,9 +27,10 @@ import InboxPanel from "./InboxPanel";
 import ResultsPanel from "./ResultsPanel";
 import UseIt from "./UseIt";
 
-type Tab = "setup" | "inbox" | "golden" | "results" | "how";
+type Tab = "sandbox" | "setup" | "inbox" | "golden" | "results" | "how";
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: "setup", label: "Setup", hint: "What it decides and how" },
+  { id: "sandbox", label: "Sandbox", hint: "Try an input and inspect its decision" },
   { id: "inbox", label: "Inbox", hint: "Review what it decided" },
   { id: "golden", label: "Golden set", hint: "The examples it learns from" },
   { id: "results", label: "Results", hint: "How well it agrees with you" },
@@ -37,21 +40,13 @@ const TABS: { id: Tab; label: string; hint: string }[] = [
 /** The text the judge reads. Edits apply to the next version (Improve). */
 function Instructions({ id, detail, onSaved }: { id: string; detail: ModelDetail; onSaved: () => void }) {
   const [current, fromBrief = ""] = ((detail.draft ?? detail.active)?.description ?? "").split(BRIEF_MARKER);
-  const [text, setText] = useState(current);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => setText(current), [current]);
-  async function save() {
-    setBusy(true); setError("");
-    try { await imEditDraft(id, { description: text }); onSaved(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-  }
+
   return (
     <section aria-label="Instructions" className="rounded-lg border border-border p-3.5">
-      <div className="mb-1.5 flex items-center justify-between gap-2"><h3 className="m-0 text-[13px] font-semibold">Instructions the judge reads</h3>{text !== current && <Button size="xs" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>}</div>
-      <textarea aria-label="Instructions the judge reads" rows={6} maxLength={6000} value={text} onChange={(e) => setText(e.target.value)} className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[12.5px] leading-5 outline-none focus:border-foreground/40" />
+      <h3 className="m-0 mb-1.5 text-[13px] font-semibold">Instructions the judge reads</h3>
+      <AutosaveTextarea key={id} value={current} label="Instructions the judge reads" rows={6} maxLength={6000} save={(description) => imEditDraft(id, { description })} onSaved={onSaved} />
       {fromBrief && <details className="mt-2 text-[11.5px] text-muted-foreground"><summary className="cursor-pointer">Also included automatically from the eval brief</summary><p className="whitespace-pre-wrap">{fromBrief}</p></details>}
       <p className="m-0 mt-1 text-[11px] text-muted-foreground">The judge reads these instructions together with the eval brief. Editing the brief updates that context automatically.</p>
-      {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
     </section>
   );
 }
@@ -102,6 +97,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
   const [tab, setTab] = useState<Tab>("setup");
+  const [sandbox, setSandbox] = useState<{ item: Item; revision: number } | null>(null);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [improving, setImproving] = useState(false);
@@ -219,8 +215,9 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 </div>
               )}
               {tab === "inbox" && <InboxPanel />}
-              {tab === "golden" && <ExamplesPanel />}
-              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ResultsPanel /><RefinePanel id={id} detail={detail} onChanged={refresh} /></div>}
+              {tab === "golden" && <ExamplesPanel onTry={(item) => { setSandbox({ item, revision: Date.now() }); setTab("sandbox"); }} />}
+              {tab === "sandbox" && <div className="max-w-3xl [&>section]:my-0"><PlaygroundCard key={sandbox?.revision ?? "empty"} item={sandbox?.item} editable title="Sandbox" /></div>}
+              {tab === "results" && <div className="flex flex-col gap-4 [&>section]:my-0"><ResultsPanel /><EvalAdvanced version={detail.active ?? detail.draft} serving={!!detail.active} /><RefinePanel id={id} detail={detail} onChanged={refresh} /></div>}
               {tab === "how" && <HowItWorks id={id} name={detail.model.name} />}
             </div>
           </div>

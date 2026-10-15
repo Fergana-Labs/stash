@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, ChevronDown, ChevronRight, Flag, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { traceActionClass } from "@/components/reward-models/rm-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { HitsChart, NewBehaviorDialog, ReleaseDialog, SeverityDot, SeverityTag, Sparkline, dailyBuckets } from "@/components/behaviors/behavior-ui";
 import { ACTOR_COLOR, ACTORS, DETECTOR_LABEL, installStarters, listReleases, type BehaviorTrend, type Release } from "@/lib/behaviors-api";
@@ -17,13 +18,14 @@ const actorOrder = (t: BehaviorTrend) => ACTORS.findIndex((a) => a.value === t.b
  * The behaviors Stash watches for, as a compact strip above the trace table.
  * Clicking one filters the table to it and shows its hits over time.
  */
-export default function MonitorsSection({ trends, error, onReload, focusedId, onFocus, agents }: {
+export default function MonitorsSection({ trends, error, onReload, focusedId, onFocus, agents, actions }: {
   trends: BehaviorTrend[] | null;
   error: string;
   onReload: () => void;
   focusedId: string | null;
   onFocus: (id: string | null) => void;
   agents: string[];
+  actions?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -62,16 +64,17 @@ export default function MonitorsSection({ trends, error, onReload, focusedId, on
   const sorted = [...(trends ?? [])].sort((a, b) => actorOrder(a) - actorOrder(b));
   const focused = sorted.find((t) => t.behavior.id === focusedId) ?? null;
 
-  return <section aria-label="Monitors" className="mb-6">
+  return <section aria-label="Monitors" className="mb-2">
     <header className="mb-2 flex flex-wrap items-center gap-2">
       <button type="button" onClick={toggleCollapsed} aria-expanded={!collapsed} className="inline-flex items-center gap-1 text-[13px] font-semibold text-foreground">
         {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}Monitors
         {trends && <span className="font-normal text-muted-foreground tabular-nums">· {trends.length}</span>}
       </button>
-      <div className="ml-auto flex gap-2">
+      <div className="ml-auto flex flex-wrap justify-end gap-1.5">
+        {actions}
         {trends && !trends.length && <Button size="xs" variant="outline" disabled={installing} onClick={() => void addStarters()}><Sparkles />{installing ? "Adding…" : "Add starter behaviors"}</Button>}
-        <Button size="xs" variant="outline" onClick={() => setMarking(true)}><Flag />Add release marker</Button>
-        <Button size="xs" variant="outline" onClick={() => setCreating(true)}><Plus />New behavior</Button>
+        <Button size="xs" variant="outline" className={traceActionClass} onClick={() => setMarking(true)}><Flag />Add release marker</Button>
+        <Button size="xs" variant="outline" className={traceActionClass} onClick={() => setCreating(true)}><Plus />New behavior</Button>
       </div>
     </header>
     {error && <p role="alert" className="mb-2 text-xs text-destructive">{error} <button className="underline" onClick={onReload}>Retry</button></p>}

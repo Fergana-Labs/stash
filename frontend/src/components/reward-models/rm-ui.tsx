@@ -5,6 +5,9 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RmJobStatus } from "@/lib/types";
 
+/** Compact actions use the same dimensions as the trace filter controls. */
+export const traceActionClass = "h-[26px] gap-1.5 rounded-[4px] border-border bg-background px-2 text-[11px] font-normal shadow-none [&_svg]:size-3";
+
 /** Page frame shared by the list pages: title, description, and an actions slot. */
 export function RmPage({
   title,
