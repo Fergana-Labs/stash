@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, Sparkles, Square, Wand2 } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -188,7 +188,6 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
             <div className="mx-auto max-w-3xl px-5 py-6">
               {entries && entries.length === 0 && (
                 <div className="py-10 text-center">
-                  <div className="mx-auto mb-3 grid size-11 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400"><Wand2 className="size-5" /></div>
                   <h2 className="m-0 text-lg font-semibold tracking-tight">What judgment call should it make?</h2>
                   <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would.</p>
                   <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">

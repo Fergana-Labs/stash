@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Wand2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EvalEndpoint from "@/components/evals/EvalEndpoint";
 import RefinePanel from "@/components/evals/RefinePanel";
@@ -179,14 +179,14 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 <Button size="sm" variant="outline" disabled={improving} onClick={() => void improve()} title="Retrain on every label and correction, and check it against the golden set. To rewrite the criteria themselves, use Improve rubric under Results.">
                   {improving ? <><Loader2 className="animate-spin" />Retraining…</> : <><RefreshCw />Retrain</>}
                 </Button>
-                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard()}><Wand2 />{openingWizard ? "Opening…" : "Wizard"}</Button>
+                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard()}>{openingWizard ? "Opening…" : "Wizard"}</Button>
               </div>
             </header>
             {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
             {fresh && (
               <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-brand-500/30 bg-brand-500/5 px-4 py-3">
                 <p className="m-0 flex-1 text-[13px]">New eval. The wizard asks a few questions, helps you label a handful of examples, and sets up criteria with you.</p>
-                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard({ text: "Help me set up this eval.", kind: "message" })}><Wand2 />Set it up with the wizard</Button>
+                <Button size="sm" disabled={openingWizard} onClick={() => void openWizard({ text: "Help me set up this eval.", kind: "message" })}>Set it up with the wizard</Button>
               </div>
             )}
 

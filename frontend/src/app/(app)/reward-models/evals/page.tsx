@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Wand2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
@@ -20,7 +20,7 @@ export default function EvalsPage() {
   const load = useCallback(async () => { try { setModels((await imList()).models); setError(""); } catch (e) { setError(errorMessage(e)); } }, []);
   useEffect(() => { void load(); }, [load]);
   const visible = models?.filter((model) => `${model.name} ${model.active_description ?? model.draft_description ?? ""}`.toLowerCase().includes(query.toLowerCase())) ?? [];
-  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href="/reward-models/wizard"><Wand2 />Build with the wizard</Link></Button><Button size="sm" asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
+  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href="/reward-models/wizard">Build with the wizard</Link></Button><Button size="sm" asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
     <EvalsViewToggle view="evals" />
     {error && <p role="alert" className="text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p>}
     <div className="mb-3 flex items-center justify-between gap-3"><label className="flex h-8 w-64 items-center gap-2 rounded-md border border-border px-2"><Search className="size-3 text-muted-foreground" /><input aria-label="Search evals" placeholder="Search evals…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><span className="text-xs text-muted-foreground">{models ? `${visible.length} evals` : ""}</span></div>
