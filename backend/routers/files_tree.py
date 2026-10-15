@@ -270,7 +270,7 @@ async def recompute_memory(
     except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
-            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            detail="Connect your Claude, Codex, OpenRouter, or Requesty key in settings, "
             "or upgrade to Pro to run the Memory curator.",
         )
     except agent_auth.ProviderNotConfigured:
