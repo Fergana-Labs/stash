@@ -53,7 +53,7 @@ export function LearnedSection({ data }: { data: TasteWorkspace }) {
           <li key={r.rule} className="flex items-baseline gap-3 py-1.5 text-[12.5px]">
             <span className={cn("w-12 shrink-0 text-[11px]", r.kind === "avoid" ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400")}>{r.kind === "avoid" ? "Avoid" : "Prefer"}</span>
             <span className="min-w-0 flex-1">{r.rule}</span>
-            {r.evidence.length > 0 && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.evidence.length} ex</span>}
+            {r.source === "feedback" ? <span className="shrink-0 text-[11px] text-muted-foreground">you said</span> : r.evidence.length > 0 && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.evidence.length} ex</span>}
           </li>
         ))}
       </ul>

@@ -185,6 +185,16 @@ async def examples(req: ExampleUpload, user: User):
     )
 
 
+class Preference(Body):
+    rule: str = Field(min_length=3, max_length=500)
+    kind: Literal["prefer", "avoid"]
+
+
+@router.post("/preferences")
+async def preference(req: Preference, user: User):
+    return await checked(taste.add_preference(user["id"], req.rule, req.kind))
+
+
 class HillClimb(Body):
     brief: str = Field(min_length=1, max_length=4000)
 

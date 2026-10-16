@@ -331,7 +331,7 @@ def _verdict(args: dict, ignore_shell: bool = False) -> dict:
     return {
         "label": "liked" if score >= 0.5 else "disliked",
         "score": round(score, 3),
-        "approved": score >= taste_demo.APPROVE,
+        "approved": score >= taste_demo.approve_threshold(),
         "summary": str(args.get("summary", ""))[:400],
         "fixes": [
             {

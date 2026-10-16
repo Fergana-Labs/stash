@@ -23,6 +23,16 @@ MAX_REFERENCE_IMAGES = 6
 # References shown to the judge on every check: screens the user liked and disliked.
 JUDGE_REFERENCES_PER_LABEL = 2
 APPROVE = 0.7
+
+
+def approve_threshold() -> float:
+    """The score a page needs for approval; TASTE_APPROVE (0-1) raises the bar for a demo."""
+    try:
+        return float(os.environ.get("TASTE_APPROVE", APPROVE))
+    except ValueError:
+        return APPROVE
+
+
 JUDGE_READS = 2
 
 
@@ -221,7 +231,7 @@ async def judge(model: dict, item: dict, image_path, refs=()) -> dict:
     return {
         "label": "liked" if score >= 0.5 else "disliked",
         "score": round(score, 3),
-        "approved": score >= APPROVE,
+        "approved": score >= approve_threshold(),
         "summary": str(result.get("summary", ""))[:400],
         "fixes": [
             {"issue": str(f.get("issue", ""))[:300], "fix": str(f.get("fix", ""))[:400]}

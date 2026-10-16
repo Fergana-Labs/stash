@@ -1193,6 +1193,20 @@ async def hillclimb_state(owner, job_id):
     return read(path)
 
 
+async def add_preference(owner, rule, kind):
+    """Add a rule the user stated directly to the current demo grader."""
+    row = await workspace(owner)
+    model = grader(row)
+    if not taste_demo.is_demo_grader(model):
+        raise Conflict("Build your grader first.")
+    model["preferences"] = [
+        *model["preferences"],
+        {"rule": rule, "kind": kind, "evidence": [], "source": "feedback"},
+    ]
+    write(location(row, "probe") / "activation-probe.json", model)
+    return {"preferences": model["preferences"]}
+
+
 async def demo_build(row):
     if label_summary(row)["build_gaps"]:
         raise ValueError(" ".join(label_summary(row)["build_gaps"]))

@@ -133,6 +133,8 @@ export interface TastePreference {
   rule: string;
   kind: "prefer" | "avoid";
   evidence: string[];
+  /** "feedback" when the user stated the rule directly. */
+  source?: string;
 }
 const base = "/api/v1/taste";
 export const tasteGet = () => apiFetch<TasteWorkspace | null>(base);

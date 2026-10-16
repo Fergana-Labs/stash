@@ -94,7 +94,7 @@ class Run:
         self.state = {
             "brief": brief,
             "status": "running",
-            "threshold": taste_demo.APPROVE,
+            "threshold": taste_demo.approve_threshold(),
             "arms": {arm: {"status": "running", "rounds": []} for arm in ARMS},
         }
         self.save()
@@ -137,7 +137,10 @@ class Run:
                             "screenshot_sha256": sha,
                             "brief": self.state["brief"][:500],
                             "ref": f"hill-climb round {n}",
-                            "coverage": {"complete": result["approved"], "supplied_steps": len(messages)},
+                            "coverage": {
+                                "complete": result["approved"],
+                                "supplied_steps": len(messages),
+                            },
                         }
                     )
                 messages.append({"role": "assistant", "content": html})
