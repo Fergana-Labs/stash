@@ -1,5 +1,10 @@
 # Website design demo
 
+The target experiment is [learning Henry's website taste from real agent
+history](website-taste-experiment.md), then comparing base Qwen, a trace-derived
+skill, GEPA-optimized instructions, and a post-trained Qwen checkpoint on unseen
+briefs. This fixture is a precursor to that comparison.
+
 This extends the existing local sample account with the flow in the
 [October 15 demo notes](https://notes.granola.ai/t/d3745d43-723c-48ef-9604-4716a5614dca-008umkv4):
 inspect an HTML file, capture visual preferences, build an evaluator, improve the
