@@ -76,7 +76,13 @@ def main() -> None:
     print(f"{verdict} — score {round(result['score'] * 100)}/100")
     print(result.get("summary", ""))
     for i, fix in enumerate(result.get("fixes") or [], 1):
-        tag = "[execution — blocks approval] " if fix.get("kind") == "execution" else ""
+        tag = (
+            "[blocks approval] "
+            if fix.get("major")
+            else "[execution] "
+            if fix.get("kind") == "execution"
+            else ""
+        )
         print(f"{i}. {tag}{fix['issue']}\n   -> {fix['fix']}")
     for keep in result.get("keep") or []:
         print(f"keep: {keep}")
