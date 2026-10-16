@@ -1193,24 +1193,34 @@ async def hillclimb_state(owner, job_id):
     return read(path)
 
 
+def user_rules_path(row):
+    # Kept beside the workspace runs, so rules survive demo resets and rebuilds.
+    root = Path(os.environ.get("TASTE_WORKSPACE_ROOT", "/tmp/stash-taste-workspaces"))
+    return root / str(row["id"]) / "user-rules.json"
+
+
+def user_rules(row):
+    return read(user_rules_path(row)).get("rules", [])
+
+
 async def add_preference(owner, rule, kind):
-    """Add a rule the user stated directly to the current demo grader."""
+    """Add a rule the user stated directly. It applies now and to every later build."""
     row = await workspace(owner)
+    entry = {"rule": rule, "kind": kind, "evidence": [], "source": "feedback"}
+    saved = [r for r in user_rules(row) if r["rule"] != rule]
+    write(user_rules_path(row), {"rules": [*saved, entry]})
     model = grader(row)
-    if not taste_demo.is_demo_grader(model):
-        raise Conflict("Build your grader first.")
-    model["preferences"] = [
-        *model["preferences"],
-        {"rule": rule, "kind": kind, "evidence": [], "source": "feedback"},
-    ]
-    write(location(row, "probe") / "activation-probe.json", model)
-    return {"preferences": model["preferences"]}
+    if taste_demo.is_demo_grader(model):
+        model["preferences"] = [*[p for p in model["preferences"] if p["rule"] != rule], entry]
+        write(location(row, "probe") / "activation-probe.json", model)
+    return {"rules": [*saved, entry]}
 
 
 async def demo_build(row):
     if label_summary(row)["build_gaps"]:
         raise ValueError(" ".join(label_summary(row)["build_gaps"]))
     model = await taste_demo.build(row, effective_examples(row), example_images(row))
+    model["preferences"] += user_rules(row)
     directory = work_root(row) / ("demo-grader-" + str(row["revision"]))
     write(directory / "activation-probe.json", model)
     return {"probe": str(directory)}
