@@ -147,16 +147,12 @@ it("redirects archived demo chats to their fresh replacement", async () => {
   expect(api.stream).not.toHaveBeenCalled();
 });
 
-it("accepts an exported trace before an eval exists and continues automatically", async () => {
+it("does not upload session traces from the composer", async () => {
   api.get.mockResolvedValue({id:"session", model_id:null, title:"New eval", transcript:[]});
-  api.upload.mockResolvedValue({model_id:"website-eval", job_id:"upload-job"});
   const {container} = render(<WizardChat sessionId="session" />);
   await screen.findByRole("heading", {name:"New eval"});
-  const input = container.querySelector('input[type="file"]')!;
-  expect(input.getAttribute("accept")).toContain(".jsonl");
-  const file = new File(['{"type":"response_item"}'], "history.jsonl", {type:"application/jsonl"});
-  Object.defineProperty(file,"text",{value:async()=>'{"type":"response_item"}'});
-  fireEvent.change(input,{target:{files:[file]}});
-  await waitFor(()=>expect(api.upload).toHaveBeenCalledWith("session",[{name:"history.jsonl",content:'{"type":"response_item"}'}]));
-  await waitFor(()=>expect(api.stream).toHaveBeenCalledWith("session",expect.stringContaining("upload-job"),"event",expect.any(Function)));
+  const file = new File(["{}"], "history.jsonl", {type:"application/jsonl"});
+  fireEvent.change(container.querySelector('input[type="file"]')!,{target:{files:[file]}});
+  expect(await screen.findByRole("alert")).toHaveTextContent("Describe what you want to judge first.");
+  expect(api.upload).not.toHaveBeenCalled();
 });

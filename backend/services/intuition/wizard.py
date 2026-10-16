@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -93,28 +94,23 @@ is the best a judge can do. When people disagree, fix the label definitions, not
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
 
 ## Website and UI preference evals
-The user experience has THREE steps only: supply traces (uploads or connected history),
-answer a clarification IF genuinely needed, receive a working grading API endpoint.
-Use website_eval prepare, search/read real history yourself, website_eval learn to collect
-relevant source evidence, then website_eval finish. After a job completes, call finish
-again; it either continues building or returns the endpoint and completes setup.
+The user teaches the grader with contrastive examples: websites they like and ones they
+don't (URLs, HTML files, or screenshots). The experience has three steps only: supply
+examples, answer a clarification IF genuinely needed, receive a working grading endpoint.
+Call website_eval prepare first. On a new eval it shows a card where the user adds example
+sites; the turn ends there. Do not search or read history for website evals. When an event
+says the user added example sites, answered open questions, or that background work
+finished, call website_eval finish; if the work failed, explain the cause plainly. After a
+job completes, call finish again; it either continues building or returns the endpoint.
 Do not offer a menu of actions. Never mention GEPA, weight refinement, skills, experiment
 arms, train/dev/test splits, probe architecture, research blockers or optimization in setup.
-Those are internal research concerns, not decisions the user needs to make.
-Clear likes and corrections in their traces are labels: extract them automatically with
-quotes and actual output attribution. Never ask for blanket manual review. Exclude uncertain
-interpretations and teacher guesses. Ask at most two concrete questions ONLY if the actual
-user goal or essential training feedback is missing after inspecting the supplied sources.
-Do not keep searching once enough real evidence exists to build. Four clear training examples
-with both labels are enough for the initial endpoint; held-out validation is optional and
-reported honestly. Do not block the initial build for missing independent accuracy evidence.
-NEVER invent synthetic labels to unlock validation, present teacher guesses as the user's
-feedback, or call training accuracy evidence of generalization. Never promise a capability
-or action the tool cannot perform. Never describe scores from an older version as newly
-trained results. Completion means a persisted fitted model and its actual prediction API.
-Respect the existing compute budget. Do not launch any research experiments from this wizard.
-The generic manual-labeling script below does not override explicit feedback already supplied
-in traces. Missing render evidence stays explicit; ask only when it is essential.
+Show what you learned with website_eval review: its card lists each preference with the
+example it came from, and asks about unclear examples with buttons. Never list preferences,
+examples, labels, or open questions in chat text; the card is where the user sees and
+answers them. Your text around a card is one or two short sentences. Two liked and two
+disliked examples are enough for the initial endpoint. NEVER invent labels or examples.
+Never promise a capability or action the tool cannot perform. Completion means a built
+grader and its actual prediction API.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -292,7 +288,15 @@ TOOLS = [
         {
             "operation": {
                 "type": "string",
-                "enum": ["prepare", "learn", "extract_labels", "status", "wait", "finish"],
+                "enum": [
+                    "prepare",
+                    "learn",
+                    "extract_labels",
+                    "review",
+                    "status",
+                    "wait",
+                    "finish",
+                ],
             },
             "name": {"type": "string", "maxLength": 160},
             "selections": {
@@ -681,7 +685,7 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
                 "api_ready": website["endpoint"]["ready"],
             },
             "website_eval": website,
-            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. History discovery is your job; do not ask the user to search or import.",
+            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. The user supplies traces through the upload card or picks connected history; after that, history discovery is your job. Never ask them to type search queries.",
         }
     detail = await service.get_detail(owner_id, UUID(model_id))
     version = detail["draft"] or detail["active"]
@@ -1003,11 +1007,8 @@ async def setup_tools(owner_id, session):
     from .. import taste
 
     if session.get("model_id") and await taste.mapped_model(owner_id, UUID(session["model_id"])):
-        return [
-            tool
-            for tool in TOOLS
-            if tool["name"] in ("website_eval", "search_history", "read_history")
-        ]
+        # Website evals learn from example sites, never from the user's history.
+        return [tool for tool in TOOLS if tool["name"] == "website_eval"]
     return TOOLS
 
 
@@ -1042,10 +1043,17 @@ async def stream_turn(
         )
     try:
         client = llm._get_client()
-        for _ in range(MAX_TURNS):
+        # A new website-design eval always starts by asking for traces, not by searching.
+        force_website = kind == "message" and not session["model_id"] and _website_intent(text)
+        for turn in range(MAX_TURNS):
             state = await status(owner_id, session["model_id"], session["brief"])
             system = (
                 SYSTEM + "\n\nCURRENT STATE (authoritative):\n" + json.dumps(state, default=str)
+            )
+            extra = (
+                {"tool_choice": {"type": "tool", "name": "website_eval"}}
+                if force_website and turn == 0
+                else {}
             )
             async with client.messages.stream(
                 model=settings.ANTHROPIC_MODEL,
@@ -1053,6 +1061,7 @@ async def stream_turn(
                 system=system,
                 tools=await setup_tools(owner_id, session),
                 messages=session["messages"],
+                **extra,
             ) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -1117,10 +1126,14 @@ async def stream_turn(
                             "model_id": session["model_id"],
                             "title": session["title"],
                         }
-                    background_work = background_work or (
-                        use.name == "website_eval"
-                        and isinstance(result, dict)
-                        and result.get("status") == "working"
+                    background_work = (
+                        background_work
+                        or (
+                            use.name == "website_eval"
+                            and isinstance(result, dict)
+                            and result.get("status") == "working"
+                        )
+                        or _awaits_user(card, result)
                     )
                     content, is_error = json.dumps(result, default=str)[:MAX_RESULT_CHARS], False
                 except (
@@ -1182,8 +1195,8 @@ async def stream_turn(
                     return
             session["messages"].append({"role": "user", "content": results})
             if background_work:
-                # A durable job owns the next step; do not spend more turns
-                # polling it or repeat progress cards in the conversation.
+                # A durable job or the user owns the next step; do not spend more
+                # turns polling it or repeat progress cards in the conversation.
                 yield {"type": "done", "model_id": session["model_id"]}
                 return
         yield {"type": "done", "model_id": session["model_id"]}
@@ -1199,6 +1212,22 @@ async def stream_turn(
         with CancelScope(shield=True):
             _repair_dangling(session["messages"])
             await _save(session)
+
+
+def _website_intent(text: str) -> bool:
+    return bool(re.search(r"\b(website|web ?site|web page|landing page|UI|design)\b", text, re.I))
+
+
+def _awaits_user(card, result) -> bool:
+    """A website card that needs the user's input ends the turn; the card speaks for itself."""
+    if not card or card.get("kind") != "website_eval":
+        return False
+    section = card.get("props", {}).get("section")
+    return section == "sources" or (
+        section == "preferences"
+        and isinstance(result, dict)
+        and result.get("needs_your_call", 0) > 0
+    )
 
 
 def _repair_dangling(messages: list[dict]) -> None:
@@ -1232,6 +1261,12 @@ async def website_tool(owner, session, args, progress):
     if op == "prepare":
         binding = await taste.bind_wizard(owner, session, name=args.get("name", "Website design"))
         state = await taste.detail(owner)
+        if not state["examples"] and not state["jobs"]:
+            return {
+                "eval_id": binding["model_id"],
+                "existing_examples": 0,
+                "next": "The card asks the user for example sites they like and don't. Say so in one sentence and stop.",
+            }, _card("website_eval", section="sources")
         return {
             "eval_id": binding["model_id"],
             "existing_examples": len(state["examples"]),
@@ -1273,8 +1308,9 @@ async def website_tool(owner, session, args, progress):
             return {
                 "status": "needs_information",
                 "missing": state["labels"]["build_gaps"],
-                "next": "Inspect the supplied traces for this feedback, then ask only about what is genuinely missing. Validation data is optional; never invent synthetic human labels.",
-            }, _card("website_eval", section="progress")
+                "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
+                "next": "The preferences card shows what is missing and asks the user about unclear examples. Say so in one sentence; do not restate examples or quotes. If no example needs their call, inspect the supplied traces for more feedback. Never invent synthetic human labels.",
+            }, _card("website_eval", section="preferences")
         operation = "build"
     elif op in ("status", "wait") and active:
         return {
@@ -1291,6 +1327,12 @@ async def website_tool(owner, session, args, progress):
             {"sources": args["selections"][:10]},
         )
         operation = "collect_all"
+    elif op == "review":
+        return {
+            "labels": state["labels"],
+            "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
+            "next": "The card shows the learned preferences and any open questions. Do not restate them in text.",
+        }, _card("website_eval", section="preferences")
     elif op == "extract_labels":
         operation = op
     else:

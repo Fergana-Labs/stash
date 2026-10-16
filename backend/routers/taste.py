@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..auth import get_current_user
 from ..services import taste
@@ -32,12 +32,23 @@ class Reset(Body):
 
 class TraceFile(Body):
     name: str = Field(max_length=200)
-    content: str = Field(min_length=1, max_length=8_000_000)
+    content: str = Field(min_length=1, max_length=40_000_000)
+
+
+MAX_UPLOAD_CHARS = 80_000_000
 
 
 class TraceUpload(Body):
     session_id: UUID
-    files: list[TraceFile] = Field(min_length=1, max_length=10)
+    # A dropped Claude Code or Codex history folder holds many session files.
+    files: list[TraceFile] = Field(min_length=1, max_length=200)
+
+    @field_validator("files")
+    @classmethod
+    def bounded_total(cls, files: list[TraceFile]) -> list[TraceFile]:
+        if sum(len(f.content) for f in files) > MAX_UPLOAD_CHARS:
+            raise ValueError("Upload at most 80 MB of traces at once.")
+        return files
 
 
 class Source(Body):
@@ -123,7 +134,7 @@ async def traces(req: TraceUpload, user: User):
 
 
 @router.get("/images/{kind}/{identity}")
-async def image(kind: Literal["example", "design"], identity: str, user: User):
+async def image(kind: Literal["example", "design", "check"], identity: str, user: User):
     import base64
 
     row = await checked(taste.workspace(user["id"]))
@@ -150,6 +161,40 @@ async def start(req: Job, user: User):
     return await checked(
         taste.enqueue(user["id"], req.operation, req.model_dump(mode="json", exclude_none=True))
     )
+
+
+class ExampleFile(Body):
+    name: str = Field(max_length=200)
+    label: Literal["liked", "disliked"]
+    # Base64 image bytes, or HTML text for .html files. Empty when `url` is given.
+    content: str = Field(default="", max_length=12_000_000)
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class ExampleUpload(Body):
+    session_id: UUID
+    files: list[ExampleFile] = Field(min_length=1, max_length=40)
+
+
+@router.post("/examples")
+async def examples(req: ExampleUpload, user: User):
+    return await checked(
+        taste.add_examples(user["id"], req.session_id, [f.model_dump() for f in req.files])
+    )
+
+
+class HillClimb(Body):
+    brief: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/hillclimb")
+async def hillclimb(req: HillClimb, user: User):
+    return await checked(taste.start_hillclimb(user["id"], req.brief))
+
+
+@router.get("/hillclimb/{job_id}")
+async def hillclimb_state(job_id: UUID, user: User):
+    return await checked(taste.hillclimb_state(user["id"], job_id))
 
 
 @router.post("/predict")

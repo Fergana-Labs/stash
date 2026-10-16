@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { tasteGet, tasteReset, tasteUploadTraces, type TasteWorkspace } from "@/lib/taste-api";
+import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
@@ -32,7 +32,7 @@ import RobustnessCard from "./cards/RobustnessCard";
 import UploaderCard from "./cards/UploaderCard";
 
 const STARTERS = [
-  "Learn my website design preferences from my past sessions",
+  "Learn my website taste from examples of good and bad sites",
   "Build an eval from my past Codex sessions",
   "Check my coding agent's PRs before it opens them",
   "Grade my AI assistant's answers as good or bad",
@@ -237,19 +237,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   }, [inject, pending, entries, send]);
 
   async function attach(files: FileList) {
-    if (Array.from(files).every(f => /\.jsonl$/i.test(f.name))) {
-      setAttaching("Reading your traces…");
-      try {
-        const uploaded = await tasteUploadTraces(sessionId, await Promise.all(Array.from(files).map(async file => {
-          if (file.size > 8_000_000) throw new Error("Upload traces in files of up to 8 MB each.");
-          return {name:file.name,content:await file.text()};
-        })));
-        setModelId(uploaded.model_id);
-        send(`My traces have been uploaded. Background job ${uploaded.job_id} is collecting their feedback. Use website_eval wait for this job and then finish to return my grading endpoint. Ask only if essential information is missing.`, "event");
-      } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
-      return;
-    }
-    if (!modelId) { setError("Attach your exported JSONL traces, or describe what you want to judge first."); return; }
+    if (!modelId) { setError("Describe what you want to judge first."); return; }
     const rows: NewExample[] = [];
     try {
       for (const [i, file] of Array.from(files).entries()) {
@@ -262,7 +250,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
   }
 
-  const ctx: WizardCtx = { modelId, send, refresh, version, busy };
+  const ctx: WizardCtx = { modelId, send, refresh, version, busy, sessionId, adoptModel: setModelId };
   const lastCardIds = new Map<string, string>();
   for (const entry of entries ?? []) if (entry.role === "assistant") for (const p of entry.parts) if (p.type === "card") { lastCardIds.set(p.kind, p.id); if(p.kind === "website_eval" && p.props.section === "preferences") lastCardIds.set("labeler",p.id); }
 
@@ -277,7 +265,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
               <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void restart()} title="Start a fresh conversation. Your eval and previous chat are kept.">
                 {restarting && !resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting && !resettingDemo ? "Restarting…" : "Restart"}
               </Button>
-              {website && ((!!modelId && website.model_id === modelId) || (!modelId && website.fresh_start && website.wizard_session_id === sessionId)) && <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void resetDemo()} title="Start from scratch: archive this demo's chat, preferences, grader and results. Your original history is kept.">{resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />}{resettingDemo ? "Resetting…" : "Reset demo"}</Button>}
+              {website && (website.demo || (!!modelId && website.model_id === modelId) || (!modelId && website.fresh_start && website.wizard_session_id === sessionId)) && <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void resetDemo()} title="Start from scratch: archive this demo's chat, preferences, grader and results. Your original history is kept.">{resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />}{resettingDemo ? "Resetting…" : "Reset demo"}</Button>}
             </header>
           )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">

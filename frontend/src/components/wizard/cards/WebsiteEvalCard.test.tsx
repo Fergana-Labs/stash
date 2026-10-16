@@ -54,7 +54,7 @@ it("continues automatically after collection without making the user choose an a
   render(<WebsiteEvalCard section="progress" jobId="job-1" />);
   await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
   expect(api.send).toHaveBeenCalledWith(
-    expect.stringContaining("Call website_eval finish"),
+    "Finished learning from your examples.",
     "event",
   );
   expect(

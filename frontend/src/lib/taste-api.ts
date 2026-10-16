@@ -84,6 +84,8 @@ export interface TasteWorkspace {
     limitations: string[];
     metrics: Record<string, { n: number; accuracy: number | null }> | null;
     spec: Record<string, unknown> | null;
+    preferences?: TastePreference[];
+    examples?: { liked: number; disliked: number } | null;
   };
   search_coverage: {
     recorded_has_more?: boolean;
@@ -102,12 +104,35 @@ export interface TasteWorkspace {
   history: { connected: boolean };
   sources: TasteSource[];
   cloud_enabled: boolean;
-  predictions: {
-    id: string;
-    version: string;
-    output: { label: string; score: number };
-    feedback: string | null;
-  }[];
+  predictions: TastePrediction[];
+  /** Server runs in demo mode: Claude grades check-ins against learned preferences. */
+  demo?: boolean;
+}
+export interface TasteFix {
+  issue: string;
+  fix: string;
+}
+export interface TastePrediction {
+  id: string;
+  version: string;
+  output: {
+    label: string;
+    score: number;
+    summary?: string;
+    fixes?: TasteFix[];
+    keep?: string[];
+    brief?: string;
+    ref?: string | null;
+    screenshot_sha256?: string;
+    coverage?: { complete?: boolean; supplied_steps?: number };
+  };
+  feedback: string | null;
+  created_at: string;
+}
+export interface TastePreference {
+  rule: string;
+  kind: "prefer" | "avoid";
+  evidence: string[];
 }
 const base = "/api/v1/taste";
 export const tasteGet = () => apiFetch<TasteWorkspace | null>(base);
@@ -156,3 +181,40 @@ export const tasteCheckSaved = (id: string) =>
   );
 export const tasteCheckpoint = (id: string) =>
   apiFetch<Record<string, unknown>>(`${base}/checks/${id}`);
+
+export interface HillClimbRound {
+  round: number;
+  screenshot_sha256: string;
+  score: number;
+  approved: boolean;
+  summary: string;
+  fixes: TasteFix[];
+  keep: string[];
+}
+export interface HillClimbArm {
+  status: "running" | "done" | "failed";
+  working?: string;
+  error?: string;
+  rounds: HillClimbRound[];
+}
+export interface HillClimbState {
+  brief: string;
+  status: "running" | "done" | "failed";
+  threshold: number;
+  arms: { grader: HillClimbArm; alone: HillClimbArm };
+}
+export const tasteHillClimb = (brief: string) =>
+  apiFetch<{ job_id: string }>(`${base}/hillclimb`, {
+    method: "POST",
+    body: JSON.stringify({ brief }),
+  });
+export const tasteHillClimbState = (jobId: string) =>
+  apiFetch<HillClimbState>(`${base}/hillclimb/${jobId}`);
+export const tasteAddExamples = (
+  sessionId: string,
+  files: { name: string; label: "liked" | "disliked"; content: string; url?: string }[],
+) =>
+  apiFetch<{ model_id: string; added: { liked: number; disliked: number }; job_id: string | null }>(
+    `${base}/examples`,
+    { method: "POST", body: JSON.stringify({ session_id: sessionId, files }) },
+  );

@@ -466,7 +466,7 @@ async def test_website_preference_setup_is_part_of_existing_eval_wizard(
     )
     state = await wizard.status(owner, current["model_id"])
     assert state["website_eval"]["endpoint"]["ready"]
-    assert "search or import" in state["note"]
+    assert "upload card" in state["note"]
     result, card = await wizard.run_tool(
         owner, current, "website_eval", {"operation": "results"}, lambda *args: None
     )
@@ -769,7 +769,7 @@ async def test_uploaded_traces_feed_same_automatic_pipeline(client, pool, tmp_pa
         for t in await wizard.setup_tools(
             owner, await wizard.get_session(owner, UUID(session["id"]))
         )
-    } == {"website_eval", "search_history", "read_history"}
+    } == {"website_eval"}
     with pytest.raises(ValueError, match="private storage"):
         await taste.learn_uploaded_traces(row, ["/etc/passwd"])
 
@@ -813,3 +813,100 @@ async def test_failed_endpoint_fit_does_not_retry_paid_work(client, pool, monkey
     assert (
         await pool.fetchval("SELECT count(*) FROM taste_jobs WHERE workspace_id=$1", row["id"]) == 1
     )
+
+
+async def test_new_website_eval_asks_for_traces_before_searching(
+    client, pool, tmp_path, monkeypatch
+):
+    from backend.services.intuition import wizard
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TASTE_CLOUD_ENABLED", "1")
+    monkeypatch.setattr(taste_tasks.run, "delay", lambda *args: None)
+    owner, headers = await user(client, pool)
+    session = await wizard.create_session(owner)
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "prepare"}, lambda *args: None
+    )
+    assert card["props"]["section"] == "sources"
+    assert result["existing_examples"] == 0 and "stop" in result["next"]
+    session = await wizard.get_session(owner, UUID(session["id"]))
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "review"}, lambda *args: None
+    )
+    assert card["props"]["section"] == "preferences" and result["needs_your_call"] == 0
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "finish"}, lambda *args: None
+    )
+    assert result["status"] == "needs_information"
+    assert card["props"]["section"] == "preferences"
+    # A dropped history folder arrives as one upload of many session files.
+    files = [{"name": f"s{i}.jsonl", "content": "{}"} for i in range(11)]
+    response = await client.post(
+        "/api/v1/taste/traces",
+        headers=headers,
+        json={"session_id": session["id"], "files": files},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["files_received"] == 11
+
+
+def test_wizard_turn_ends_when_a_website_card_needs_the_user():
+    from backend.services.intuition.wizard import _awaits_user
+
+    card = lambda section: {"kind": "website_eval", "props": {"section": section}}  # noqa: E731
+    assert _awaits_user(card("sources"), {})
+    assert _awaits_user(card("preferences"), {"needs_your_call": 2})
+    assert not _awaits_user(card("preferences"), {"needs_your_call": 0})
+    assert not _awaits_user(card("progress"), {})
+    assert not _awaits_user(None, {})
+
+
+def test_website_design_requests_start_with_the_website_eval():
+    from backend.services.intuition.wizard import _website_intent
+
+    assert _website_intent("Learn my website design preferences from my past sessions")
+    assert _website_intent("grade my landing page")
+    assert not _website_intent("Grade my AI assistant's answers as good or bad")
+
+
+async def test_example_sites_become_confirmed_training_examples(
+    client, pool, tmp_path, monkeypatch
+):
+    from backend.services.intuition import wizard
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    owner, headers = await user(client, pool)
+    session = await wizard.create_session(owner)
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"liked").decode()
+    other = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"disliked").decode()
+    files = [
+        {"name": "good.png", "label": "liked", "content": png},
+        {"name": "bad.png", "label": "disliked", "content": other},
+        {"name": "bad-again.png", "label": "disliked", "content": other},
+    ]
+    response = await client.post(
+        "/api/v1/taste/examples",
+        headers=headers,
+        json={"session_id": session["id"], "files": files},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["added"] == {"liked": 1, "disliked": 1}
+    examples = taste.effective_examples(await taste.workspace(owner))
+    assert {(e["label"], e["usable"], e["reviewed"]) for e in examples} == {
+        ("liked", True, True),
+        ("disliked", True, True),
+    }
+    bad = {**files[0], "content": base64.b64encode(b"not an image").decode()}
+    response = await client.post(
+        "/api/v1/taste/examples",
+        headers=headers,
+        json={"session_id": session["id"], "files": [bad]},
+    )
+    assert response.status_code == 422
+
+
+def test_url_examples_refuse_private_addresses(tmp_path):
+    for url in ("http://127.0.0.1:3495/health", "http://localhost/", "file:///etc/passwd"):
+        with pytest.raises(ValueError, match="not a public"):
+            taste.screenshot_url(url, tmp_path / "x.png")

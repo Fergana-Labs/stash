@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 from scripts.website_taste.preferences import source_label, usable_label
 
 from ..database import get_pool
+from . import taste_demo
 from .intuition import history, history_bridge
 from .intuition.service import Conflict, NotFound
 
@@ -34,6 +35,11 @@ def write(path, data):
     tmp.write_text(json.dumps(data, indent=2))
     tmp.chmod(0o600)
     tmp.replace(path)
+
+
+def cloud_enabled():
+    # Demo mode only calls Claude; it never launches Modal work.
+    return os.environ.get("TASTE_CLOUD_ENABLED") == "1" or taste_demo.enabled()
 
 
 def location(row, key):
@@ -61,6 +67,13 @@ def work_root(row):
         root = root / "runs" / str(UUID(row["config"]["run_id"]))
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     return root
+
+
+def extraction_cache(row):
+    # Shared across demo resets: entries are keyed by the full extraction request
+    # (prompt, model, pixels), so re-reading the same sessions reuses the answers.
+    root = Path(os.environ.get("TASTE_WORKSPACE_ROOT", "/tmp/stash-taste-workspaces"))
+    return root / str(row["id"]) / "extraction-cache"
 
 
 def data(row):
@@ -264,17 +277,20 @@ async def detail(owner):
             "released": bool(model) and not reasons,
             "parameters": len(model.get("head", {}).get("weights", [])) + bool(model),
             "limitations": model.get("limitations", []),
+            "preferences": model.get("preferences", []),
+            "examples": model.get("examples"),
         },
         "trials": trials(row),
         "jobs": [dict(j) for j in jobs],
         "predictions": [dict(p) for p in predictions],
-        "skill": skill,
+        "skill": skill or model.get("skill", ""),
         "history": await history_bridge.status(owner),
         "sources": row["config"].get("sources", []),
         "search_coverage": row["config"].get("search_coverage", {}),
         "collection_progress": row["config"].get("collection_progress", {}),
         "related_eval_ids": row["config"].get("related_eval_ids", []),
-        "cloud_enabled": os.environ.get("TASTE_CLOUD_ENABLED") == "1",
+        "cloud_enabled": cloud_enabled(),
+        "demo": taste_demo.enabled(),
     }
 
 
@@ -302,6 +318,8 @@ def image_path(row, kind, identity):
         if not match:
             raise NotFound("Image not found")
         path = Path(match["image_file"])
+    elif kind == "check":
+        path = work_root(row) / "runtime" / (identity + ".png")
     else:
         if identity not in {t["id"] for t in trials(row)}:
             raise NotFound("Design not found")
@@ -367,8 +385,9 @@ async def _enqueue(owner, operation, payload):
             "collect_all",
             "extract_labels",
             "upload_traces",
+            "hillclimb",
         )
-        and os.environ.get("TASTE_CLOUD_ENABLED") != "1"
+        and not cloud_enabled()
     ):
         raise Conflict(
             "Cloud execution is disabled for this deployment. Existing results remain available."
@@ -429,7 +448,7 @@ async def _run_job(job_id):
     )
     try:
         op = job["operation"]
-        if op != "discover" and os.environ.get("TASTE_CLOUD_ENABLED") != "1":
+        if op != "discover" and not cloud_enabled():
             raise ValueError("Cloud execution is disabled for this deployment.")
         if op in ("gepa", "weights", "evaluate") and blockers(row):
             raise ValueError(" ".join(blockers(row)))
@@ -464,6 +483,30 @@ async def _run_job(job_id):
                 job_id,
             )
             result = await extract_existing_labels(row)
+        elif op == "hillclimb":
+            from . import taste_hillclimb
+
+            directory = hillclimb_file(row, job_id).parent
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            model = grader(row)
+
+            async def record(output):
+                await pool.execute(
+                    "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,$3,$4)",
+                    row["id"],
+                    model["version"],
+                    {"brief": output["brief"], "screenshot_sha256": output["screenshot_sha256"]},
+                    {**output, "version": model["version"], "optimization_ready": True},
+                )
+
+            result = await taste_hillclimb.run(
+                hillclimb_file(row, job_id),
+                work_root(row) / "runtime",
+                job["input"]["brief"],
+                model,
+                judge_references(row),
+                record,
+            )
         elif op in ("discover", "collect"):
             result = await collect_history(
                 row, job["input"], job_id, discover_only=op == "discover"
@@ -480,7 +523,10 @@ async def _run_job(job_id):
                     "evaluate": "Generating the same briefs across available arms",
                 }[op],
             )
-            result = await asyncio.to_thread(execute, row, op)
+            if op == "build" and taste_demo.enabled():
+                result = await demo_build(row)
+            else:
+                result = await asyncio.to_thread(execute, row, op)
             if op == "build":
                 await pool.execute(
                     "UPDATE taste_workspaces SET config=config || $2::jsonb,fitted_revision=$3 WHERE id=$1",
@@ -547,6 +593,188 @@ async def upload_traces(owner, session_id, files):
     return {**binding, "job_id": str(queued["job_id"]), "files_received": len(files)}
 
 
+def screenshot_url(url: str, out: Path) -> None:
+    """Screenshot the first 1440x960 of a public web page. Private addresses are refused."""
+    screenshot_page(out, url=url)
+
+
+def saved_from(html: str) -> str | None:
+    """The page's original address, from Chrome's "saved from url" comment or a <base> tag."""
+    match = re.search(r"<!--\s*saved from url=\(\d+\)(\S+?)\s*-->", html, re.I) or re.search(
+        r"<base\s[^>]*href=[\"']([^\"']+)", html, re.I
+    )
+    return match.group(1) if match and match.group(1).startswith(("http://", "https://")) else None
+
+
+def screenshot_page(out: Path, *, url: str | None = None, html: str | None = None) -> None:
+    """Screenshot the first 1440x960 of a public URL, or of uploaded HTML.
+
+    Uploaded HTML runs with JavaScript off. Its stylesheets, fonts and images may load,
+    resolved against the page's original address when the file records one. Every
+    request, including redirects and subresources, must go to a public host.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    from playwright.sync_api import sync_playwright
+
+    hosts: dict[str, bool] = {}
+
+    def public_host(host: str) -> bool:
+        if host not in hosts:
+            try:
+                infos = socket.getaddrinfo(host, None)
+                hosts[host] = bool(infos) and all(
+                    ipaddress.ip_address(i[4][0]).is_global for i in infos
+                )
+            except (socket.gaierror, ValueError):
+                hosts[host] = False
+        return hosts[host]
+
+    def allowed(address: str) -> bool:
+        parsed = urlparse(address)
+        if parsed.scheme in ("data", "blob"):
+            return True
+        return parsed.scheme in ("http", "https") and public_host(parsed.hostname or "")
+
+    if url is not None and (urlparse(url).scheme not in ("http", "https") or not allowed(url)):
+        raise ValueError(f"{url} is not a public http(s) address.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(
+                viewport={"width": 1440, "height": 960},
+                device_scale_factor=1,
+                java_script_enabled=html is None,
+            )
+
+            def guard(route):
+                try:
+                    if allowed(route.request.url):
+                        route.continue_()
+                        return
+                except Exception:  # noqa: BLE001 -- anything unexpected is blocked
+                    pass
+                route.abort()
+
+            page.route("**/*", guard)
+            try:
+                if html is not None:
+                    base = saved_from(html)
+                    if base and not re.search(r"<base\s", html, re.I):
+                        tag = f'<base href="{base}">'
+                        html = (
+                            re.sub(
+                                r"<head[^>]*>",
+                                lambda m: m.group(0) + tag,
+                                html,
+                                count=1,
+                                flags=re.I,
+                            )
+                            if re.search(r"<head[^>]*>", html, re.I)
+                            else tag + html
+                        )
+                    page.set_content(html, wait_until="networkidle", timeout=25000)
+                else:
+                    page.goto(url, wait_until="networkidle", timeout=25000)
+            except Exception:  # noqa: BLE001 -- busy pages never go idle; shoot what loaded
+                page.wait_for_timeout(1500)
+            page.screenshot(path=str(out), type="png", animations="disabled")
+        finally:
+            browser.close()
+
+
+async def add_examples(owner, session_id, files):
+    """Add example websites the user likes or wants changed, as confirmed training examples.
+
+    Each file is a screenshot (PNG/JPEG/WebP), a self-contained HTML page (rendered
+    with JavaScript and network disabled), or a public URL (screenshotted live).
+    """
+    from scripts.website_taste import evidence
+
+    from .intuition import wizard
+
+    session = await wizard.get_session(owner, session_id)
+    binding = await bind_wizard(owner, session)
+    row = await workspace(owner)
+    directory = work_root(row) / "collected"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    dataset = copy.deepcopy(data(row))
+    dataset.pop("sha256", None)
+    dataset.setdefault("heldout_status", "not_yet_reserved")
+    known = {e["id"] for e in dataset["examples"]}
+    added = {"liked": 0, "disliked": 0}
+
+    # Render pasted pages and uploaded HTML in parallel; each takes a few seconds to load.
+    def key(f):
+        is_html = f["name"].lower().endswith((".html", ".htm"))
+        if not (f.get("url") or is_html):
+            return None
+        source = f["url"] if f.get("url") else f["content"]
+        return directory / (hashlib.sha256(source.encode()).hexdigest() + ".page.png")
+
+    shots = {i: key(f) for i, f in enumerate(files) if key(f)}
+    await asyncio.gather(
+        *(
+            asyncio.to_thread(
+                screenshot_page,
+                out,
+                url=files[i].get("url"),
+                html=None if files[i].get("url") else files[i]["content"],
+            )
+            for i, out in shots.items()
+        )
+    )
+    for i, file in enumerate(files):
+        if i in shots:
+            pixels = shots[i].read_bytes()
+        else:
+            pixels = base64.b64decode(file["content"], validate=True)
+        if not pixels.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"RIFF")):
+            raise ValueError(f"{file['name']} is not a PNG, JPEG, WebP or HTML file.")
+        path = directory / (hashlib.sha256(pixels).hexdigest() + ".png")
+        path.write_bytes(pixels)
+        trace = {
+            "steps": [],
+            "coverage": {"complete": False, "reason": "Example uploaded directly"},
+        }
+        packet = evidence.packet(
+            "Assess this website or product interface's visual design.", trace, path
+        )
+        if packet["id"] in known:
+            continue
+        label = file["label"]
+        packet["supervision"] = {
+            "label": label,
+            "quote": f"Example you {'liked' if label == 'liked' else 'wanted changed'}: {file['name']}",
+            "scope": "overall",
+            "human_reviewed": True,
+            "label_source": "human_example",
+            "partition": "train",
+            "group": "uploaded-example-" + packet["id"][:12],
+            "provenance": {"reference_image": label == "liked", "uploaded_name": file["name"]},
+        }
+        dataset["examples"].append(packet)
+        known.add(packet["id"])
+        added[label] += 1
+    job_id = None
+    if sum(added.values()):
+        write(directory / "evidence.json", dataset)
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb,revision=revision+1 WHERE id=$1",
+            row["id"],
+            {"dataset": str(directory)},
+        )
+        # Enough examples: build the grader now rather than waiting on the wizard agent.
+        if not label_summary(await workspace(owner))["build_gaps"]:
+            try:
+                job_id = str((await enqueue(owner, "build", {"automatic": True}))["job_id"])
+            except Conflict:
+                pass  # A build is already running.
+    return {**binding, "added": added, "job_id": job_id}
+
+
 async def learn_uploaded_traces(row, paths):
     from scripts.website_taste import evidence
     from scripts.website_taste.corpus import public_events
@@ -554,7 +782,8 @@ async def learn_uploaded_traces(row, paths):
     assets, count, screenshots = [], 0, 0
     for raw_path in paths:
         path = Path(raw_path).resolve()
-        if path.is_symlink() or not path.is_relative_to(work_root(row)):
+        # Compare resolved paths: /tmp is a symlink to /private/tmp on macOS.
+        if path.is_symlink() or not path.is_relative_to(work_root(row).resolve()):
             raise ValueError("Trace upload is outside this account's private storage")
         session_id = hashlib.sha256(path.read_bytes()).hexdigest()
         for event in public_events(path):
@@ -697,7 +926,7 @@ async def propose_assets(row, assets, page):
             "next_asset_offset": assets.get("next_offset"),
             "has_more": assets.get("has_more"),
         }
-    proposals = await extract_feedback(batch, directory / "extractions")
+    proposals = await extract_feedback(batch, extraction_cache(row))
     initial_count = len(dataset["examples"])
     for proposal in proposals:
         # Purely functional/unrelated screenshots are not a preference labeling queue.
@@ -745,7 +974,7 @@ async def extract_feedback(batch, cache):
     # One selected output per request prevents a comparison message from being
     # expanded into contradictory labels for the same screenshot. Only API
     # requests run concurrently; no models are loaded on this machine.
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(6)
 
     async def one(row):
         async with semaphore:
@@ -932,6 +1161,45 @@ async def extract_existing_labels(row):
         "labels": label_summary(await workspace(row["owner_user_id"])),
         "message": "Clear feedback is usable automatically. Uncertain cases and model guesses remain excluded. Frozen grader unchanged.",
     }
+
+
+def example_images(row):
+    return {
+        e["id"]: Path(e["image_file"])
+        for e in data(row).get("examples", [])
+        if e.get("image_file") and Path(e["image_file"]).is_file()
+    }
+
+
+def judge_references(row):
+    return taste_demo.references(effective_examples(row), example_images(row))
+
+
+def hillclimb_file(row, job_id):
+    return work_root(row) / "hillclimb" / (str(UUID(str(job_id))) + ".json")
+
+
+async def start_hillclimb(owner, brief):
+    row = await workspace(owner)
+    if not taste_demo.is_demo_grader(grader(row)):
+        raise Conflict("Build your grader first.")
+    return await enqueue(owner, "hillclimb", {"brief": brief})
+
+
+async def hillclimb_state(owner, job_id):
+    path = hillclimb_file(await workspace(owner), job_id)
+    if not path.is_file():
+        raise NotFound("Hill-climb not found")
+    return read(path)
+
+
+async def demo_build(row):
+    if label_summary(row)["build_gaps"]:
+        raise ValueError(" ".join(label_summary(row)["build_gaps"]))
+    model = await taste_demo.build(row, effective_examples(row), example_images(row))
+    directory = work_root(row) / ("demo-grader-" + str(row["revision"]))
+    write(directory / "activation-probe.json", model)
+    return {"probe": str(directory)}
 
 
 def execute(row, operation):
@@ -1122,6 +1390,31 @@ async def predict(owner, item, *, ref=None):
     image = directory / (hashlib.sha256(raw).hexdigest() + ".png")
     image.write_bytes(raw)
     steps = [{**s, "text": evidence.clean(s["text"])} for s in item["trace"]]
+    model = grader(row)
+    if taste_demo.is_demo_grader(model):
+        judged = await taste_demo.judge(
+            model, {**item, "trace": steps}, image, judge_references(row)
+        )
+        output = {
+            **judged,
+            "version": model["version"],
+            "ref": ref,
+            "optimization_ready": True,
+            "screenshot_sha256": image.stem,
+            "brief": item["brief"][:500],
+            "coverage": {
+                "complete": bool(item.get("trace_complete")),
+                "supplied_steps": len(steps),
+            },
+        }
+        receipt = await get_pool().fetchval(
+            "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,$3,$4) RETURNING id",
+            row["id"],
+            model["version"],
+            {"brief": item["brief"], "trace": steps[-40:], "screenshot_sha256": image.stem},
+            output,
+        )
+        return {**output, "prediction_id": str(receipt)}
     total = len(steps)
     while sum(len(s["text"]) for s in steps) > evidence.MAX_TRACE_CHARS:
         steps.pop(1 if len(steps) > 2 else 0)
@@ -1135,7 +1428,6 @@ async def predict(owner, item, *, ref=None):
         },
     }
     packet = evidence.packet(item["brief"], trace, image, source=item.get("html", ""))
-    model = grader(row)
     require_compute_or_cache(row, packet)
     score = await asyncio.to_thread(
         ProbeScorer(
@@ -1325,9 +1617,13 @@ async def reset_demo(owner, session_id):
                 return {"session_id": session["reset_to"], "archived": True}
             row = await workspace(owner)
             old_model = row["config"].get("model_id")
-            if session["model_id"] != old_model or (
-                not old_model and not row["config"].get("fresh_start")
-            ):
+            # In demo mode any wizard chat can start the demo over; only the demo's own
+            # chat is marked as reset, so an unrelated eval chat keeps working.
+            from_demo_chat = session["model_id"] == old_model and (
+                old_model or row["config"].get("fresh_start")
+            )
+            demo_chat = session_id if from_demo_chat else row["config"].get("wizard_session_id")
+            if not from_demo_chat and not taste_demo.enabled():
                 raise Conflict(
                     "This chat is not the current demo. Open the current demo to reset it."
                 )
@@ -1375,7 +1671,7 @@ async def reset_demo(owner, session_id):
                 await conn.execute(
                     "UPDATE intuition_wizard_sessions SET brief=brief || $3::jsonb WHERE owner_user_id=$1 AND (id=$2 OR model_id=$4)",
                     owner,
-                    session_id,
+                    UUID(str(demo_chat)) if demo_chat else None,
                     {"demo_reset_to": str(new_session["id"])},
                     UUID(old_model) if old_model else None,
                 )

@@ -13,6 +13,8 @@ import type { User } from "@/lib/types";
 const PRIMARY = [
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") || path.startsWith("/reward-models/behaviors") },
   { label: "Evals", href: "/reward-models/evals", match: (path: string) => path.startsWith("/reward-models/evals") || path.startsWith("/reward-models/models") || path.startsWith("/reward-models/intuitions") || path.startsWith("/reward-models/wizard") },
+  { label: "Team", href: "/reward-models/team", match: (path: string) => path.startsWith("/reward-models/team") },
+  { label: "Hill climbing", href: "/reward-models/hill-climbing", match: (path: string) => path.startsWith("/reward-models/hill-climbing") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {

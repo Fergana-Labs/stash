@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relay — Your Sessions</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f5fb; color: #1f2340; position: relative; overflow-x: hidden; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(2px); opacity: .55; z-index: 0; }
+  .blob.one { width: 520px; height: 520px; background: radial-gradient(circle at 30% 30%, #c4b5fd, #818cf8); top: 360px; right: -120px; }
+  .blob.two { width: 340px; height: 340px; background: radial-gradient(circle at 50% 50%, #f9a8d4, #c084fc); top: 620px; left: -90px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 56px; background: #fff; box-shadow: 0 2px 12px rgba(80, 70, 200, .12); position: relative; z-index: 2; }
+  .logo { font-size: 26px; font-weight: 800; background: linear-gradient(90deg, #6d28d9, #2563eb); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  nav ul { display: flex; gap: 34px; list-style: none; margin: 0; padding: 0; font-weight: 700; font-size: 16px; }
+  nav ul li.active { color: #6d28d9; }
+  .avatar { width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, #f472b6, #8b5cf6); color: #fff; display: grid; place-items: center; font-weight: 800; }
+  .hero { background: linear-gradient(120deg, #7c3aed 0%, #4f46e5 45%, #2563eb 100%); color: #fff; text-align: center; padding: 64px 40px 80px; position: relative; z-index: 1; }
+  .hero h1 { font-size: 56px; font-weight: 900; margin: 0 0 14px; letter-spacing: -1px; }
+  .hero p { font-size: 21px; font-weight: 600; opacity: .92; margin: 0 0 34px; }
+  .cta { display: inline-flex; gap: 18px; }
+  .btn { padding: 18px 38px; border-radius: 999px; font-size: 18px; font-weight: 800; border: none; }
+  .btn.primary { background: #fff; color: #5b21b6; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .btn.ghost { background: rgba(255,255,255,.18); color: #fff; border: 2px solid rgba(255,255,255,.7); }
+  .stats { display: flex; justify-content: center; gap: 24px; margin: -44px auto 0; position: relative; z-index: 3; }
+  .stat { background: #fff; border-radius: 20px; padding: 20px 34px; box-shadow: 0 12px 30px rgba(60, 50, 160, .18); text-align: center; min-width: 210px; border: 2px solid #ede9fe; }
+  .stat b { display: block; font-size: 32px; font-weight: 900; color: #4c1d95; }
+  .stat span { font-weight: 700; color: #6b7280; }
+  main { max-width: 1280px; margin: 0 auto; padding: 44px 40px; position: relative; z-index: 2; }
+  .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+  h2 { font-size: 32px; font-weight: 900; margin: 0; }
+  .filters { display: flex; gap: 12px; }
+  .chip { padding: 12px 24px; border-radius: 999px; font-weight: 800; font-size: 15px; background: #fff; border: 2px solid #c7d2fe; color: #3730a3; box-shadow: 0 4px 10px rgba(79,70,229,.12); }
+  .chip.on { background: linear-gradient(90deg, #7c3aed, #4f46e5); color: #fff; border-color: transparent; }
+  select { padding: 11px 16px; font-size: 15px; border-radius: 8px; border: 2px solid #c7d2fe; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .card { background: rgba(255,255,255,.92); border: 2px solid #e0e7ff; border-radius: 22px; padding: 26px; box-shadow: 0 14px 34px rgba(76, 60, 200, .16); }
+  .card h3 { margin: 0 0 12px; font-size: 21px; font-weight: 800; }
+  .badge { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; margin-bottom: 14px; }
+  .b-run { background: #dbeafe; color: #1d4ed8; } .b-ok { background: #dcfce7; color: #15803d; } .b-fail { background: #fee2e2; color: #b91c1c; } .b-rev { background: #fef3c7; color: #b45309; }
+  .meta { font-weight: 700; color: #4b5563; font-size: 15px; line-height: 1.9; }
+  .meta strong { color: #111827; }
+  .open { margin-top: 18px; display: inline-block; font-weight: 800; color: #6d28d9; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="blob one"></div>
+<div class="blob two"></div>
+<nav>
+  <div class="logo">⚡ Relay</div>
+  <ul><li>🏠 Home</li><li class="active">💬 Sessions</li><li>📁 Projects</li><li>⚙️ Settings</li></ul>
+  <div class="avatar">JD</div>
+</nav>
+<section class="hero">
+  <h1>Your Sessions ✨</h1>
+  <p>🚀 Every coding-agent session, beautifully organized and instantly searchable!</p>
+  <div class="cta">
+    <button class="btn primary">🔍 Search Sessions →</button>
+    <button class="btn ghost">➕ New Session →</button>
+  </div>
+</section>
+<div class="stats">
+  <div class="stat"><b>17</b><span>📊 Total Sessions</span></div>
+  <div class="stat"><b>11</b><span>✅ Completed</span></div>
+  <div class="stat"><b>4</b><span>❌ Failed</span></div>
+  <div class="stat"><b>1</b><span>⏳ Running</span></div>
+</div>
+<main>
+  <div class="section-head">
+    <h2>🕒 Recent Sessions</h2>
+    <div class="filters">
+      <span class="chip on">🌟 All</span><span class="chip">✅ Completed</span><span class="chip">❌ Failed</span><span class="chip">⏳ Running</span>
+      <select><option>All Agents</option></select>
+      <select><option>All Projects</option></select>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card"><span class="badge b-run">⏳ RUNNING</span><h3>🐛 Fix flaky auth test</h3><div class="meta">📁 Project: <strong>relay-web</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-opus-4.1</strong><br>🕒 Time: <strong>Today, 09:41</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>💳 Migrate billing to Stripe v3</h3><div class="meta">📁 Project: <strong>billing-svc</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>gpt-5-codex</strong><br>🕒 Time: <strong>Today, 09:12</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🚦 Add rate limiting to /ingest</h3><div class="meta">📁 Project: <strong>relay-api</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-sonnet-4.5</strong><br>🕒 Time: <strong>Today, 08:47</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-fail">❌ FAILED</span><h3>🧠 Investigate memory leak in indexer</h3><div class="meta">📁 Project: <strong>relay-indexer</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>gpt-5-codex</strong><br>🕒 Time: <strong>Today, 08:03</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🔎 Refactor session search to use FTS</h3><div class="meta">📁 Project: <strong>relay-api</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-opus-4.1</strong><br>🕒 Time: <strong>Yesterday, 18:22</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>⬆️ Upgrade Next.js to 15</h3><div class="meta">📁 Project: <strong>relay-web</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>o4-mini</strong><br>🕒 Time: <strong>Yesterday, 16:05</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-rev">📝 NEEDS REVIEW</span><h3>🗄️ Write migration for org_members table</h3><div class="meta">📁 Project: <strong>relay-api</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-sonnet-4.5</strong><br>🕒 Time: <strong>Yesterday, 14:30</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-fail">❌ FAILED</span><h3>🔁 Debug Stripe webhook retries</h3><div class="meta">📁 Project: <strong>billing-svc</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-opus-4.1</strong><br>🕒 Time: <strong>Yesterday, 11:58</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🌙 Dark mode for settings page</h3><div class="meta">📁 Project: <strong>relay-web</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>gpt-5-codex</strong><br>🕒 Time: <strong>Yesterday, 10:14</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🧾 Backfill invoice PDFs</h3><div class="meta">📁 Project: <strong>billing-svc</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>gpt-5-codex</strong><br>🕒 Time: <strong>Mon Oct 12, 17:40</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>📡 Add OpenTelemetry tracing</h3><div class="meta">📁 Project: <strong>relay-indexer</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-sonnet-4.5</strong><br>🕒 Time: <strong>Mon Oct 12, 15:22</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>⏰ Fix timezone bug in digest emails</h3><div class="meta">📁 Project: <strong>relay-api</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>o4-mini</strong><br>🕒 Time: <strong>Mon Oct 12, 13:09</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-fail">❌ FAILED</span><h3>📖 Draft README for relay CLI</h3><div class="meta">📁 Project: <strong>relay-cli</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-sonnet-4.5</strong><br>🕒 Time: <strong>Mon Oct 12, 10:51</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🧹 Move ESLint config to flat format</h3><div class="meta">📁 Project: <strong>relay-web</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>o4-mini</strong><br>🕒 Time: <strong>Sun Oct 11, 19:02</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🔄 Add retries to S3 uploader</h3><div class="meta">📁 Project: <strong>relay-indexer</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-sonnet-4.5</strong><br>🕒 Time: <strong>Sun Oct 11, 16:47</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-ok">✅ COMPLETED</span><h3>🧪 Spike pgvector for semantic search</h3><div class="meta">📁 Project: <strong>relay-api</strong><br>🤖 Agent: <strong>Claude Code</strong><br>🧠 Model: <strong>claude-opus-4.1</strong><br>🕒 Time: <strong>Sun Oct 11, 14:15</strong></div><span class="open">View Session →</span></div>
+    <div class="card"><span class="badge b-fail">❌ FAILED</span><h3>🗑️ Remove legacy v1 billing endpoints</h3><div class="meta">📁 Project: <strong>billing-svc</strong><br>🤖 Agent: <strong>Codex</strong><br>🧠 Model: <strong>gpt-5-codex</strong><br>🕒 Time: <strong>Sun Oct 11, 11:20</strong></div><span class="open">View Session →</span></div>
+  </div>
+</main>
+</body>
+</html>
