@@ -242,7 +242,7 @@ async def detail(owner):
         row["config"].get("run_started_at"),
     )
     predictions = await get_pool().fetch(
-        "SELECT id,version,output,feedback,created_at FROM taste_predictions WHERE workspace_id=$1 AND ($2::text IS NULL OR created_at >= $2::text::timestamptz) ORDER BY created_at DESC LIMIT 20",
+        "SELECT id,version,output,feedback,created_at FROM taste_predictions WHERE workspace_id=$1 AND ($2::text IS NULL OR created_at >= $2::text::timestamptz) ORDER BY created_at DESC LIMIT 200",
         row["id"],
         row["config"].get("run_started_at"),
     )
