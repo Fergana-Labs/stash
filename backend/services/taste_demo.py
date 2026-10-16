@@ -140,6 +140,14 @@ work may be unfinished; judge what is on screen.
 Their preferences:
 {rules}
 
+Also judge execution, the way they would on close inspection: sloppy execution reads as \
+vibecoded even when the style is right. Look for items in a row whose text baselines or \
+vertical centers don't line up; summary rows, toolbars or headers that wrap awkwardly onto a \
+second line; text or labels that are clipped, truncated, overlapping, or run off an edge; and \
+inconsistent spacing between similar elements. Each clear execution flaw is a fix, named \
+precisely (which element, what is wrong). Visible execution flaws block approval: while \
+any remain, score below 70 even if the style is right.
+
 You may also see reference screens they explicitly liked and wanted changed. Compare the current work against them: closer to the liked references is better.
 
 Score how likely they are to approve, 0-100:

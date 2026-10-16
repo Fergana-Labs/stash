@@ -7,8 +7,8 @@ Each call is saved as an agent check-in on the eval page.
     python -m scripts.website_taste.check_page PAGE.html --brief "What the page is for"
     python -m scripts.website_taste.check_page http://127.0.0.1:3461/some/page --brief "..."
 
-A local URL is opened in the running app, signed in through its /local-preview
-route, with JavaScript on. Only localhost addresses are accepted for that mode.
+For a local app URL, the grader opens the page itself (signed in through the
+app's /local-preview route) and inspects it: it can scroll, resize and zoom.
 
 Needs STASH_API_KEY; STASH_URL defaults to the local backend.
 """
@@ -22,40 +22,9 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 from backend.services.taste import screenshot_page
-
-
-def screenshot_local_app(url: str, out: Path) -> str:
-    """Screenshot a page of the locally running app, signed in. Returns its HTML."""
-    from playwright.sync_api import sync_playwright
-
-    parsed = urlparse(url)
-    if parsed.hostname not in ("127.0.0.1", "localhost"):
-        sys.exit("Only local app URLs (127.0.0.1 or localhost) can be checked this way.")
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        try:
-            page = browser.new_page(viewport={"width": 1440, "height": 960}, device_scale_factor=1)
-            page.goto(f"{origin}/local-preview?next={quote(path)}", timeout=60000)
-            page.wait_for_url(lambda u: urlparse(u).path != "/local-preview", timeout=60000)
-            if urlparse(page.url).path != parsed.path:
-                sys.exit(
-                    f"{parsed.path} redirected to {urlparse(page.url).path}. "
-                    "Does the route exist, and does the page load without errors?"
-                )
-            try:
-                page.wait_for_load_state("networkidle", timeout=20000)
-            except Exception:  # noqa: BLE001 -- polling pages never go idle
-                pass
-            page.wait_for_timeout(1500)
-            page.screenshot(path=str(out), type="png", animations="disabled")
-            return page.content()
-        finally:
-            browser.close()
 
 
 def main() -> None:
@@ -69,16 +38,17 @@ def main() -> None:
     key = os.environ.get("STASH_API_KEY")
     if not key:
         sys.exit("Set STASH_API_KEY.")
-    with tempfile.TemporaryDirectory() as tmp:
-        png = Path(tmp) / "page.png"
-        if args.page.startswith(("http://", "https://")):
-            html = screenshot_local_app(args.page, png)
-            ref = urlparse(args.page).path
-        else:
+    url = None
+    if args.page.startswith(("http://", "https://")):
+        # The grader opens local app pages itself, so it can scroll, resize and zoom.
+        url, html, shot, ref = args.page, "", "", urlparse(args.page).path
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            png = Path(tmp) / "page.png"
             html = Path(args.page).read_text()
             screenshot_page(png, html=html)
-            ref = Path(args.page).name
-        shot = base64.b64encode(png.read_bytes()).decode()
+            shot = base64.b64encode(png.read_bytes()).decode()
+        ref = Path(args.page).name
     trace = [{"id": "1", "role": "user", "text": args.brief[:2400]}]
     if args.note:
         trace.append({"id": "2", "role": "assistant", "text": args.note[:2400]})
@@ -88,6 +58,7 @@ def main() -> None:
         "trace_complete": args.final,
         "html": html[:8000],
         "screenshot_base64": shot,
+        "url": url,
         "ref": ref,
     }
     request = urllib.request.Request(
@@ -105,9 +76,12 @@ def main() -> None:
     print(f"{verdict} — score {round(result['score'] * 100)}/100")
     print(result.get("summary", ""))
     for i, fix in enumerate(result.get("fixes") or [], 1):
-        print(f"{i}. {fix['issue']}\n   -> {fix['fix']}")
+        tag = "[execution — blocks approval] " if fix.get("kind") == "execution" else ""
+        print(f"{i}. {tag}{fix['issue']}\n   -> {fix['fix']}")
     for keep in result.get("keep") or []:
         print(f"keep: {keep}")
+    if result.get("inspected"):
+        print("grader inspected: " + "; ".join(result["inspected"]))
 
 
 if __name__ == "__main__":

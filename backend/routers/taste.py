@@ -87,7 +87,9 @@ class Prediction(Body):
     trace: list[Step] = Field(min_length=1, max_length=40)
     trace_complete: bool = False
     html: str = Field(default="", max_length=8000)
-    screenshot_base64: str = Field(min_length=1, max_length=5400000)
+    screenshot_base64: str = Field(default="", max_length=5400000)
+    # Demo mode: a local app page the grader opens and inspects itself, instead of a screenshot.
+    url: str | None = Field(default=None, max_length=2000)
     ref: str | None = Field(default=None, max_length=200)
 
 

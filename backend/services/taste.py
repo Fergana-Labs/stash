@@ -1384,6 +1384,10 @@ async def predict(owner, item, *, ref=None):
 
     directory = work_root(row) / "runtime"
     directory.mkdir(exist_ok=True, mode=0o700)
+    if item.get("url"):
+        return await predict_live_page(row, item, directory, ref)
+    if not item.get("screenshot_base64"):
+        raise ValueError("Send a screenshot, or the URL of a local app page.")
     raw = base64.b64decode(item["screenshot_base64"], validate=True)
     if len(raw) > 4_000_000 or not raw.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
         raise ValueError("Provide a PNG or JPEG screenshot of at most 4 MB.")
@@ -1518,6 +1522,41 @@ async def checkpoint(owner, identity):
     if not found:
         raise NotFound("Checkpoint not found")
     return dict(found)
+
+
+async def predict_live_page(row, item, directory, ref):
+    """Demo mode: the grader agent opens the page itself and inspects it."""
+    from . import taste_grader_agent
+
+    model = grader(row)
+    if not taste_demo.is_demo_grader(model):
+        raise Conflict("Live-page grading needs the demo grader.")
+    shot = directory / (uuid4().hex + ".png")
+    judged = await asyncio.to_thread(
+        taste_grader_agent.grade, model, item, item["url"], shot, judge_references(row)
+    )
+    sha = hashlib.sha256(shot.read_bytes()).hexdigest()
+    shot.replace(directory / (sha + ".png"))
+    output = {
+        **judged,
+        "version": model["version"],
+        "ref": ref,
+        "optimization_ready": True,
+        "screenshot_sha256": sha,
+        "brief": item["brief"][:500],
+        "coverage": {
+            "complete": bool(item.get("trace_complete")),
+            "supplied_steps": len(item["trace"]),
+        },
+    }
+    receipt = await get_pool().fetchval(
+        "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,$3,$4) RETURNING id",
+        row["id"],
+        model["version"],
+        {"brief": item["brief"], "url": item["url"], "screenshot_sha256": sha},
+        output,
+    )
+    return {**output, "prediction_id": str(receipt)}
 
 
 def require_compute_or_cache(row, packet):
