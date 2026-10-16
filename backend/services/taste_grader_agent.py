@@ -49,8 +49,9 @@ SYSTEM = (
     )
 )
 
-HISTORY = """Your previous checks of this page, oldest first. Treat them as claims to \
-re-check, not facts: earlier checks can be wrong. Verify each earlier issue against the page \
+HISTORY = """Your previous checks of this page, oldest first. Grade the page fresh against \
+all their preferences first; use this history only afterwards, to check earlier issues. \
+Treat it as claims to re-check, not facts: earlier checks can be wrong. Verify each earlier issue against the page \
 as it is now; drop any you cannot confirm with a look, zoom or measurement, and say so. What \
 you see now always wins over history. Don't flag something you told them to keep unless it \
 got worse. Raise a new issue only if it matters as much as the earlier ones. If the agent \
@@ -262,8 +263,11 @@ def grade(
     _check_url(url)
     rules = "\n".join(
         f"- {'AVOID' if p['kind'] == 'avoid' else 'PREFER'}: {p['rule']}"
+        + (" [they said this directly; weigh it heavily]" if p.get("source") == "feedback" else "")
         for p in model["preferences"]
     )
+    seen = {r for check in previous for r in check.get("rules", [])}
+    new_rules = [p["rule"] for p in model["preferences"] if previous and p["rule"] not in seen]
     steps = "\n".join(f"[{s['role']}] {s['text'][:600]}" for s in item["trace"][-12:])
     parsed = urlparse(url)
     path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
@@ -321,6 +325,13 @@ def grade(
                     "text": f"Now the work to grade, open in your browser at 1280x800. Task: {item['brief']}"
                     f"\n\nAgent trace so far:\n{steps}\n\n"
                     + (_history(list(previous)) + "\n\n" if previous else "")
+                    + (
+                        "Preferences added since your last check; check these first:\n"
+                        + "\n".join(f"- {r}" for r in new_rules)
+                        + "\n\n"
+                        if new_rules
+                        else ""
+                    )
                     + "The first screen:",
                 },
                 _image(first),
@@ -351,6 +362,8 @@ def grade(
                         verdict = {
                             **_verdict(args, ignore_shell="shared shell" in item["brief"]),
                             "inspected": inspected,
+                            # Which preferences this check graded against, to spot new ones next time.
+                            "rules": [p["rule"] for p in model["preferences"]],
                         }
                         trace.append({"event": "verdict", "raw": args})
                         save_trace({"verdict": verdict})
