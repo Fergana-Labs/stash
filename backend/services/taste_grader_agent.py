@@ -87,7 +87,7 @@ TOOLS = [
     },
     {
         "name": "inspect_region",
-        "description": "List the visible elements inside a window region (same coordinates as zoom), with their boxes in CSS pixels, background color and any text. Use it to measure non-text things like bar widths, dot sizes and gaps.",
+        "description": "List the visible elements inside a window region (same coordinates as zoom), with their boxes in CSS pixels, background color, border, corner radius and any text. Use it to measure non-text things like bar widths, dot sizes and gaps.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -180,11 +180,13 @@ INSPECT = r"""([x, y, w, h]) => {
     if (s.visibility === "hidden" || s.display === "none") continue;
     // Concatenate text pieces as the browser does: React splits "v{n}" into "v" and "3".
     const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").replace(/\s+/g, " ").trim();
-    const painted = s.backgroundColor !== "rgba(0, 0, 0, 0)" || el.tagName === "svg" || el.tagName === "IMG";
+    const painted = s.backgroundColor !== "rgba(0, 0, 0, 0)" || s.borderTopWidth !== "0px" || el.tagName === "svg" || el.tagName === "IMG";
     if (!own && !painted) continue;
     out.push({ tag: el.tagName.toLowerCase(), left: Math.round(r.left), top: Math.round(r.top),
       width: Math.round(r.width * 10) / 10, height: Math.round(r.height * 10) / 10,
-      background: painted ? s.backgroundColor : undefined, text: own.slice(0, 40) || undefined });
+      background: painted ? s.backgroundColor : undefined, text: own.slice(0, 40) || undefined,
+      radius: s.borderRadius !== "0px" ? s.borderRadius : undefined,
+      border: s.borderTopWidth !== "0px" ? s.borderTopWidth : undefined });
     if (out.length >= 80) break;
   }
   return out;
