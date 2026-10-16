@@ -1,6 +1,7 @@
 """The owner-scoped taste workflow and its runtime oracle."""
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +24,10 @@ class Body(BaseModel):
 class Review(Body):
     label: Literal["liked", "disliked", "skip"]
     note: str = Field(default="", max_length=2000)
+
+
+class Reset(Body):
+    session_id: UUID
 
 
 class Source(Body):
@@ -93,6 +98,11 @@ async def create(user: User):
 @router.patch("/examples/{identity}")
 async def review(identity: str, req: Review, user: User):
     return await checked(taste.review(user["id"], identity, req.label, req.note))
+
+
+@router.post("/reset")
+async def reset(req: Reset, user: User):
+    return await checked(taste.reset_demo(user["id"], req.session_id))
 
 
 @router.get("/images/{kind}/{identity}")

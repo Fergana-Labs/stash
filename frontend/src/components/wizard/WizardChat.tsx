@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
@@ -107,6 +108,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const [title, setTitle] = useState("New eval");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
+  const [website, setWebsite] = useState<TasteWorkspace | null>(null);
+  const [resettingDemo, setResettingDemo] = useState(false);
   const draft = useWizardDraft(sessionId);
   const { input, setInput, load: loadDraft, flush: flushDraft, recover: recoverDraft } = draft;
   const [pending, setPending] = useState<Injected | null>(null);
@@ -144,10 +147,12 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   useEffect(() => {
     setPending(takeWizardMessage(sessionId));
     wzGet(sessionId).then((s) => {
+      if (s.reset_to) { router.replace(`/reward-models/wizard/${s.reset_to}`); return; }
       if (s.status === "saved" && s.model_id) { router.replace(`/reward-models/evals/${s.model_id}`); return; }
       setEntries(s.transcript ?? []); setModelId(s.model_id); setTitle(s.model_name || s.title); loadDraft(s.draft_input ?? "");
     }).catch((e) => setError(errorMessage(e)));
   }, [sessionId, loadDraft, router]);
+  useEffect(() => { let live = true; void tasteGet().then((w) => { if (live) setWebsite(w); }).catch(() => {}); return () => { live = false; }; }, [modelId, version, sessionId]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [entries]);
 
   const refresh = useCallback(() => { setVersion((v) => v + 1); onRefresh?.(); }, [onRefresh]);
@@ -200,6 +205,18 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     } catch (e) { setError(errorMessage(e)); }
     finally { restartingRef.current = false; setRestarting(false); }
   };
+  const resetDemo = async () => {
+    if (entries === null || busyRef.current || submittingRef.current || attaching || restartingRef.current) return;
+    restartingRef.current = true; setRestarting(true); setResettingDemo(true); setError("");
+    if (dictation.listening) dictation.stop();
+    try {
+      if (!await flushDraft()) return;
+      const result = await tasteReset(sessionId);
+      queued.current = [];
+      router.replace(`/reward-models/wizard/${result.session_id}`);
+    } catch (e) { setError(errorMessage(e)); }
+    finally { restartingRef.current = false; setRestarting(false); setResettingDemo(false); }
+  };
   const submit = async () => {
     if (!input.trim() || submittingRef.current || restartingRef.current) return;
     submittingRef.current = true; setSubmitting(true);
@@ -243,11 +260,12 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
         <div className="flex min-w-0 flex-1 flex-col">
           {!embedded && (
             <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
-              <h1 className="m-0 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
-              <span className="text-[11px] text-muted-foreground" role="status">{draft.status === "Saved" ? "All changes saved" : draft.status}</span>
+              <h1 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
+              <span className="hidden text-[11px] text-muted-foreground sm:inline" role="status">{draft.status === "Saved" ? "All changes saved" : draft.status}</span>
               <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void restart()} title="Start a fresh conversation. Your eval and previous chat are kept.">
-                {restarting ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting ? "Restarting…" : "Restart"}
+                {restarting && !resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting && !resettingDemo ? "Restarting…" : "Restart"}
               </Button>
+              {website && ((!!modelId && website.model_id === modelId) || (!modelId && website.fresh_start && website.wizard_session_id === sessionId)) && <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void resetDemo()} title="Start from scratch: archive this demo's chat, preferences, grader and results. Your original history is kept.">{resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />}{resettingDemo ? "Resetting…" : "Reset demo"}</Button>}
             </header>
           )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
@@ -255,7 +273,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
               {entries && entries.length === 0 && (
                 <div className="py-10 text-center">
                   <h2 className="m-0 text-lg font-semibold tracking-tight">{modelId ? "How can I help with this eval?" : "What judgment call should it make?"}</h2>
-                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">{modelId ? "This is a fresh conversation. Your eval’s existing examples, labels, and criteria are saved." : "Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would."}</p>
+                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">{modelId ? "This is a fresh conversation. Your eval’s existing examples, labels, and criteria are saved." : "Describe what you want to judge. The wizard finds relevant examples, learns from your feedback, and asks about anything unclear."}</p>
                   <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
                     {(modelId ? EVAL_STARTERS : STARTERS).map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
                   </div>

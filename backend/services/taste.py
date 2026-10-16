@@ -15,7 +15,7 @@ import json
 import os
 import re
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from scripts.website_taste.preferences import source_label, usable_label
 
@@ -57,6 +57,8 @@ def work_root(row):
     root = Path(os.environ.get("TASTE_WORKSPACE_ROOT", "/tmp/stash-taste-workspaces")) / str(
         row["id"]
     )
+    if row["config"].get("run_id"):
+        root = root / "runs" / str(UUID(row["config"]["run_id"]))
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     return root
 
@@ -240,12 +242,14 @@ async def detail(owner):
     reasons = blockers(row)
     examples = effective_examples(row)
     jobs = await get_pool().fetch(
-        "SELECT id,operation,status,progress,result,created_at,updated_at FROM taste_jobs WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20",
+        "SELECT id,operation,status,progress,result,created_at,updated_at FROM taste_jobs WHERE workspace_id=$1 AND ($2::text IS NULL OR created_at >= $2::text::timestamptz) ORDER BY created_at DESC LIMIT 20",
         row["id"],
+        row["config"].get("run_started_at"),
     )
     predictions = await get_pool().fetch(
-        "SELECT id,version,output,feedback,created_at FROM taste_predictions WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20",
+        "SELECT id,version,output,feedback,created_at FROM taste_predictions WHERE workspace_id=$1 AND ($2::text IS NULL OR created_at >= $2::text::timestamptz) ORDER BY created_at DESC LIMIT 20",
         row["id"],
+        row["config"].get("run_started_at"),
     )
     root = location(row, "experiment")
     skill = (root / "SKILL.md").read_text() if root and (root / "SKILL.md").is_file() else ""
@@ -254,6 +258,7 @@ async def detail(owner):
         "model_id": row["config"].get("model_id"),
         "wizard_session_id": row["config"].get("wizard_session_id"),
         "published": row["config"].get("published", False),
+        "fresh_start": row["config"].get("fresh_start", False),
         "name": row["name"],
         "revision": row["revision"],
         "fitted_revision": row["fitted_revision"],
@@ -290,9 +295,10 @@ async def review(owner, identity, label, note):
         raise ValueError("Choose liked, disliked, or skip")
     # JSON key is parameterized; concurrent reviews merge instead of overwriting.
     await get_pool().execute(
-        "UPDATE taste_workspaces SET reviews=reviews || $2::jsonb,revision=revision+1 WHERE id=$1",
+        "UPDATE taste_workspaces SET reviews=reviews || $2::jsonb,revision=revision+1 WHERE id=$1 AND (config->>'run_id') IS NOT DISTINCT FROM $3::text",
         row["id"],
         {identity: {"label": label, "note": note}},
+        row["config"].get("run_id"),
     )
     return await detail(owner)
 
@@ -339,6 +345,18 @@ async def inspect(owner, kind, identity):
 
 
 async def enqueue(owner, operation, payload):
+    # Reset, binding, and new jobs share an owner lock. Reset cannot miss a
+    # concurrently queued job and then have that job restore the old state.
+    async with get_pool().acquire() as conn:
+        key = owner.int % (2**63 - 1)
+        await conn.execute("SELECT pg_advisory_lock($1)", key)
+        try:
+            return await _enqueue(owner, operation, payload)
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock($1)", key)
+
+
+async def _enqueue(owner, operation, payload):
     import asyncpg
 
     row = await workspace(owner)
@@ -1192,17 +1210,95 @@ async def bind_wizard(owner, session=None, *, name="Website design"):
             await conn.execute("SELECT pg_advisory_unlock($1)", key)
 
 
+async def reset_demo(owner, session_id):
+    """Archive this demo run and begin an empty, unbound eval wizard.
+
+    Original traces, immutable artifacts, previous sessions, prediction receipts,
+    and the original compute ledger are retained. Only active demo state resets.
+    """
+    from .intuition import wizard
+
+    async with get_pool().acquire() as conn:
+        key = owner.int % (2**63 - 1)
+        await conn.execute("SELECT pg_advisory_lock($1)", key)
+        try:
+            session = await wizard.get_session(owner, session_id)
+            if session.get("reset_to"):
+                return {"session_id": session["reset_to"], "archived": True}
+            row = await workspace(owner)
+            old_model = row["config"].get("model_id")
+            if session["model_id"] != old_model or (
+                not old_model and not row["config"].get("fresh_start")
+            ):
+                raise Conflict(
+                    "This chat is not the current demo. Open the current demo to reset it."
+                )
+            if await conn.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM taste_jobs WHERE workspace_id=$1 AND status IN ('queued','running'))",
+                row["id"],
+            ):
+                raise Conflict(
+                    "The demo is still working. Wait for its current operation to finish before resetting."
+                )
+            archive_id = uuid4()
+            # Reserve a separate artifact root for every new run. Revisions may
+            # start at zero without overwriting an archived dataset or model.
+            archive = work_root(row) / "archives" / (str(archive_id) + ".json")
+            write(archive, json.loads(json.dumps(row, default=str)))
+            budget = location(row, "budget") or location(row, "probe") or work_root(row)
+            related = list(
+                dict.fromkeys(
+                    [
+                        *(row["config"].get("related_eval_ids") or []),
+                        *([old_model] if old_model else []),
+                    ]
+                )
+            )
+            async with conn.transaction():
+                new_session = await conn.fetchrow(
+                    "INSERT INTO intuition_wizard_sessions(owner_user_id) VALUES($1) RETURNING id",
+                    owner,
+                )
+                started = await conn.fetchval("SELECT clock_timestamp()")
+                config = {
+                    "fresh_start": True,
+                    "run_id": str(uuid4()),
+                    "run_started_at": started.isoformat(),
+                    "wizard_session_id": str(new_session["id"]),
+                    "budget": str(budget),
+                    "related_eval_ids": related,
+                    "archives": [*(row["config"].get("archives") or []), str(archive)],
+                }
+                await conn.execute(
+                    "UPDATE taste_workspaces SET config=$2,reviews='{}'::jsonb,revision=0,fitted_revision=0,name='Website design' WHERE id=$1",
+                    row["id"],
+                    config,
+                )
+                await conn.execute(
+                    "UPDATE intuition_wizard_sessions SET brief=brief || $3::jsonb WHERE owner_user_id=$1 AND (id=$2 OR model_id=$4)",
+                    owner,
+                    session_id,
+                    {"demo_reset_to": str(new_session["id"])},
+                    UUID(old_model) if old_model else None,
+                )
+            return {"session_id": str(new_session["id"]), "archived": True}
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock($1)", key)
+
+
 async def _bind_wizard(owner, session=None, *, name="Website design"):
     """The website preference flow is a capability of the existing eval wizard."""
     from .intuition import service, wizard
 
     row = await workspace(owner, create=True)
+    if session and (await wizard.get_session(owner, UUID(session["id"]))).get("reset_to"):
+        raise Conflict("This demo was reset. Open the new wizard to continue.")
     model_id = row["config"].get("model_id")
     if not model_id and session and session.get("model_id"):
         model = await service._model(owner, UUID(session["model_id"]))
         if not model["active_version_id"]:
             model_id = str(model["id"])
-    if not model_id and not session:
+    if not model_id and not session and not row["config"].get("fresh_start"):
         existing = await get_pool().fetchrow(
             "SELECT s.id,s.model_id FROM intuition_wizard_sessions s JOIN intuition_models m ON m.id=s.model_id WHERE s.owner_user_id=$1 AND lower(m.name)='website design' AND m.active_version_id IS NULL ORDER BY s.updated_at DESC LIMIT 1",
             owner,

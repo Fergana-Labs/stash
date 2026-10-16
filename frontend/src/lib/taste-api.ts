@@ -55,6 +55,7 @@ export interface TasteWorkspace {
   model_id?: string;
   wizard_session_id?: string;
   published?: boolean;
+  fresh_start?: boolean;
   revision: number;
   fitted_revision: number;
   reviewed: number;
@@ -105,6 +106,11 @@ export interface TasteWorkspace {
 }
 const base = "/api/v1/taste";
 export const tasteGet = () => apiFetch<TasteWorkspace | null>(base);
+export const tasteReset = (sessionId: string) =>
+  apiFetch<{ session_id: string; archived: boolean }>(`${base}/reset`, {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId }),
+  });
 export const tasteCreate = () =>
   apiFetch<TasteWorkspace>(base, { method: "POST" });
 export const tasteReview = (id: string, label: string, note: string) =>

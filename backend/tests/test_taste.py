@@ -554,3 +554,106 @@ async def test_feedback_extraction_repairs_source_ids_and_reuses_receipts(
     assert create.await_count == 2
     again = await taste.extract_feedback([source], tmp_path)
     assert again == first and create.await_count == 2
+
+
+async def test_demo_reset_starts_empty_preserves_archives_and_shared_budget(
+    client, pool, tmp_path, monkeypatch
+):
+    from pathlib import Path
+
+    from backend.services.intuition import wizard
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path / "runs"))
+    owner, headers = await user(client, pool)
+    binding = await taste.bind_wizard(owner)
+    old_id = UUID(binding["session_id"])
+    item, probe = bundle(tmp_path)
+    ledger = tmp_path / "probe-cloud-ledger.jsonl"
+    ledger.write_text('{"kind":"extract","reserved_usd":0.93}\n')
+    await pool.execute(
+        "UPDATE taste_workspaces SET config=config || $2::jsonb,reviews=$3,revision=2,fitted_revision=2 WHERE owner_user_id=$1",
+        owner,
+        {"probe": str(tmp_path), "budget": str(tmp_path), "published": True},
+        {item["id"]: {"label": "disliked", "note": "Observed"}},
+    )
+    row = await taste.workspace(owner)
+    old_root = taste.work_root(row)
+    await pool.execute(
+        "INSERT INTO taste_jobs(workspace_id,operation,status) VALUES($1,'build','succeeded')",
+        row["id"],
+    )
+    await pool.execute(
+        "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,'{}','{}')",
+        row["id"],
+        probe["version"],
+    )
+    await wizard.save_draft(owner, old_id, "Keep this unsent note")
+    stale_session = await wizard.get_session(owner, old_id)
+    response = await client.post(
+        "/api/v1/taste/reset", headers=headers, json={"session_id": str(old_id)}
+    )
+    assert response.status_code == 200, response.text
+    fresh_id = UUID(response.json()["session_id"])
+    assert fresh_id != old_id
+    state = await taste.detail(owner)
+    assert state["examples"] == state["jobs"] == state["predictions"] == state["trials"] == []
+    assert state["grader"]["version"] is None and not state["published"]
+    assert state["model_id"] is None and state["labels"]["usable"] == 0
+    fresh = await wizard.get_session(owner, fresh_id)
+    assert (
+        fresh["model_id"] is None
+        and fresh["transcript"] == []
+        and fresh["brief"] == {}
+        and fresh["draft_input"] == ""
+    )
+    await wizard._save(stale_session)  # A late response cannot undo the archive.
+    with pytest.raises(taste.Conflict, match="reset"):
+        await taste.bind_wizard(owner, stale_session)
+    archived = await wizard.get_session(owner, old_id)
+    assert (
+        archived["reset_to"] == str(fresh_id) and archived["draft_input"] == "Keep this unsent note"
+    )
+    assert str(old_id) not in {s["id"] for s in await wizard.list_sessions(owner)}
+    blocked = await client.post(
+        f"/api/v1/model-wizard/sessions/{old_id}/messages",
+        headers=headers,
+        json={"text": "Continue"},
+    )
+    assert blocked.status_code == 409
+    after = await taste.workspace(owner)
+    assert taste.location(after, "budget") == tmp_path
+    assert ledger.read_text() == '{"kind":"extract","reserved_usd":0.93}\n'
+    assert taste.work_root(after) != old_root
+    snapshot = taste.read(Path(after["config"]["archives"][-1]))
+    assert (
+        snapshot["config"]["probe"] == str(tmp_path)
+        and snapshot["reviews"][item["id"]]["label"] == "disliked"
+    )
+    assert taste.read(tmp_path / "activation-probe.json")["version"] == probe["version"]
+    retry = await client.post(
+        "/api/v1/taste/reset", headers=headers, json={"session_id": str(old_id)}
+    )
+    assert retry.json()["session_id"] == str(fresh_id)
+    resumed = await taste.bind_wizard(owner)
+    assert resumed["session_id"] == str(fresh_id) and resumed["model_id"] != binding["model_id"]
+    assert (await taste.detail(owner))["examples"] == []
+
+
+async def test_demo_reset_is_owner_scoped_and_waits_for_active_jobs(
+    client, pool, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    owner, headers = await user(client, pool)
+    binding = await taste.bind_wizard(owner)
+    row = await taste.workspace(owner)
+    _, outsider = await user(client, pool)
+    request = {"session_id": binding["session_id"]}
+    assert (
+        await client.post("/api/v1/taste/reset", headers=outsider, json=request)
+    ).status_code == 404
+    await pool.execute(
+        "INSERT INTO taste_jobs(workspace_id,operation) VALUES($1,'discover')", row["id"]
+    )
+    response = await client.post("/api/v1/taste/reset", headers=headers, json=request)
+    assert response.status_code == 409 and "still working" in response.text
+    assert (await taste.workspace(owner))["config"] == row["config"]

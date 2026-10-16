@@ -148,6 +148,8 @@ async def delete_session(session_id: UUID, user: User):
 @router.post("/sessions/{session_id}/messages")
 async def send_message(session_id: UUID, req: Message, user: User):
     session = await checked(wizard.get_session(user["id"], session_id))
+    if session.get("reset_to"):
+        raise HTTPException(409, "This demo was reset. Open the new wizard to continue.")
     if session["status"] == "saved":
         raise HTTPException(409, "Setup is complete. Edit this eval through MCP.")
     if not settings.ANTHROPIC_API_KEY:

@@ -17,6 +17,7 @@ export interface WizardSession {
   id: string; model_id: string | null; title: string; created_at: string; updated_at: string;
   transcript?: TranscriptEntry[]; model_name?: string | null;
   status: "draft" | "saved"; draft_input?: string;
+  reset_to?: string | null;
 }
 
 export function wizardSessionName(session: WizardSession): string {

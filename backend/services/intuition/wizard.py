@@ -602,6 +602,7 @@ def _session(row) -> dict:
     s = dict(row)
     s["id"] = str(s["id"])
     s["model_id"] = str(s["model_id"]) if s["model_id"] else None
+    s["reset_to"] = (s.get("brief") or {}).get("demo_reset_to")
     return s
 
 
@@ -635,7 +636,7 @@ async def list_sessions(owner_id: UUID) -> list[dict]:
                   s.draft_input
              FROM intuition_wizard_sessions s
              LEFT JOIN intuition_models m ON m.id = s.model_id
-            WHERE s.owner_user_id = $1 ORDER BY s.updated_at DESC LIMIT 50""",
+            WHERE s.owner_user_id = $1 AND NOT (s.brief ? 'demo_reset_to') ORDER BY s.updated_at DESC LIMIT 50""",
         owner_id,
     )
     return [_session(r) for r in rows]
@@ -677,7 +678,7 @@ async def _save(session: dict) -> None:
         """UPDATE intuition_wizard_sessions
               SET messages = $2, transcript = $3, model_id = $4, title = $5, brief = $6,
                   updated_at = now()
-            WHERE id = $1""",
+            WHERE id = $1 AND NOT (brief ? 'demo_reset_to')""",
         UUID(session["id"]),
         session["messages"][-MAX_HISTORY_MESSAGES:],
         session["transcript"],
@@ -1038,6 +1039,8 @@ async def stream_turn(
     owner_id: UUID, session_id: UUID, text: str, kind: str = "message"
 ) -> AsyncIterator[dict]:
     session = await get_session(owner_id, session_id)
+    if session.get("reset_to"):
+        raise service.Conflict("This demo was reset. Open the new wizard to continue.")
     if session["status"] == "saved":
         raise service.Conflict("Setup is complete. Edit this eval through MCP.")
     _repair_dangling(session["messages"])
