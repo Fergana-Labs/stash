@@ -1553,9 +1553,13 @@ async def reset_demo(owner, session_id):
                 return {"session_id": session["reset_to"], "archived": True}
             row = await workspace(owner)
             old_model = row["config"].get("model_id")
-            if session["model_id"] != old_model or (
-                not old_model and not row["config"].get("fresh_start")
-            ):
+            # In demo mode any wizard chat can start the demo over; only the demo's own
+            # chat is marked as reset, so an unrelated eval chat keeps working.
+            from_demo_chat = session["model_id"] == old_model and (
+                old_model or row["config"].get("fresh_start")
+            )
+            demo_chat = session_id if from_demo_chat else row["config"].get("wizard_session_id")
+            if not from_demo_chat and not taste_demo.enabled():
                 raise Conflict(
                     "This chat is not the current demo. Open the current demo to reset it."
                 )
@@ -1603,7 +1607,7 @@ async def reset_demo(owner, session_id):
                 await conn.execute(
                     "UPDATE intuition_wizard_sessions SET brief=brief || $3::jsonb WHERE owner_user_id=$1 AND (id=$2 OR model_id=$4)",
                     owner,
-                    session_id,
+                    UUID(str(demo_chat)) if demo_chat else None,
                     {"demo_reset_to": str(new_session["id"])},
                     UUID(old_model) if old_model else None,
                 )
