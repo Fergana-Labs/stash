@@ -14,6 +14,7 @@ const PRIMARY = [
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") },
   { label: "Reward models", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") || path.startsWith("/reward-models/intuitions") },
   { label: "Monitoring", href: "/reward-models/monitoring", match: (path: string) => /^\/reward-models\/(monitoring|changes|review|optimization)/.test(path) || path.startsWith("/skills") },
+  { label: "Team", href: "/reward-models/team", match: (path: string) => path.startsWith("/reward-models/team") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {
