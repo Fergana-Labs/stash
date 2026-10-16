@@ -410,10 +410,13 @@ def oof_accuracy(output_type, names, classes, rows, l2) -> dict:
     return {"n": len(correct), "accuracy": float(np.mean(correct))}
 
 
-async def train(owner_id: UUID, model_id: UUID, progress: Progress = _quiet) -> dict:
+async def train(
+    owner_id: UUID, model_id: UUID, progress: Progress = _quiet, *, preserve_splits: bool = False
+) -> dict:
     """Fit the fused model on the current labels and return a held-out report."""
     progress("preparing", "Reserving held-out examples", 0, 0)
-    await plan_holdout(owner_id, model_id)
+    if not preserve_splits:
+        await plan_holdout(owner_id, model_id)
     await builder.prepare(owner_id, model_id)
     model = await service._model(owner_id, model_id)
     draft = await service.ensure_draft(owner_id, model_id)

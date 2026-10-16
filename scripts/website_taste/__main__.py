@@ -32,6 +32,7 @@ def main():
         "sample-dpo",
         "train-dpo",
         "evaluate",
+        "auto-label",
     ):
         command = commands.add_parser(name)
         command.add_argument("--output", type=Path, required=True)
@@ -39,6 +40,15 @@ def main():
             command.add_argument("--reflection-model", default="claude-sonnet-4-6")
         if name == "prepare-test":
             command.add_argument("--model", required=True)
+        if name == "auto-label":
+            command.add_argument("--model", required=True)
+            command.add_argument("--source", type=Path, required=True)
+        if name == "freeze":
+            command.add_argument(
+                "--automatic-exploratory",
+                action="store_true",
+                help="Only when automatic labels were explicitly authorized; no human-validation claim.",
+            )
         if name in ("optimize", "sample-dpo", "train-dpo", "evaluate"):
             command.add_argument(
                 "--allow-cloud",
@@ -102,6 +112,11 @@ def main():
         if args.command == "calibrate":
             print(json.dumps(calibration.prepare(output, environment_stash())))
             return
+        if args.command == "auto-label":
+            from .autolabel import prepare
+
+            print(json.dumps(prepare(args.source, output, environment_stash(), model=args.model)))
+            return
         if args.command == "prepare-test":
             from .test_candidates import prepare
 
@@ -114,7 +129,17 @@ def main():
             examples = [json.loads(s) for s in (output / "reviewed.jsonl").read_text().splitlines()]
             print(
                 json.dumps(
-                    {"sha256": protocol.seal(output, examples, protocol.tasks(), model)["sha256"]}
+                    {
+                        "sha256": protocol.seal(
+                            output,
+                            examples,
+                            protocol.tasks(),
+                            model,
+                            label_policy="automatic_exploratory"
+                            if args.automatic_exploratory
+                            else "human_reviewed",
+                        )["sha256"]
+                    }
                 )
             )
             return

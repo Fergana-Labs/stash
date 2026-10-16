@@ -46,6 +46,33 @@ Qwen outputs, post-training results, or implicitly liked/disliked fixtures.
 The user does not export, upload, or import history manually. These commands are
 operator work; the user's interaction is the normal image-labeling step.
 
+### Explicitly authorized automatic-label pilot
+
+If Henry asks to skip manual labeling, use a **separate** exploratory directory:
+
+```sh
+python -m scripts.website_taste auto-label --source /private/tmp/website-taste --output /private/tmp/website-taste-auto --model claude-sonnet-4-6
+python -m scripts.website_taste freeze --output /private/tmp/website-taste-auto --automatic-exploratory
+```
+
+The visual teacher rechecks each screenshot against the full source message and
+image index, corrects desired-reference attribution, and abstains on functional
+requests or uncertain feedback. Every accepted history label needs an exact
+human quote. Fresh dev/test designs get teacher-inferred labels from a profile
+derived from training messages only, without seeing their generation prompts.
+All receipts retain `human_reviewed: false`; the original manual queues remain
+pending. Separate eval containers accept automatic labels for this experiment.
+The normal human-reviewed protocol still rejects these labels.
+
+This mode measures agreement with automatic labels, **not human-validated
+accuracy**. Its exploratory cloud gate requires at least four teacher-labeled
+held-out examples, both labels in each partition, the ordinary release gate,
+and at least 75% agreement. The threshold is fixed before fitting. There is no
+independent validation of personal taste until Henry judges unseen outputs.
+Keep the approved cloud budget across both directories; a new directory does
+not authorize a new budget. Select the authorized Modal workspace explicitly
+with `MODAL_PROFILE=fergana-labs` for this pilot's cloud commands.
+
 ## Freeze and fit
 
 ```sh

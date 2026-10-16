@@ -144,10 +144,28 @@ def split_examples(examples: list[dict]) -> list[dict]:
     ]
 
 
-def validate_dataset(examples: list[dict], task_list: list[dict]) -> None:
+def validate_dataset(
+    examples: list[dict], task_list: list[dict], *, label_policy="human_reviewed"
+) -> None:
+    if label_policy not in ("human_reviewed", "automatic_exploratory"):
+        raise ValueError("Unknown label policy")
     groups, pixels, ids = {}, {}, set()
     for example in examples:
-        if example.get("needs_review", True):
+        if label_policy == "human_reviewed" and (
+            example.get("human_reviewed") is False
+            or example.get("label_source") in ("explicit_feedback_auto", "teacher_inferred")
+        ):
+            raise ValueError("Review preference labels before fitting the classifier")
+        automatic = (
+            label_policy == "automatic_exploratory"
+            and example.get("accepted_for_exploration") is True
+            and example.get("human_reviewed") is False
+            and example.get("label_source") in ("explicit_feedback_auto", "teacher_inferred")
+            and bool(example.get("autolabel_receipt"))
+        )
+        if (label_policy == "automatic_exploratory" and not automatic) or (
+            example.get("needs_review", True) and not automatic
+        ):
             raise ValueError("Review preference labels before fitting the classifier")
         if example["label"] not in ("liked", "disliked"):
             raise ValueError("Unlabeled example")
@@ -175,8 +193,15 @@ def validate_dataset(examples: list[dict], task_list: list[dict]) -> None:
         raise ValueError("Need train/dev/test generation tasks")
 
 
-def seal(output: Path, examples: list[dict], task_list: list[dict], model: dict) -> dict:
-    validate_dataset(examples, task_list)
+def seal(
+    output: Path,
+    examples: list[dict],
+    task_list: list[dict],
+    model: dict,
+    *,
+    label_policy="human_reviewed",
+) -> dict:
+    validate_dataset(examples, task_list, label_policy=label_policy)
     data = {
         "schema": 1,
         "examples": examples,
@@ -194,6 +219,8 @@ def seal(output: Path, examples: list[dict], task_list: list[dict], model: dict)
         "dpo_beta": 0.1,
         "dpo_min_reward_gap": 0.1,
     }
+    if label_policy != "human_reviewed":
+        data["label_policy"] = label_policy
     sha = digest(json.dumps(data, sort_keys=True))
     file = output / "experiment.json"
     if file.exists() and json.loads(file.read_text())["sha256"] != sha:
@@ -209,7 +236,9 @@ def load(output: Path) -> dict:
     if digest(json.dumps(data, sort_keys=True)) != sha:
         raise ValueError("Frozen experiment was modified")
     data["sha256"] = sha
-    validate_dataset(data["examples"], data["tasks"])
+    validate_dataset(
+        data["examples"], data["tasks"], label_policy=data.get("label_policy", "human_reviewed")
+    )
     return data
 
 

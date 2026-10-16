@@ -11,6 +11,7 @@ from .protocol import load
 
 def fit(output: Path, stash, reflect):
     experiment = load(output)
+    automatic = experiment.get("label_policy") == "automatic_exploratory"
     if (output / "classifier.json").exists():
         prior = json.loads((output / "classifier.json").read_text())
         if prior["experiment"] != experiment["sha256"]:
@@ -49,7 +50,7 @@ task-specific operations. Focus on properties a vision model can observe in pixe
     if {e["id"] for e in native} != allowed or any(e["needs_review"] for e in native):
         raise ValueError("Classifier review queue changed after freezing the experiment")
     stash.call("PATCH", f"/intuitions/{mid}/draft", json={"rubric": rubric})
-    report = stash.call("POST", f"/model-wizard/models/{mid}/train")
+    report = stash.call("POST", f"/model-wizard/models/{mid}/train", json={"preserve_splits": True})
     (output / "classifier-training.json").write_text(json.dumps(report, indent=2))
     if not report["gate"]["passed"]:
         raise ValueError("Classifier failed the existing release gate")
@@ -70,6 +71,7 @@ task-specific operations. Focus on properties a vision model can observe in pixe
         )
         rows.append({"id": example["id"], "truth": example["label"], "prediction": prediction})
     correct = sum(r["truth"] == r["prediction"]["label"] for r in rows)
+    minimum_test = 4 if automatic else 6
     quality = {
         "model_id": mid,
         "version_id": version_id,
@@ -77,9 +79,14 @@ task-specific operations. Focus on properties a vision model can observe in pixe
         "experiment": experiment["sha256"],
         "test_n": len(rows),
         "accuracy": correct / len(rows),
+        "label_policy": experiment.get("label_policy", "human_reviewed"),
+        "metric": "agreement_with_automatic_labels" if automatic else "human_label_agreement",
+        "independent_human_validation": not automatic,
         "rows": rows,
-        "pilot_gate_passed": len(rows) >= 6 and correct / len(rows) >= 0.75,
-        "note": "A small pilot gate, not evidence of universal taste accuracy or guaranteed optimization gains.",
+        "pilot_gate_passed": len(rows) >= minimum_test and correct / len(rows) >= 0.75,
+        "note": "Exploratory teacher-label consistency only; no human validation or demonstrated taste improvement."
+        if automatic
+        else "A small pilot gate, not evidence of universal taste accuracy or guaranteed optimization gains.",
     }
     (output / "classifier.json").write_text(json.dumps(quality, indent=2))
     return quality

@@ -226,6 +226,7 @@ def evaluate(output: Path, runner: Runner, *, adapter: str | None = None):
     ]
     report = {
         "experiment": experiment["sha256"],
+        "label_policy": experiment.get("label_policy", "human_reviewed"),
         "arms": list(arms),
         "receipts": receipts,
         "posttraining_included": bool(adapter),

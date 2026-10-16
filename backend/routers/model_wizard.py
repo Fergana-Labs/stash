@@ -46,6 +46,10 @@ class DraftInput(Body):
     text: str = Field(max_length=20000)
 
 
+class Train(Body):
+    preserve_splits: bool = False
+
+
 class LocalHistoryPoll(Body):
     device_id: UUID
 
@@ -161,8 +165,10 @@ async def send_message(session_id: UUID, req: Message, user: User):
 
 
 @router.post("/models/{model_id}/train")
-async def train(model_id: UUID, user: User):
-    return await checked(fusion.train(user["id"], model_id))
+async def train(model_id: UUID, user: User, req: Train | None = None):
+    return await checked(
+        fusion.train(user["id"], model_id, preserve_splits=req.preserve_splits if req else False)
+    )
 
 
 @router.get("/models/{model_id}/report")

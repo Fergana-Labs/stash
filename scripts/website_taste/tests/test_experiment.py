@@ -229,3 +229,123 @@ def test_actual_gepa_library_optimizes_instructions_on_dev_not_test(tmp_path):
     assert len(result["candidates"]) >= 2
     assert result["candidates"][result["best_index"]]["dev_reward"] == pytest.approx(0.8)
     assert not set(seen) & {t["brief"] for t in protocol.tasks() if t["partition"] == "test"}
+
+
+def test_automatic_labels_require_explicit_exploratory_policy(tmp_path):
+    rows = [
+        {
+            "id": f"{part}:{label}",
+            "group": part,
+            "partition": part,
+            "sha256": f"{part}:{label}",
+            "label": label,
+            "needs_review": True,
+            "human_reviewed": False,
+            "accepted_for_exploration": True,
+            "label_source": "teacher_inferred",
+            "autolabel_receipt": "receipt.json",
+        }
+        for part in ("train", "dev", "test")
+        for label in ("liked", "disliked")
+    ]
+    with pytest.raises(ValueError, match="Review preference"):
+        protocol.seal(tmp_path, rows, protocol.tasks(), {})
+    with pytest.raises(ValueError, match="Review preference"):
+        protocol.validate_dataset([{**r, "needs_review": False} for r in rows], protocol.tasks())
+    frozen = protocol.seal(
+        tmp_path, rows, protocol.tasks(), {}, label_policy="automatic_exploratory"
+    )
+    assert protocol.load(tmp_path)["label_policy"] == "automatic_exploratory"
+    assert all(e["needs_review"] and not e["human_reviewed"] for e in frozen["examples"])
+    rows[0].pop("autolabel_receipt")
+    with pytest.raises(ValueError, match="Review preference"):
+        protocol.validate_dataset(rows, protocol.tasks(), label_policy="automatic_exploratory")
+
+
+def test_automatic_history_labels_cannot_invent_quotes_or_label_functionality():
+    from scripts.website_taste.autolabel import validate
+
+    row = {"session_id": "s", "feedback": "Copy this table layout please"}
+    result = {"label": "liked", "scope": "reference", "quote": row["feedback"], "confidence": 0.95}
+    assert validate(row, result)["label"] == "liked"
+    assert validate(row, {**result, "quote": "Human approved every detail"})["label"] == "unknown"
+    assert validate(row, {**result, "scope": "functional"})["label"] == "unknown"
+
+
+def test_auto_label_profile_excludes_holdout_and_preserves_manual_queue(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import anthropic
+
+    from scripts.website_taste import autolabel
+
+    source, output = tmp_path / "manual", tmp_path / "auto"
+    source.mkdir()
+    image = source / "pixels.png"
+    image.write_bytes(b"pixels")
+    rows = [
+        {
+            "id": f"{part}:{label}",
+            "partition": part,
+            "split": "train" if part == "train" else "eval",
+            "session_id": "s" if part == "train" else None,
+            "feedback": "Training " + label,
+            "file": str(image),
+            "native_id": "original-" + part + label,
+            "item": {"brief": f"fresh {part} {label}"},
+            "generation_prompt": "NEVER_REVEAL_STYLE_PROMPT",
+        }
+        for part in ("train", "dev", "test")
+        for label in ("liked", "disliked")
+    ]
+    original = json.dumps({"examples": rows})
+    (source / "calibration.json").write_text(original)
+    calls = []
+
+    def create(**kwargs):
+        prompt = kwargs["messages"][0]["content"][0]["text"]
+        assert "NEVER_REVEAL_STYLE_PROMPT" not in prompt
+        calls.append(prompt)
+        if prompt.startswith("Infer only"):
+            assert "fresh dev" not in prompt and "fresh test" not in prompt
+            result = {"preferences": [{"rule": "Clear rows", "source_ids": ["train:liked"]}]}
+        else:
+            context = json.loads(prompt.rsplit("\n", 1)[-1])
+            text = context.get("feedback") or context["brief"]
+            result = {
+                "label": text.split()[-1],
+                "scope": "reference",
+                "confidence": 0.95,
+                "quote": context.get("feedback", ""),
+                "preference": "Clear rows",
+                "reason": "Evidence",
+            }
+        return SimpleNamespace(
+            stop_reason="end_turn",
+            content=[SimpleNamespace(type="text", text=json.dumps(result))],
+            usage=SimpleNamespace(model_dump=lambda: {}),
+        )
+
+    monkeypatch.setattr(
+        anthropic, "Anthropic", lambda: SimpleNamespace(messages=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(autolabel, "pixels", lambda _: {"type": "image"})
+
+    class Native:
+        requests = []
+
+        def call(self, method, path, **kwargs):
+            assert method == "POST"  # Never edits the original native examples.
+            self.requests.append((path, kwargs))
+            identity = "new-" + str(len(self.requests))
+            if path == "/intuitions":
+                return {"model": {"id": identity}}
+            if path == "/model-wizard/sessions":
+                return {"id": identity}
+            return [{"id": identity}]
+
+    result = autolabel.prepare(source, output, Native(), model="fake")
+    assert result["examples"] == 6 and len(calls) == 7
+    assert (source / "calibration.json").read_text() == original
+    accepted = [json.loads(s) for s in (output / "reviewed.jsonl").read_text().splitlines()]
+    assert all(not r["human_reviewed"] and r["needs_review"] for r in accepted)

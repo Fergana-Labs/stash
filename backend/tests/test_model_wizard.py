@@ -188,6 +188,26 @@ def test_attacks_append_to_the_longest_text_field():
 # ── Fused training ───────────────────────────────────────────────────────
 
 
+async def test_explicit_experiment_splits_are_preserved(client, fakes, monkeypatch):
+    auth = await _auth(client)
+    model_id = await _model_with_examples(client, auth)
+    path = f"/api/v1/intuitions/{model_id}/examples"
+    before = {r["id"]: r["split"] for r in (await client.get(path, headers=auth)).json()}
+
+    async def unexpected(*args):
+        raise AssertionError("Do not repartition a frozen experiment")
+
+    monkeypatch.setattr(fusion, "plan_holdout", unexpected)
+    resp = await client.post(
+        f"/api/v1/model-wizard/models/{model_id}/train",
+        headers=auth,
+        json={"preserve_splits": True},
+    )
+    assert resp.status_code == 200, resp.text
+    after = {r["id"]: r["split"] for r in (await client.get(path, headers=auth)).json()}
+    assert after == before
+
+
 async def test_train_fuses_verdict_probe_and_criteria_with_held_out_report(client, fakes):
     auth = await _auth(client)
     model_id = await _model_with_examples(client, auth)
