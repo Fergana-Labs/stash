@@ -581,11 +581,65 @@ async def upload_traces(owner, session_id, files):
     return {**binding, "job_id": str(queued["job_id"]), "files_received": len(files)}
 
 
+def screenshot_url(url: str, out: Path) -> None:
+    """Screenshot the first 1440x960 of a public web page. Private addresses are refused."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    from playwright.sync_api import sync_playwright
+
+    hosts: dict[str, bool] = {}
+
+    def public_host(host: str) -> bool:
+        if host not in hosts:
+            try:
+                infos = socket.getaddrinfo(host, None)
+                hosts[host] = bool(infos) and all(
+                    ipaddress.ip_address(i[4][0]).is_global for i in infos
+                )
+            except (socket.gaierror, ValueError):
+                hosts[host] = False
+        return hosts[host]
+
+    def allowed(address: str) -> bool:
+        parsed = urlparse(address)
+        if parsed.scheme in ("data", "blob"):
+            return True
+        return parsed.scheme in ("http", "https") and public_host(parsed.hostname or "")
+
+    if urlparse(url).scheme not in ("http", "https") or not allowed(url):
+        raise ValueError(f"{url} is not a public http(s) address.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 960}, device_scale_factor=1)
+
+            # Every request, including redirects and subresources, must stay on public hosts.
+            def guard(route):
+                try:
+                    if allowed(route.request.url):
+                        route.continue_()
+                        return
+                except Exception:  # noqa: BLE001 -- anything unexpected is blocked
+                    pass
+                route.abort()
+
+            page.route("**/*", guard)
+            try:
+                page.goto(url, wait_until="networkidle", timeout=25000)
+            except Exception:  # noqa: BLE001 -- busy pages never go idle; shoot what loaded
+                page.wait_for_timeout(1500)
+            page.screenshot(path=str(out), type="png", animations="disabled")
+        finally:
+            browser.close()
+
+
 async def add_examples(owner, session_id, files):
     """Add example websites the user likes or wants changed, as confirmed training examples.
 
-    Each file is a screenshot (PNG/JPEG/WebP) or a self-contained HTML page, which
-    is rendered with JavaScript and network disabled.
+    Each file is a screenshot (PNG/JPEG/WebP), a self-contained HTML page (rendered
+    with JavaScript and network disabled), or a public URL (screenshotted live).
     """
     from scripts.website_taste import evidence
     from scripts.website_taste.runtime import render
@@ -602,8 +656,17 @@ async def add_examples(owner, session_id, files):
     dataset.setdefault("heldout_status", "not_yet_reserved")
     known = {e["id"] for e in dataset["examples"]}
     added = {"liked": 0, "disliked": 0}
+    # Open pasted pages in parallel; each takes a few seconds to load.
+    shots = {
+        f["url"]: directory / (hashlib.sha256(f["url"].encode()).hexdigest() + ".url.png")
+        for f in files
+        if f.get("url")
+    }
+    await asyncio.gather(*(asyncio.to_thread(screenshot_url, u, out) for u, out in shots.items()))
     for file in files:
-        if file["name"].lower().endswith((".html", ".htm")):
+        if file.get("url"):
+            pixels = shots[file["url"]].read_bytes()
+        elif file["name"].lower().endswith((".html", ".htm")):
             source = directory / (hashlib.sha256(file["content"].encode()).hexdigest() + ".html")
             source.write_text(file["content"])
             image = source.with_suffix(".png")

@@ -212,7 +212,7 @@ export const tasteHillClimbState = (jobId: string) =>
   apiFetch<HillClimbState>(`${base}/hillclimb/${jobId}`);
 export const tasteAddExamples = (
   sessionId: string,
-  files: { name: string; label: "liked" | "disliked"; content: string }[],
+  files: { name: string; label: "liked" | "disliked"; content: string; url?: string }[],
 ) =>
   apiFetch<{ model_id: string; added: { liked: number; disliked: number } }>(
     `${base}/examples`,

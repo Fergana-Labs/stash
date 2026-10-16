@@ -11,6 +11,8 @@ const ACCEPT = ".png,.jpg,.jpeg,.webp,.html,.htm";
 const MAX_BYTES = 8_000_000;
 type Label = "liked" | "disliked";
 
+const urlList = (text: string) => text.split(/\s+/).map((u) => u.trim()).filter((u) => /^https?:\/\/\S+$/i.test(u)).slice(0, 20);
+
 async function encode(file: File): Promise<string> {
   if (/\.html?$/i.test(file.name)) return file.text();
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -23,8 +25,10 @@ async function encode(file: File): Promise<string> {
 export default function ExampleSites({ onDone }: { onDone: (text: string) => void }) {
   const { sessionId, send, adoptModel } = useWizard();
   const [picked, setPicked] = useState<Record<Label, File[]>>({ liked: [], disliked: [] });
+  const [urls, setUrls] = useState<Record<Label, string>>({ liked: "", disliked: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
   const inputs = { liked: useRef<HTMLInputElement>(null), disliked: useRef<HTMLInputElement>(null) };
 
   const add = (label: Label, list: FileList) => {
@@ -39,7 +43,9 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
     setSaving(true); setError("");
     try {
       const files = await Promise.all((["liked", "disliked"] as const).flatMap((label) => picked[label].map(async (f) => ({ name: f.name, label, content: await encode(f) }))));
-      const result = await tasteAddExamples(sessionId, files);
+      const pages = (["liked", "disliked"] as const).flatMap((label) => urlList(urls[label]).map((url) => ({ name: url, label, url, content: "" })));
+      if (pages.length) setStatus(`Opening ${pages.length} page${pages.length === 1 ? "" : "s"} you pasted…`);
+      const result = await tasteAddExamples(sessionId, [...files, ...pages]);
       adoptModel?.(result.model_id);
       const text = `Added ${result.added.liked} site${result.added.liked === 1 ? "" : "s"} I like and ${result.added.disliked} I don’t.`;
       onDone(text);
@@ -48,15 +54,26 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
       setError(errorMessage(e));
     } finally {
       setSaving(false);
+      setStatus("");
     }
   }
 
+  const count = (label: Label) => picked[label].length + urlList(urls[label]).length;
   const column = (label: Label, title: string, Icon: typeof ThumbsUp) => (
     <div className="min-w-0 flex-1">
       <Button type="button" size="sm" variant="outline" className="w-full justify-start" disabled={saving} onClick={() => inputs[label].current?.click()}>
-        <Icon />{title}{picked[label].length > 0 && <span className="ml-auto font-mono text-[11px] text-muted-foreground">{picked[label].length}</span>}
+        <Icon />{title}{count(label) > 0 && <span className="ml-auto font-mono text-[11px] text-muted-foreground">{count(label)}</span>}
       </Button>
       <input ref={inputs[label]} type="file" multiple accept={ACCEPT} hidden aria-label={title} onChange={(e) => { if (e.target.files?.length) add(label, e.target.files); e.target.value = ""; }} />
+      <textarea
+        aria-label={`${title}: paste URLs`}
+        rows={2}
+        value={urls[label]}
+        disabled={saving}
+        onChange={(e) => setUrls((u) => ({ ...u, [label]: e.target.value }))}
+        placeholder="…or paste URLs, one per line"
+        className="mt-1.5 w-full resize-y rounded border border-border bg-background px-2 py-1 text-[11.5px] leading-5 outline-none focus:border-foreground/40"
+      />
       {picked[label].length > 0 && (
         <ul className="m-0 mt-1.5 list-none space-y-0.5 p-0">
           {picked[label].map((f, i) => (
@@ -70,19 +87,19 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
     </div>
   );
 
-  const total = picked.liked.length + picked.disliked.length;
+  const total = count("liked") + count("disliked");
   // The grader needs both kinds and at least four examples in all.
-  const enough = picked.liked.length >= 2 && picked.disliked.length >= 2;
+  const enough = count("liked") >= 2 && count("disliked") >= 2;
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <p className="m-0 mb-2 text-[12px] text-muted-foreground">Or show it example sites: screenshots or HTML of designs you like, and ones you don’t.</p>
+      <p className="m-0 mb-2 text-[12px] text-muted-foreground">Or show it example sites: URLs, screenshots or HTML of designs you like, and ones you don’t.</p>
       <div className="flex gap-2">
         {column("liked", "Sites I like", ThumbsUp)}
         {column("disliked", "Sites I don’t like", ThumbsDown)}
       </div>
       {total > 0 && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="flex-1 text-[11.5px] text-muted-foreground">{enough ? "" : "Add at least two of each."}</span>
+          <span className="flex-1 text-[11.5px] text-muted-foreground">{status || (enough ? "" : "Add at least two of each.")}</span>
           <Button type="button" size="sm" disabled={saving || !enough} onClick={() => void save()}>
             {saving && <Loader2 className="animate-spin" />}Use these {total} examples
           </Button>

@@ -904,3 +904,9 @@ async def test_example_sites_become_confirmed_training_examples(
         json={"session_id": session["id"], "files": [bad]},
     )
     assert response.status_code == 422
+
+
+def test_url_examples_refuse_private_addresses(tmp_path):
+    for url in ("http://127.0.0.1:3495/health", "http://localhost/", "file:///etc/passwd"):
+        with pytest.raises(ValueError, match="not a public"):
+            taste.screenshot_url(url, tmp_path / "x.png")

@@ -166,8 +166,9 @@ async def start(req: Job, user: User):
 class ExampleFile(Body):
     name: str = Field(max_length=200)
     label: Literal["liked", "disliked"]
-    # Base64 image bytes, or HTML text for .html files.
-    content: str = Field(min_length=1, max_length=12_000_000)
+    # Base64 image bytes, or HTML text for .html files. Empty when `url` is given.
+    content: str = Field(default="", max_length=12_000_000)
+    url: str | None = Field(default=None, max_length=2000)
 
 
 class ExampleUpload(Body):
