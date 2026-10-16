@@ -33,7 +33,7 @@ function Question({ example, onAnswer }: { example: TasteExample; onAnswer: (lab
   const [saving, setSaving] = useState("");
   return (
     <li className="flex gap-3 rounded border border-border p-2">
-      <div className="w-36 shrink-0 overflow-hidden rounded bg-surface"><Picture kind="example" id={example.id} alt="Website from your session" className="h-24" /></div>
+      <div className="w-36 shrink-0 overflow-hidden rounded bg-surface"><Picture kind="example" id={example.id} alt="Example site" className="h-24" /></div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <Quote example={example} />
         {example.reason && <p className="m-0 text-[11.5px] text-muted-foreground">{example.reason}</p>}
@@ -49,7 +49,7 @@ function Question({ example, onAnswer }: { example: TasteExample; onAnswer: (lab
   );
 }
 
-/** What the wizard learned from the user's sessions, and the few examples it needs the user to call. */
+/** What the wizard learned from the user's examples, and the few examples it needs the user to call. */
 export default function PreferencesCard() {
   const { send, version } = useWizard();
   const [data, setData] = useState<TasteWorkspace | null>(null);
@@ -78,7 +78,7 @@ export default function PreferencesCard() {
   }
 
   return (
-    <CardShell icon={ThumbsUp} title="What I learned from your sessions" subtitle={data ? `${data.labels.liked} liked · ${data.labels.disliked} wanted changed` : undefined}>
+    <CardShell icon={ThumbsUp} title="What I learned from your examples" subtitle={data ? `${data.labels.liked} liked · ${data.labels.disliked} wanted changed` : undefined}>
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
       {!data ? (
         <p role="status" className="m-0 text-[12px] text-muted-foreground"><Loader2 className="mr-1 inline size-3 animate-spin" />Loading…</p>
@@ -104,7 +104,7 @@ export default function PreferencesCard() {
               <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
                 {learned.map((e) => (
                   <li key={e.id} className="overflow-hidden rounded border border-border">
-                    <div className="bg-surface"><Picture kind="example" id={e.id} alt="Website from your session" className="h-28" /></div>
+                    <div className="bg-surface"><Picture kind="example" id={e.id} alt="Example site" className="h-28" /></div>
                     <div className="space-y-1.5 p-2"><LabelPill label={e.label} /><Quote example={e} /></div>
                   </li>
                 ))}

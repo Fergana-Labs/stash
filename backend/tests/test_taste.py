@@ -769,7 +769,7 @@ async def test_uploaded_traces_feed_same_automatic_pipeline(client, pool, tmp_pa
         for t in await wizard.setup_tools(
             owner, await wizard.get_session(owner, UUID(session["id"]))
         )
-    } == {"website_eval", "search_history", "read_history"}
+    } == {"website_eval"}
     with pytest.raises(ValueError, match="private storage"):
         await taste.learn_uploaded_traces(row, ["/etc/passwd"])
 

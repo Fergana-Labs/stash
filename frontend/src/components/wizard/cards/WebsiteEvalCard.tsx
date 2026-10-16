@@ -7,7 +7,7 @@ import { tasteGet, type TasteWorkspace } from "@/lib/taste-api";
 import { CopyText } from "@/components/taste/website-eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { CardShell, useWizard } from "../wizard-ui";
-import TraceSourcesCard from "./TraceSourcesCard";
+import ExampleSitesCard from "./ExampleSitesCard";
 import PreferencesCard from "./PreferencesCard";
 
 /** A single setup result. Older research cards resolve to this same surface. */
@@ -20,7 +20,7 @@ export default function WebsiteEvalCard({
   exampleIds?: string[];
   readOnly?: boolean;
 }) {
-  if (section === "sources") return <TraceSourcesCard />;
+  if (section === "sources") return <ExampleSitesCard />;
   if (section === "preferences") return <PreferencesCard />;
   return <EvalProgress {...props} />;
 }
@@ -74,7 +74,7 @@ function EvalProgress({
     notified.current = true;
     sessionStorage.setItem(key, "seen");
     send(
-      job.status === "succeeded" ? "Finished reading your sessions." : "Reading your sessions failed.",
+      job.status === "succeeded" ? "Finished learning from your examples." : "Learning from your examples failed.",
       "event",
     );
   }, [data, jobId, readOnly, send]);
@@ -86,7 +86,7 @@ function EvalProgress({
   return (
     <CardShell
       icon={Sparkles}
-      title={ready ? "Your eval is ready" : "Learning from your traces"}
+      title={ready ? "Your eval is ready" : "Learning from your examples"}
     >
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -143,8 +143,8 @@ function EvalProgress({
           {job?.status === "failed"
             ? "I couldn’t finish creating the eval. I’ll explain what’s missing in the conversation."
             : job?.status === "running" || job?.status === "queued"
-              ? "I’m reading your feedback and creating your eval. You can leave this page and come back."
-              : "I’ll use the feedback in your traces and ask only if something essential is unclear."}
+              ? "I’m studying your examples and creating your eval. You can leave this page and come back."
+              : "I’ll learn from your examples and ask only if something essential is unclear."}
         </p>
       )}
     </CardShell>

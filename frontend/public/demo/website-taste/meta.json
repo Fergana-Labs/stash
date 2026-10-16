@@ -27,7 +27,7 @@
   {
     "arm": "skill",
     "label": "Qwen 8B + skill",
-    "sub": "Skill written from your traces",
+    "sub": "Skill written from your examples",
     "score": 0.28,
     "summary": "Cards with borders around each row, multi-line row height, explanatory subtitle text, and mixed label weights/colors all violate their core rules.",
     "fixes": [

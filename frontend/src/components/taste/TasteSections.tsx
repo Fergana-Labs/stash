@@ -120,7 +120,7 @@ export function CheckinsSection({ data }: { data: TasteWorkspace }) {
 interface Arm { arm: string; label: string; sub: string; score: number; summary?: string; fixes?: { issue: string; fix: string }[] }
 
 const STAGES = [
-  { key: "skill", title: "Write a skill from your traces", detail: "Claude reads your corrections and writes a SKILL.md for Qwen", seconds: 6 },
+  { key: "skill", title: "Write a skill from your examples", detail: "Claude studies your good and bad sites and writes a SKILL.md for Qwen", seconds: 6 },
   { key: "gepa", title: "Optimize the prompt with GEPA", detail: "Qwen builds the brief, your grader scores it, GEPA rewrites the prompt", seconds: 14, rounds: 12 },
   { key: "posttrained", title: "Post-train Qwen 8B", detail: "Reinforcement learning on Qwen's weights with your grader as the reward", seconds: 18, rounds: 40 },
 ] as const;
@@ -191,7 +191,7 @@ export function ImproveSection({ data }: { data: TasteWorkspace }) {
       meta="Qwen 8B, three ways, scored by your grader"
       actions={!startedAt ? <Button size="sm" onClick={start} disabled={!arms?.length}><Play />Start</Button> : !finished ? <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Running</span> : <Button size="xs" variant="ghost" onClick={start}>Run again</Button>}
     >
-      {!startedAt && <p className="m-0 text-[12.5px] text-muted-foreground">Uses your grader as the training signal: first a skill written from your traces, then GEPA prompt optimization, then post-training Qwen&apos;s weights. All three build the same brief so you can compare.</p>}
+      {!startedAt && <p className="m-0 text-[12.5px] text-muted-foreground">Uses your grader as the training signal: first a skill written from your examples, then GEPA prompt optimization, then post-training Qwen&apos;s weights. All three build the same brief so you can compare.</p>}
       {startedAt && (
         <ol className="m-0 list-none divide-y divide-border p-0">
           {stages.map((s) => {

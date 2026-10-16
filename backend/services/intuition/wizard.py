@@ -94,37 +94,23 @@ is the best a judge can do. When people disagree, fix the label definitions, not
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
 
 ## Website and UI preference evals
-The user experience has THREE steps only: supply traces (uploads or connected history),
-answer a clarification IF genuinely needed, receive a working grading API endpoint.
-Call website_eval prepare first. On a new eval it shows a card where the user uploads past
-traces or chooses their connected history; the turn ends there. When the user reports an
-upload, call website_eval wait, then finish once the job is done. When an event says
-background work finished, that the user answered open questions, or that they added
-example sites, call website_eval finish;
-if the work failed, explain the cause plainly. If they choose connected history, search/read real history yourself,
-website_eval learn to collect relevant source evidence, then website_eval finish. After a job completes, call finish
-again; it either continues building or returns the endpoint and completes setup.
+The user teaches the grader with contrastive examples: websites they like and ones they
+don't (URLs, HTML files, or screenshots). The experience has three steps only: supply
+examples, answer a clarification IF genuinely needed, receive a working grading endpoint.
+Call website_eval prepare first. On a new eval it shows a card where the user adds example
+sites; the turn ends there. Do not search or read history for website evals. When an event
+says the user added example sites, answered open questions, or that background work
+finished, call website_eval finish; if the work failed, explain the cause plainly. After a
+job completes, call finish again; it either continues building or returns the endpoint.
 Do not offer a menu of actions. Never mention GEPA, weight refinement, skills, experiment
 arms, train/dev/test splits, probe architecture, research blockers or optimization in setup.
-Those are internal research concerns, not decisions the user needs to make.
 Show what you learned with website_eval review: its card lists each preference with the
-quote and screenshot, and asks the user about unclear examples with buttons. Never list
-preferences, quotes, labels, or open questions in chat text; the card is where the user
-sees and answers them. Your text around a card is one or two short sentences.
-Clear likes and corrections in their traces are labels: extract them automatically with
-quotes and actual output attribution. Never ask for blanket manual review. Exclude uncertain
-interpretations and teacher guesses. Ask at most two concrete questions ONLY if the actual
-user goal or essential training feedback is missing after inspecting the supplied sources.
-Do not keep searching once enough real evidence exists to build. Four clear training examples
-with both labels are enough for the initial endpoint; held-out validation is optional and
-reported honestly. Do not block the initial build for missing independent accuracy evidence.
-NEVER invent synthetic labels to unlock validation, present teacher guesses as the user's
-feedback, or call training accuracy evidence of generalization. Never promise a capability
-or action the tool cannot perform. Never describe scores from an older version as newly
-trained results. Completion means a persisted fitted model and its actual prediction API.
-Respect the existing compute budget. Do not launch any research experiments from this wizard.
-The generic manual-labeling script below does not override explicit feedback already supplied
-in traces. Missing render evidence stays explicit; ask only when it is essential.
+example it came from, and asks about unclear examples with buttons. Never list preferences,
+examples, labels, or open questions in chat text; the card is where the user sees and
+answers them. Your text around a card is one or two short sentences. Two liked and two
+disliked examples are enough for the initial endpoint. NEVER invent labels or examples.
+Never promise a capability or action the tool cannot perform. Completion means a built
+grader and its actual prediction API.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -1021,11 +1007,8 @@ async def setup_tools(owner_id, session):
     from .. import taste
 
     if session.get("model_id") and await taste.mapped_model(owner_id, UUID(session["model_id"])):
-        return [
-            tool
-            for tool in TOOLS
-            if tool["name"] in ("website_eval", "search_history", "read_history")
-        ]
+        # Website evals learn from example sites, never from the user's history.
+        return [tool for tool in TOOLS if tool["name"] == "website_eval"]
     return TOOLS
 
 
@@ -1282,7 +1265,7 @@ async def website_tool(owner, session, args, progress):
             return {
                 "eval_id": binding["model_id"],
                 "existing_examples": 0,
-                "next": "The card asks the user to upload past traces or use their connected history. Say so in one sentence and stop until they choose.",
+                "next": "The card asks the user for example sites they like and don't. Say so in one sentence and stop.",
             }, _card("website_eval", section="sources")
         return {
             "eval_id": binding["model_id"],

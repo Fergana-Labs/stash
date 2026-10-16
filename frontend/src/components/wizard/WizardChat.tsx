@@ -33,7 +33,7 @@ import RobustnessCard from "./cards/RobustnessCard";
 import UploaderCard from "./cards/UploaderCard";
 
 const STARTERS = [
-  "Learn my website design preferences from my past sessions",
+  "Learn my website taste from examples of good and bad sites",
   "Build an eval from my past Codex sessions",
   "Check my coding agent's PRs before it opens them",
   "Grade my AI assistant's answers as good or bad",

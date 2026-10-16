@@ -51,9 +51,9 @@ async def _ask(system: str, content: list, max_tokens: int) -> dict:
     return _json("".join(c.text for c in reply.content if c.type == "text"))
 
 
-BUILD_SYSTEM = """You distill one person's design taste from their own feedback on websites \
-and app screens their coding agents built. You get labeled examples: a screenshot, whether \
-they liked it or wanted it changed, and their exact words. Write the rules a reviewer would \
+BUILD_SYSTEM = """You distill one person's design taste from example websites they chose: \
+some they like and some they don't. You get labeled examples: a screenshot, whether they \
+liked it or wanted it changed, and any words they gave. Write the rules a reviewer would \
 need to predict their reaction to a new screen. Be specific and visual (layout, density, \
 typography, color, controls, decoration), not generic ("clean", "modern"). Ground every rule \
 in the examples; never invent taste they did not express.
@@ -198,5 +198,5 @@ async def judge(model: dict, item: dict, image_path, refs=()) -> dict:
             for f in result.get("fixes", [])[:4]
         ],
         "keep": [str(k)[:200] for k in result.get("keep", [])[:3]],
-        "note": "Scored by your taste grader against the preferences learned from your sessions.",
+        "note": "Scored by your taste grader against the preferences learned from your examples.",
     }

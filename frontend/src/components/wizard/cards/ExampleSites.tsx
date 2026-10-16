@@ -91,8 +91,7 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
   // The grader needs both kinds and at least four examples in all.
   const enough = count("liked") >= 2 && count("disliked") >= 2;
   return (
-    <div className="mt-3 border-t border-border pt-3">
-      <p className="m-0 mb-2 text-[12px] text-muted-foreground">Or show it example sites: URLs, screenshots or HTML of designs you like, and ones you don’t.</p>
+    <div>
       <div className="flex gap-2">
         {column("liked", "Sites I like", ThumbsUp)}
         {column("disliked", "Sites I don’t like", ThumbsDown)}
