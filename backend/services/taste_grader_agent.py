@@ -170,7 +170,7 @@ CURRENT_SCROLL = """() => {
   return Math.round(panels[0] ? panels[0].scrollTop : window.scrollY);
 }"""
 
-INSPECT = """([x, y, w, h]) => {
+INSPECT = r"""([x, y, w, h]) => {
   const out = [];
   for (const el of document.querySelectorAll("body *")) {
     const r = el.getBoundingClientRect();
@@ -178,7 +178,8 @@ INSPECT = """([x, y, w, h]) => {
     if (r.width > w * 1.5 && r.height > h * 1.5) continue; // containers bigger than the region
     const s = getComputedStyle(el);
     if (s.visibility === "hidden" || s.display === "none") continue;
-    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(" ").trim();
+    // Concatenate text pieces as the browser does: React splits "v{n}" into "v" and "3".
+    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").replace(/\s+/g, " ").trim();
     const painted = s.backgroundColor !== "rgba(0, 0, 0, 0)" || el.tagName === "svg" || el.tagName === "IMG";
     if (!own && !painted) continue;
     out.push({ tag: el.tagName.toLowerCase(), left: Math.round(r.left), top: Math.round(r.top),
