@@ -7,6 +7,7 @@ exercise the real SQL, caching, stacking and the SSE turn loop offline.
 import json
 import zlib
 from types import SimpleNamespace
+from uuid import UUID
 
 import numpy as np
 import pytest
@@ -467,6 +468,75 @@ async def test_wizard_tool_errors_reach_the_wizard_not_the_user(client, fakes, s
     assert (
         await client.get(f"/api/v1/model-wizard/sessions/{session['id']}", headers=other)
     ).status_code == 404
+
+
+async def test_wizard_searches_history_before_model_creation_and_opens_review(
+    client, pool, scripted_claude
+):
+    from backend.services import session_service
+
+    script, seen = scripted_claude
+    auth = await _auth(client)
+    user = (await client.get("/api/v1/users/me", headers=auth)).json()
+    owner = UUID(user["id"])
+    past = await session_service.upsert_session(
+        owner, "past-website", agent_name="codex", created_by=owner
+    )
+    await pool.execute(
+        """INSERT INTO history_events(owner_user_id,created_by,agent_name,event_type,content,session_id)
+        VALUES($1,$1,'codex','user_message','The website buttons are too rounded. Use smaller corners.','past-website')""",
+        owner,
+    )
+    session = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json={})).json()
+    ref = {"kind": "session", "id": str(past["id"])}
+    script += [
+        [_use(1, "search_history", {"query": "website", "agent": "codex", "source": "recorded"})],
+        [_use(2, "read_history", ref)],
+        [
+            _use(
+                3,
+                "create_model",
+                {
+                    "name": "Website taste",
+                    "output_type": "choice",
+                    "description": "Would I keep the design?",
+                    "labels": LABELS,
+                },
+            )
+        ],
+        [
+            _use(
+                4,
+                "add_history_examples",
+                {
+                    "selections": [
+                        {**ref, "label": "rewrite", "note": "Observed request for smaller corners"}
+                    ]
+                },
+            )
+        ],
+        [
+            _text(
+                "I found your past website feedback. Confirm or correct the suggested label below."
+            )
+        ],
+    ]
+    response = await client.post(
+        f"/api/v1/model-wizard/sessions/{session['id']}/messages",
+        headers=auth,
+        json={"text": "Use my past website sessions. Label designs send or rewrite."},
+    )
+    events = _events(response.text)
+    assert not [e for e in events if e["type"] == "activity" and e["status"] == "error"]
+    assert any(e["type"] == "card" and e["kind"] == "labeler" for e in events)
+    mid = next(e["model_id"] for e in events if e["type"] == "model")
+    examples = (await client.get(f"/api/v1/intuitions/{mid}/examples", headers=auth)).json()
+    assert len(examples) == 1 and examples[0]["needs_review"] and examples[0]["label"] == "rewrite"
+    assert "too rounded" in examples[0]["item"]["events"][0]["content"]
+    assert examples[0]["source"] == "production"
+    assert {"search_history", "read_history", "add_history_examples"} <= {
+        t["name"] for t in seen[0]["tools"]
+    }
 
 
 async def test_wizard_drafts_persist_before_a_model_exists_and_are_owner_scoped(client):

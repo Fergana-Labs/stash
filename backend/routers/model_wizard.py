@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
 from ..config import settings
-from ..services.intuition import curation, fusion, wizard
+from ..services.intuition import curation, fusion, history_bridge, wizard
 from .intuitions import checked
 from .reward_models import require_reward_models
 
@@ -44,6 +44,32 @@ class Message(Body):
 
 class DraftInput(Body):
     text: str = Field(max_length=20000)
+
+
+class LocalHistoryPoll(Body):
+    device_id: UUID
+
+
+class LocalHistoryResult(LocalHistoryPoll):
+    result: dict
+
+
+@router.post("/history/local/poll")
+async def poll_local_history(req: LocalHistoryPoll, user: User):
+    try:
+        return await history_bridge.poll(user["id"], req.device_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/history/local/results/{request_id}", status_code=204)
+async def finish_local_history(request_id: UUID, req: LocalHistoryResult, user: User):
+    try:
+        await history_bridge.complete(user["id"], req.device_id, request_id, req.result)
+    except LookupError as exc:
+        raise HTTPException(404, "History request not found or expired") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 class Discover(Body):

@@ -82,6 +82,23 @@ def test_resolves_multiple_pages_and_archived_bases(tmp_path):
     assert [r["payload"]["content"] for r in rows[1:]] == ["First", "Second", "Third"]
 
 
+def test_local_history_reconstruction_cannot_follow_base_symlinks_outside_allowed_roots(tmp_path):
+    original = page(tmp_path / "outside", "original", ["Private outside data"])
+    resumed = page(
+        tmp_path / "allowed",
+        "resumed",
+        ["Current"],
+        start=2,
+        base=boundary(original, 2),
+        thread=FORK,
+    )
+    (resumed.parent / original.name).symlink_to(original)
+    with pytest.raises(ValueError, match="history_base"):
+        read_transcript(resumed, allowed_roots=[tmp_path / "allowed"])
+    with pytest.raises(ValueError, match="outside"):
+        read_transcript(original, allowed_roots=[tmp_path / "allowed"])
+
+
 @pytest.mark.parametrize("failure", ["missing", "bad_boundary", "ambiguous"])
 def test_unresolvable_base_fails_instead_of_uploading_partial_history(tmp_path, failure):
     original = page(tmp_path, "original", ["First"])

@@ -5565,6 +5565,26 @@ def _show_import_status() -> None:
         console.print(f"  [yellow]{s['errors']} conversations failed[/yellow]")
 
 
+@app.command("history-bridge")
+def history_bridge_cmd():
+    """Let the eval wizard search local Codex history without importing it.
+
+    Uses your existing Stash login. Only requested excerpts leave this computer.
+    Leave this running while using the wizard; Ctrl-C disconnects it.
+    """
+    _require_auth()
+    from .history_bridge import serve
+
+    try:
+        with _client(auto=True) as client:
+            serve(client)
+    except KeyboardInterrupt:
+        console.print("Local history disconnected.")
+    except StashError as exc:
+        console.print(f"[red]Could not connect local history: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 @app.command("import-history")
 def import_history_cmd(
     status: bool = typer.Option(

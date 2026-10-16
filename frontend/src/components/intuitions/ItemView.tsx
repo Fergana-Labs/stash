@@ -90,6 +90,23 @@ export default function ItemView({ item: raw, clamp = true, className }: { item:
   if ((item.kind === "image" || item.kind === "document") && Object.keys(item).every((k) => FILE_KEYS.has(k))) {
     return <div className={className}><FileItem item={item} /></div>;
   }
+  if (item.kind === "history" && item.source && typeof item.source === "object" && Array.isArray(item.events)) {
+    const source = item.source as Record<string, unknown>;
+    const events = item.events.filter((e): e is { index: number; role: string; content: string; tool_name?: string } =>
+      e && typeof e === "object" && typeof e.index === "number" && typeof e.role === "string" && typeof e.content === "string" && (e.tool_name === undefined || typeof e.tool_name === "string"));
+    const url = typeof source.url === "string" && /^\/(?:sessions\/|reward-models\/traces\/)/.test(source.url) ? source.url : null;
+    return <div className={cn("min-w-0 space-y-3", className)}>
+      <div className="border-b border-border pb-2">
+        <p className="m-0 text-xs font-medium text-foreground">{typeof source.title === "string" ? source.title : "Past session"}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{source.kind === "local" ? "Local Codex session" : "Recorded session"} · Excerpt{typeof item.offset === "number" && typeof item.end_offset === "number" ? ` · turns ${item.offset + 1}–${item.end_offset}` : ""}</p>
+        {url && <a className="text-[11px] text-muted-foreground underline" href={url}>Open session</a>}
+      </div>
+      <div className="max-h-[460px] space-y-2 overflow-y-auto">
+        {events.map((event) => <Bubble key={event.index} who={event.tool_name ?? (event.role === "user" ? "You" : event.role === "tool" ? "Tool result" : "Agent")} side={event.role === "user" ? "out" : "in"}><Clamp text={event.content} clamp={clamp} /></Bubble>)}
+      </div>
+      {Boolean(item.content_truncated || item.partial_history) && <p className="text-[11px] text-muted-foreground">{item.content_truncated ? "Some long messages are shortened. " : ""}{item.partial_history ? "Earlier resumed turns are unavailable in this excerpt." : ""}</p>}
+    </div>;
+  }
   const messages = Array.isArray(item.messages) ? (item.messages as { role?: string; content?: unknown }[]) : null;
   const keys = Object.keys(item);
   const pair = TURNS.find(([a, b]) => keys.includes(a) && keys.includes(b));
