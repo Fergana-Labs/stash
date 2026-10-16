@@ -4,9 +4,9 @@ import type { WizardEvent } from "@/lib/wizard-api";
 import WizardChat from "./WizardChat";
 import { stageWizardMessage } from "./wizard-navigation";
 
-const api = vi.hoisted(() => ({ get: vi.fn(), draft: vi.fn(), stream: vi.fn(), router: { replace: vi.fn() } }));
+const api = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), draft: vi.fn(), stream: vi.fn(), router: { replace: vi.fn() } }));
 vi.mock("@/lib/wizard-api", async () => ({
-  ...await vi.importActual("@/lib/wizard-api"), wzGet: api.get, wzSaveDraft: api.draft, streamWizard: api.stream,
+  ...await vi.importActual("@/lib/wizard-api"), wzGet: api.get, wzCreate: api.create, wzSaveDraft: api.draft, streamWizard: api.stream,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => api.router }));
 vi.mock("./ModelPanel", () => ({ default: () => null }));
@@ -16,6 +16,7 @@ beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   api.draft.mockResolvedValue({ saved: true });
+  api.create.mockResolvedValue({ id: "fresh-session" });
   api.get.mockResolvedValue({ id: "session", model_id: "eval", title: "Slide quality", transcript: [] });
   api.stream.mockImplementation(async (_id: string, _text: string, _kind: string, event: (e: WizardEvent) => void) => {
     event({ type: "text", delta: "Ready to help." });
@@ -69,4 +70,45 @@ it("finishes setup when the trained version is saved", async () => {
   });
   render(<WizardChat sessionId="session" />);
   await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/evals/eval"));
+});
+
+it("restarts with the same eval after saving the previous chat's unsent draft", async () => {
+  let saved!: (value: { saved: boolean }) => void;
+  api.draft.mockImplementation(() => new Promise((resolve) => { saved = resolve; }));
+  render(<WizardChat sessionId="session" />);
+  await screen.findByRole("heading", { name: "Slide quality" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message the wizard" }), { target: { value: "Keep this thought" } });
+  fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+  expect(api.draft).toHaveBeenCalledWith("session", "Keep this thought");
+  expect(api.create).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+  saved({ saved: true });
+  await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/wizard/fresh-session"));
+  expect(api.create).toHaveBeenCalledExactlyOnceWith("eval");
+  expect(api.stream).not.toHaveBeenCalled();
+});
+
+it("keeps the current chat and draft available if restarting fails", async () => {
+  api.get.mockResolvedValue({ id: "session", model_id: null, title: "New eval", transcript: [{ role: "user", kind: "message", text: "My previous setup" }] });
+  api.create.mockRejectedValueOnce(new Error("Could not restart"));
+  render(<WizardChat sessionId="session" />);
+  await screen.findByText("My previous setup");
+  fireEvent.change(screen.getByRole("textbox", { name: "Message the wizard" }), { target: { value: "Unsent draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("My previous setup")).toBeVisible();
+  expect(screen.getByRole("textbox", { name: "Message the wizard" })).toHaveValue("Unsent draft");
+  expect(api.router.replace).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+  await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/wizard/fresh-session"));
+  expect(api.create).toHaveBeenLastCalledWith(null);
+});
+
+it("waits for an in-flight wizard response before allowing restart", async () => {
+  api.stream.mockImplementation(() => new Promise(() => {}));
+  stageWizardMessage("session", { id: 1, text: "Use my history", kind: "message" });
+  render(<WizardChat sessionId="session" />);
+  await screen.findByText("Thinking…");
+  expect(screen.getByRole("button", { name: "Restart" })).toBeDisabled();
+  expect(api.create).not.toHaveBeenCalled();
 });

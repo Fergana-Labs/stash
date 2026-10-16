@@ -560,6 +560,38 @@ async def test_wizard_drafts_persist_before_a_model_exists_and_are_owner_scoped(
     assert (await client.get(url, headers=auth)).json()["draft_input"] == text
 
 
+async def test_fresh_wizard_chat_preserves_eval_and_previous_conversation(client, pool):
+    auth = await _auth(client)
+    model_id = await _model_with_examples(client, auth, n=2)
+    model_url = f"/api/v1/intuitions/{model_id}"
+    model_before = (await client.get(model_url, headers=auth)).json()
+    examples_before = (await client.get(model_url + "/examples", headers=auth)).json()
+    body = {"model_id": model_id}
+    original = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json=body)).json()
+    transcript = [{"role": "user", "kind": "message", "text": "Previous setup"}]
+    await pool.execute(
+        "UPDATE intuition_wizard_sessions SET transcript=$2, draft_input=$3 WHERE id=$1",
+        UUID(original["id"]),
+        transcript,
+        "Unsent thought",
+    )
+
+    fresh = await client.post("/api/v1/model-wizard/sessions", headers=auth, json=body)
+    assert fresh.status_code == 201
+    assert fresh.json()["id"] != original["id"]
+    assert fresh.json()["model_id"] == model_id
+    assert fresh.json()["transcript"] == [] and fresh.json()["draft_input"] == ""
+    assert fresh.json()["status"] == "draft"
+    old = (await client.get(f"/api/v1/model-wizard/sessions/{original['id']}", headers=auth)).json()
+    assert old["transcript"] == transcript and old["draft_input"] == "Unsent thought"
+    assert (await client.get(model_url, headers=auth)).json() == model_before
+    assert (await client.get(model_url + "/examples", headers=auth)).json() == examples_before
+    other = await _auth(client)
+    assert (
+        await client.post("/api/v1/model-wizard/sessions", headers=other, json=body)
+    ).status_code == 404
+
+
 async def test_interrupted_wizard_turn_remains_a_resumable_draft(client, pool, scripted_claude):
     from uuid import UUID
 

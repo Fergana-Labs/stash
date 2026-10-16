@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { evalSurfaceClass } from "@/components/evals/eval-ui";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { evalReadFile, imAddExamples, type NewExample } from "@/lib/intuition-api";
-import { applyEvent, streamWizard, wzGet, type AssistantPart, type Card, type TranscriptEntry } from "@/lib/wizard-api";
+import { applyEvent, streamWizard, wzCreate, wzGet, type AssistantPart, type Card, type TranscriptEntry } from "@/lib/wizard-api";
 import { WizardProvider, type WizardCtx } from "./wizard-ui";
 import ModelPanel from "./ModelPanel";
 import { useWizardDraft } from "./useWizardDraft";
@@ -35,6 +35,11 @@ const STARTERS = [
   "Grade my AI assistant's answers as good or bad",
   "Flag which brand guidelines a product photo breaks",
   "Route incoming support tickets to billing, bugs, or how-to",
+];
+const EVAL_STARTERS = [
+  "Help me set up this eval.",
+  "Find relevant examples in my past Codex sessions",
+  "Review the current labels and criteria",
 ];
 
 const TITLES: Record<Card["kind"], string> = {
@@ -103,6 +108,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const [pending, setPending] = useState<Injected | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const restartingRef = useRef(false);
   const submittingRef = useRef(false);
   const [attaching, setAttaching] = useState("");
   const queued = useRef<{ text: string; kind: "message" | "event" }[]>([]);
@@ -134,7 +141,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     setPending(takeWizardMessage(sessionId));
     wzGet(sessionId).then((s) => {
       if (s.status === "saved" && s.model_id) { router.replace(`/reward-models/evals/${s.model_id}`); return; }
-      setEntries(s.transcript ?? []); setModelId(s.model_id); setTitle(s.title); loadDraft(s.draft_input ?? "");
+      setEntries(s.transcript ?? []); setModelId(s.model_id); setTitle(s.model_name || s.title); loadDraft(s.draft_input ?? "");
     }).catch((e) => setError(errorMessage(e)));
   }, [sessionId, loadDraft, router]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [entries]);
@@ -171,14 +178,26 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   }, [sessionId, refresh, onModel, recoverDraft, router]);
 
   const send = useCallback((text: string, kind: "message" | "event" = "message") => {
-    if (!text.trim()) return;
+    if (!text.trim() || restartingRef.current) return;
     if (busyRef.current) { queued.current.push({ text, kind }); return; }
     void run(text, kind);
   }, [run]);
 
   const dictation = useDictation(setInput);
+  const restart = async () => {
+    if (entries === null || busyRef.current || submittingRef.current || attaching || restartingRef.current) return;
+    restartingRef.current = true; setRestarting(true); setError("");
+    if (dictation.listening) dictation.stop();
+    try {
+      // Keep the old conversation and its unsent draft; only the new chat is empty.
+      if (!await flushDraft()) return;
+      const session = await wzCreate(modelId);
+      router.replace(`/reward-models/wizard/${session.id}`);
+    } catch (e) { setError(errorMessage(e)); }
+    finally { restartingRef.current = false; setRestarting(false); }
+  };
   const submit = async () => {
-    if (!input.trim() || submittingRef.current) return;
+    if (!input.trim() || submittingRef.current || restartingRef.current) return;
     submittingRef.current = true; setSubmitting(true);
     if (dictation.listening) dictation.stop();
     const text = input;
@@ -222,16 +241,19 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
             <header className="flex items-center gap-2 border-b border-border px-5 py-2.5">
               <h1 className="m-0 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
               <span className="text-[11px] text-muted-foreground" role="status">{draft.status === "Saved" ? "All changes saved" : draft.status}</span>
+              <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void restart()} title="Start a fresh conversation. Your eval and previous chat are kept.">
+                {restarting ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting ? "Restarting…" : "Restart"}
+              </Button>
             </header>
           )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-3xl px-5 py-6">
               {entries && entries.length === 0 && (
                 <div className="py-10 text-center">
-                  <h2 className="m-0 text-lg font-semibold tracking-tight">What judgment call should it make?</h2>
-                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would.</p>
+                  <h2 className="m-0 text-lg font-semibold tracking-tight">{modelId ? "How can I help with this eval?" : "What judgment call should it make?"}</h2>
+                  <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">{modelId ? "This is a fresh conversation. Your eval’s existing examples, labels, and criteria are saved." : "Describe it in your own words — type or talk. The wizard asks a few questions, helps you label a handful of examples (text, images or documents), and builds a classifier that decides the way you would."}</p>
                   <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
-                    {STARTERS.map((s) => <button key={s} type="button" disabled={busy} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
+                    {(modelId ? EVAL_STARTERS : STARTERS).map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
                   </div>
                 </div>
               )}
@@ -255,13 +277,13 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
           </div>
           <form className="shrink-0 border-t border-border px-5 py-3" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
             <div className="mx-auto flex max-w-3xl items-end gap-2 rounded border border-border bg-background px-2 py-1.5 focus-within:border-foreground/30">
-              <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title={modelId ? "Attach files as examples (images, PDFs, docs)" : "Describe your model first"} disabled={!!attaching} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title={modelId ? "Attach files as examples (images, PDFs, docs)" : "Describe your model first"} disabled={!!attaching || restarting} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
               <input ref={fileInput} type="file" multiple hidden accept=".txt,.md,.json,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => { if (e.target.files?.length) void attach(e.target.files); e.target.value = ""; }} />
               <textarea
                 ref={messageInput}
                 aria-label="Message the wizard"
                 rows={1}
-                disabled={submitting || entries === null}
+                disabled={submitting || restarting || entries === null}
                 maxLength={20000}
                 onBlur={() => { void flushDraft(); }}
                 value={input}
@@ -271,11 +293,11 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                 className="max-h-[min(20rem,40dvh)] min-h-8 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1.5 text-[13px] leading-5 outline-none"
               />
               {dictation.supported && (
-                <Button type="button" size="icon-sm" variant={dictation.listening ? "default" : "ghost"} aria-label={dictation.listening ? "Stop voice input" : "Talk instead of typing"} aria-pressed={dictation.listening} title={dictation.listening ? "Listening… click to stop" : "Talk instead of typing"} onClick={() => (dictation.listening ? dictation.stop() : dictation.start(input))} className={dictation.listening ? "animate-pulse" : undefined}>
+                <Button type="button" size="icon-sm" variant={dictation.listening ? "default" : "ghost"} disabled={restarting} aria-label={dictation.listening ? "Stop voice input" : "Talk instead of typing"} aria-pressed={dictation.listening} title={dictation.listening ? "Listening… click to stop" : "Talk instead of typing"} onClick={() => (dictation.listening ? dictation.stop() : dictation.start(input))} className={dictation.listening ? "animate-pulse" : undefined}>
                   {dictation.listening ? <Square /> : <Mic />}
                 </Button>
               )}
-              <Button type="submit" size="icon-sm" aria-label="Send" disabled={submitting || !input.trim()}><ArrowUp /></Button>
+              <Button type="submit" size="icon-sm" aria-label="Send" disabled={submitting || restarting || !input.trim()}><ArrowUp /></Button>
             </div>
             {(attaching || dictation.listening || dictation.error || (busy && queued.current.length > 0)) && <p role="status" className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">{attaching || dictation.error || (dictation.listening ? "Listening — talk it through; press Enter or the arrow to send." : "Queued until the wizard finishes.")}</p>}
           </form>
