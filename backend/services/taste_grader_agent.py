@@ -29,9 +29,11 @@ SYSTEM = (
         "alignment, wrapping and clipping, and measure items that should share a baseline. Judge "
         "at 1280px wide; that is the window they use. Check execution as carefully as style. "
         "Only report what you actually saw in a look or zoom, or measured: if you are not sure, "
-        "zoom in before reporting it. Grade only what the task says the agent built; if the task "
+        "zoom in before reporting it. Any claim about sizes, widths, proportions or alignment "
+        "must be checked with measure or inspect_region first; never report one by eye. Grade only what the task says the agent built; if the task "
         "names a shared app shell (sidebar, top bar), ignore it entirely: don't score it or ask to "
-        "change it. Use a handful of tools, then call verdict.",
+        "change it. Before each tool call, write one short line saying what you are checking. "
+        "Use a handful of tools, then call verdict.",
     )
     .replace(
         "Return only JSON:",
@@ -47,11 +49,12 @@ SYSTEM = (
     )
 )
 
-HISTORY = """Your previous checks of this page, oldest first. Be consistent with them: \
-look at whether each earlier fix was made and say so; don't flag something you told them to \
-keep unless it got worse; don't repeat a fix that was done. Raise a new issue only if it \
-matters as much as the earlier ones. If the agent fixed what you asked and nothing major \
-remains, the score should go up.
+HISTORY = """Your previous checks of this page, oldest first. Treat them as claims to \
+re-check, not facts: earlier checks can be wrong. Verify each earlier issue against the page \
+as it is now; drop any you cannot confirm with a look, zoom or measurement, and say so. What \
+you see now always wins over history. Don't flag something you told them to keep unless it \
+got worse. Raise a new issue only if it matters as much as the earlier ones. If the agent \
+fixed what you asked and nothing major remains, the score should go up.
 {checks}"""
 
 TOOLS = [
@@ -68,7 +71,7 @@ TOOLS = [
     },
     {
         "name": "zoom",
-        "description": "Screenshot one region of the current window at 2x resolution. Coordinates are CSS pixels in the window.",
+        "description": "Screenshot one region of the window at 2x resolution. x, y, width and height are CSS pixels in the window as it appears at scroll_y (the main content's scroll position; omit to keep the current one). Use the scroll position of the look where you saw the region.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -76,6 +79,22 @@ TOOLS = [
                 "y": {"type": "integer"},
                 "width": {"type": "integer", "minimum": 20},
                 "height": {"type": "integer", "minimum": 20},
+                "scroll_y": {"type": "integer", "minimum": 0},
+            },
+            "required": ["x", "y", "width", "height"],
+        },
+    },
+    {
+        "name": "inspect_region",
+        "description": "List the visible elements inside a window region (same coordinates as zoom), with their boxes in CSS pixels, background color and any text. Use it to measure non-text things like bar widths, dot sizes and gaps.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer"},
+                "y": {"type": "integer"},
+                "width": {"type": "integer", "minimum": 1},
+                "height": {"type": "integer", "minimum": 1},
+                "scroll_y": {"type": "integer", "minimum": 0},
             },
             "required": ["x", "y", "width", "height"],
         },
@@ -132,7 +151,37 @@ SCROLL = """(y) => {
     return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 4;
   });
   panels.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
-  if (panels[0]) panels[0].scrollTop = y; else window.scrollTo(0, y);
+  if (panels[0]) { panels[0].scrollTop = y; return Math.round(panels[0].scrollTop); }
+  window.scrollTo(0, y);
+  return Math.round(window.scrollY);
+}"""
+
+CURRENT_SCROLL = """() => {
+  const panels = [...document.querySelectorAll("*")].filter((el) => {
+    const s = getComputedStyle(el);
+    return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 4;
+  });
+  panels.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
+  return Math.round(panels[0] ? panels[0].scrollTop : window.scrollY);
+}"""
+
+INSPECT = """([x, y, w, h]) => {
+  const out = [];
+  for (const el of document.querySelectorAll("body *")) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1 || r.right < x || r.left > x + w || r.bottom < y || r.top > y + h) continue;
+    if (r.width > w * 1.5 && r.height > h * 1.5) continue; // containers bigger than the region
+    const s = getComputedStyle(el);
+    if (s.visibility === "hidden" || s.display === "none") continue;
+    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(" ").trim();
+    const painted = s.backgroundColor !== "rgba(0, 0, 0, 0)" || el.tagName === "svg" || el.tagName === "IMG";
+    if (!own && !painted) continue;
+    out.push({ tag: el.tagName.toLowerCase(), left: Math.round(r.left), top: Math.round(r.top),
+      width: Math.round(r.width * 10) / 10, height: Math.round(r.height * 10) / 10,
+      background: painted ? s.backgroundColor : undefined, text: own.slice(0, 40) || undefined });
+    if (out.length >= 80) break;
+  }
+  return out;
 }"""
 
 MEASURE = """(texts) => texts.map((needle) => {
@@ -155,6 +204,19 @@ MEASURE = """(texts) => texts.map((needle) => {
       font_size: s.fontSize, line_height: s.lineHeight, font_weight: s.fontWeight };
   }) };
 })"""
+
+
+def _half(png: bytes) -> bytes:
+    """A 2x screenshot scaled to CSS-pixel size, for full-window looks."""
+    import io
+
+    from PIL import Image
+
+    with Image.open(io.BytesIO(png)) as image:
+        small = image.resize((image.width // 2, image.height // 2), Image.LANCZOS)
+        buf = io.BytesIO()
+        small.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _image(png: bytes) -> dict:
@@ -185,8 +247,13 @@ def _history(previous: list[dict]) -> str:
     return HISTORY.format(checks="\n".join(lines))
 
 
-def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=()) -> dict:
-    """Run the grader agent on a live page. Saves its first full look to shot_path."""
+def grade(
+    model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=(), trace_dir=None
+) -> dict:
+    """Run the grader agent on a live page. Saves its first full look to shot_path.
+
+    With trace_dir, every image the grader sees, every measurement and its notes are
+    saved there (trace.json plus numbered PNGs) for inspection."""
     from anthropic import Anthropic
     from playwright.sync_api import sync_playwright
 
@@ -204,7 +271,8 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
-            page = browser.new_page(viewport={"width": 1280, "height": 800}, device_scale_factor=1)
+            # Rendered at 2x: full-window looks are scaled down, zooms crop real 2x pixels.
+            page = browser.new_page(viewport={"width": 1280, "height": 800}, device_scale_factor=2)
             # The local app signs in through its /local-preview route.
             page.goto(f"http://{parsed.netloc}/local-preview?next={quote(path)}", timeout=60000)
             page.wait_for_url(lambda u: urlparse(u).path != "/local-preview", timeout=60000)
@@ -215,8 +283,28 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=
             except Exception:  # noqa: BLE001 -- polling pages never go idle
                 pass
             page.wait_for_timeout(1000)
-            first = page.screenshot(type="png", animations="disabled")
+            first = _half(page.screenshot(type="png", animations="disabled"))
             shot_path.write_bytes(first)
+            trace: list[dict] = []
+
+            def keep_image(png: bytes, label: str) -> str:
+                if trace_dir is None:
+                    return ""
+                name = f"{len(list(trace_dir.glob('*.png'))) + 1:02d}-{label}.png"
+                (trace_dir / name).write_bytes(png)
+                return name
+
+            def save_trace(extra=None):
+                if trace_dir is not None:
+                    (trace_dir / "trace.json").write_text(
+                        json.dumps({"url": url, "steps": trace, **(extra or {})}, indent=2)
+                    )
+
+            if trace_dir is not None:
+                trace_dir.mkdir(parents=True, exist_ok=True)
+                trace.append({"event": "first screen", "image": keep_image(first, "first-screen")})
+                if previous:
+                    trace.append({"event": "history given", "text": _history(list(previous))})
 
             content: list = []
             for label, ref in refs:
@@ -246,44 +334,71 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=
                     max_tokens=2000,
                     system=SYSTEM.format(rules=rules),
                     tools=TOOLS,
-                    tool_choice={"type": "tool", "name": "verdict"} if forced else {"type": "any"},
+                    tool_choice={"type": "tool", "name": "verdict"} if forced else {"type": "auto"},
                     messages=messages,
                 )
                 messages.append({"role": "assistant", "content": reply.content})
+                for block in reply.content:
+                    if block.type == "text" and block.text.strip():
+                        trace.append({"event": "note", "text": block.text.strip()})
+                if not any(b.type == "tool_use" for b in reply.content):
+                    messages.append({"role": "user", "content": "Use a tool, or call verdict."})
+                    continue
                 results = []
                 for use in (b for b in reply.content if b.type == "tool_use"):
                     args = use.input
                     if use.name == "verdict":
-                        return {
+                        verdict = {
                             **_verdict(args, ignore_shell="shared shell" in item["brief"]),
                             "inspected": inspected,
                         }
+                        trace.append({"event": "verdict", "raw": args})
+                        save_trace({"verdict": verdict})
+                        return verdict
                     inspected.append(_describe(use.name, args))
+                    trace.append({"event": "tool", "name": use.name, "args": args})
                     try:
                         if use.name == "look":
                             if args.get("width"):
                                 page.set_viewport_size({"width": args["width"], "height": 800})
-                            page.evaluate(SCROLL, args.get("scroll_y", 0))
+                            scroll = page.evaluate(SCROLL, args.get("scroll_y", 0))
                             page.wait_for_timeout(300)
-                            out = [_image(page.screenshot(type="png", animations="disabled"))]
-                        elif use.name == "zoom":
-                            # Render the same page at 2x just for this capture.
-                            size = page.viewport_size
-                            cdp = page.context.new_cdp_session(page)
-                            cdp.send(
-                                "Emulation.setDeviceMetricsOverride",
-                                {**size, "deviceScaleFactor": 2, "mobile": False},
-                            )
-                            try:
-                                clip = {k: args[k] for k in ("x", "y", "width", "height")}
-                                out = [_image(page.screenshot(type="png", clip=clip))]
-                            finally:
-                                cdp.send("Emulation.clearDeviceMetricsOverride")
-                                cdp.detach()
+                            png = _half(page.screenshot(type="png", animations="disabled"))
+                            out = [
+                                {
+                                    "type": "text",
+                                    "text": f"Window {page.viewport_size['width']}px wide, scrolled to {scroll}px.",
+                                },
+                                _image(png),
+                            ]
+                            trace[-1]["image"] = keep_image(png, "look")
+                        elif use.name in ("zoom", "inspect_region"):
+                            if "scroll_y" in args:
+                                page.evaluate(SCROLL, args["scroll_y"])
+                                page.wait_for_timeout(300)
+                            scroll = page.evaluate(CURRENT_SCROLL)
+                            box = [args["x"], args["y"], args["width"], args["height"]]
+                            if use.name == "zoom":
+                                clip = dict(zip(("x", "y", "width", "height"), box))
+                                png = page.screenshot(type="png", clip=clip)
+                                out = [
+                                    {
+                                        "type": "text",
+                                        "text": f"Region at scroll position {scroll}px, 2x:",
+                                    },
+                                    _image(png),
+                                ]
+                                trace[-1]["image"] = keep_image(png, "zoom")
+                            else:
+                                found = page.evaluate(INSPECT, box)
+                                out = json.dumps({"scroll_position": scroll, "elements": found})
+                                trace[-1]["result"] = found
                         else:
                             out = json.dumps(page.evaluate(MEASURE, args["texts"]))
+                            trace[-1]["result"] = json.loads(out)
                     except Exception as exc:  # noqa: BLE001 -- the grader sees the error and moves on
                         out = f"Error: {str(exc)[:300]}"
+                        trace[-1]["error"] = out
                     results.append({"type": "tool_result", "tool_use_id": use.id, "content": out})
                 messages.append({"role": "user", "content": results})
         finally:
@@ -294,9 +409,12 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=
 def _describe(name: str, args: dict) -> str:
     if name == "look":
         where = f" scrolled to {args['scroll_y']}px" if args.get("scroll_y") else ""
-        return f"looked at {args.get('width', 'the current')}px wide{where}"
-    if name == "zoom":
-        return f"zoomed into {args['width']}x{args['height']} at ({args['x']}, {args['y']})"
+        width = f"{args['width']}px wide" if args.get("width") else "the window"
+        return f"looked at {width}{where}"
+    if name in ("zoom", "inspect_region"):
+        where = f" scrolled to {args['scroll_y']}px" if "scroll_y" in args else ""
+        verb = "zoomed into" if name == "zoom" else "inspected"
+        return f"{verb} {args['width']}x{args['height']} at ({args['x']}, {args['y']}){where}"
     return "measured " + ", ".join(repr(t) for t in args.get("texts", [])[:4])
 
 

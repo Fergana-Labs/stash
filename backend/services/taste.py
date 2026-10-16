@@ -1569,6 +1569,7 @@ async def predict_live_page(row, item, directory, ref):
             )
         )
     ]
+    trace_id = uuid4().hex
     judged = await asyncio.to_thread(
         taste_grader_agent.grade,
         model,
@@ -1577,7 +1578,9 @@ async def predict_live_page(row, item, directory, ref):
         shot,
         judge_references(row),
         previous,
+        directory / "traces" / trace_id,
     )
+    judged["trace_id"] = trace_id
     sha = hashlib.sha256(shot.read_bytes()).hexdigest()
     shot.replace(directory / (sha + ".png"))
     output = {
