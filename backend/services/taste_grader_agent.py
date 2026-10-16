@@ -231,6 +231,23 @@ def _image(png: bytes) -> dict:
     }
 
 
+def fingerprint(model: dict) -> str:
+    """Identifies everything that shapes a verdict: rules, instructions, tools, model and
+    approval bar. History is only shared between checks with the same fingerprint, so an
+    improved grader never inherits verdicts made by an older one."""
+    import hashlib
+
+    basis = {
+        "rules": model["preferences"],
+        "system": SYSTEM,
+        "history": HISTORY,
+        "tools": TOOLS,
+        "model": settings.ANTHROPIC_MODEL,
+        "approve": taste_demo.approve_threshold(),
+    }
+    return hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()[:16]
+
+
 def _check_url(url: str) -> None:
     parsed = urlparse(url)
     if not taste_demo.enabled() or parsed.scheme != "http" or parsed.hostname not in LOCAL_HOSTS:
@@ -266,8 +283,7 @@ def grade(
         + (" [they said this directly; weigh it heavily]" if p.get("source") == "feedback" else "")
         for p in model["preferences"]
     )
-    seen = {r for check in previous for r in check.get("rules", [])}
-    new_rules = [p["rule"] for p in model["preferences"] if previous and p["rule"] not in seen]
+
     steps = "\n".join(f"[{s['role']}] {s['text'][:600]}" for s in item["trace"][-12:])
     parsed = urlparse(url)
     path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
@@ -325,13 +341,6 @@ def grade(
                     "text": f"Now the work to grade, open in your browser at 1280x800. Task: {item['brief']}"
                     f"\n\nAgent trace so far:\n{steps}\n\n"
                     + (_history(list(previous)) + "\n\n" if previous else "")
-                    + (
-                        "Preferences added since your last check; check these first:\n"
-                        + "\n".join(f"- {r}" for r in new_rules)
-                        + "\n\n"
-                        if new_rules
-                        else ""
-                    )
                     + "The first screen:",
                 },
                 _image(first),
@@ -362,8 +371,7 @@ def grade(
                         verdict = {
                             **_verdict(args, ignore_shell="shared shell" in item["brief"]),
                             "inspected": inspected,
-                            # Which preferences this check graded against, to spot new ones next time.
-                            "rules": [p["rule"] for p in model["preferences"]],
+                            "grader": fingerprint(model),
                         }
                         trace.append({"event": "verdict", "raw": args})
                         save_trace({"verdict": verdict})

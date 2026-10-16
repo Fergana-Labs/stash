@@ -923,3 +923,15 @@ def test_agent_grader_blocks_only_on_major_execution_flaws_and_ignores_the_shell
     assert not blocked["approved"] and blocked["fixes"][0]["issue"] == "label clipped"
     kept = _verdict({"score": 80, "summary": "", "fixes": [shell]}, ignore_shell=True)
     assert kept["fixes"] == []
+
+
+def test_grader_fingerprint_changes_with_rules_and_bar(monkeypatch):
+    from backend.services.taste_grader_agent import fingerprint
+
+    model = {"preferences": [{"rule": "Avoid card grids", "kind": "avoid", "evidence": []}]}
+    first = fingerprint(model)
+    assert fingerprint(model) == first
+    more = {"preferences": [*model["preferences"], {"rule": "Tight spacing", "kind": "prefer"}]}
+    assert fingerprint(more) != first
+    monkeypatch.setenv("TASTE_APPROVE", "0.9")
+    assert fingerprint(model) != first

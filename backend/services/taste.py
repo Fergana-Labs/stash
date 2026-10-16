@@ -1561,10 +1561,11 @@ async def predict_live_page(row, item, directory, ref):
         json.loads(r["output"]) if isinstance(r["output"], str) else r["output"]
         for r in reversed(
             await get_pool().fetch(
-                "SELECT output FROM taste_predictions WHERE workspace_id=$1 AND version=$2 "
-                "AND output->>'ref'=$3 ORDER BY created_at DESC LIMIT 4",
+                # Only verdicts from this exact grader: a changed grader starts fresh.
+                "SELECT output FROM taste_predictions WHERE workspace_id=$1 "
+                "AND output->>'grader'=$2 AND output->>'ref'=$3 ORDER BY created_at DESC LIMIT 4",
                 row["id"],
-                model["version"],
+                taste_grader_agent.fingerprint(model),
                 ref,
             )
         )
