@@ -14,6 +14,10 @@ export interface WizardCtx {
   refresh: () => void;
   version: number;
   busy: boolean;
+  /** The wizard conversation, for cards that upload into it. */
+  sessionId?: string;
+  /** A card created or bound the eval itself (for example, by uploading traces). */
+  adoptModel?: (modelId: string) => void;
 }
 
 const Ctx = createContext<WizardCtx>({ modelId: null, send: () => {}, refresh: () => {}, version: 0, busy: false });

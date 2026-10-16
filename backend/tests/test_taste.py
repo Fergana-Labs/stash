@@ -466,7 +466,7 @@ async def test_website_preference_setup_is_part_of_existing_eval_wizard(
     )
     state = await wizard.status(owner, current["model_id"])
     assert state["website_eval"]["endpoint"]["ready"]
-    assert "search or import" in state["note"]
+    assert "upload card" in state["note"]
     result, card = await wizard.run_tool(
         owner, current, "website_eval", {"operation": "results"}, lambda *args: None
     )
@@ -813,3 +813,39 @@ async def test_failed_endpoint_fit_does_not_retry_paid_work(client, pool, monkey
     assert (
         await pool.fetchval("SELECT count(*) FROM taste_jobs WHERE workspace_id=$1", row["id"]) == 1
     )
+
+
+async def test_new_website_eval_asks_for_traces_before_searching(
+    client, pool, tmp_path, monkeypatch
+):
+    from backend.services.intuition import wizard
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TASTE_CLOUD_ENABLED", "1")
+    monkeypatch.setattr(taste_tasks.run, "delay", lambda *args: None)
+    owner, headers = await user(client, pool)
+    session = await wizard.create_session(owner)
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "prepare"}, lambda *args: None
+    )
+    assert card["props"]["section"] == "sources"
+    assert result["existing_examples"] == 0 and "stop" in result["next"]
+    session = await wizard.get_session(owner, UUID(session["id"]))
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "review"}, lambda *args: None
+    )
+    assert card["props"]["section"] == "preferences" and result["needs_your_call"] == 0
+    result, card = await wizard.run_tool(
+        owner, session, "website_eval", {"operation": "finish"}, lambda *args: None
+    )
+    assert result["status"] == "needs_information"
+    assert card["props"]["section"] == "preferences"
+    # A dropped history folder arrives as one upload of many session files.
+    files = [{"name": f"s{i}.jsonl", "content": "{}"} for i in range(11)]
+    response = await client.post(
+        "/api/v1/taste/traces",
+        headers=headers,
+        json={"session_id": session["id"], "files": files},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["files_received"] == 11

@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..auth import get_current_user
 from ..services import taste
@@ -35,9 +35,20 @@ class TraceFile(Body):
     content: str = Field(min_length=1, max_length=8_000_000)
 
 
+MAX_UPLOAD_CHARS = 80_000_000
+
+
 class TraceUpload(Body):
     session_id: UUID
-    files: list[TraceFile] = Field(min_length=1, max_length=10)
+    # A dropped Claude Code or Codex history folder holds many session files.
+    files: list[TraceFile] = Field(min_length=1, max_length=200)
+
+    @field_validator("files")
+    @classmethod
+    def bounded_total(cls, files: list[TraceFile]) -> list[TraceFile]:
+        if sum(len(f.content) for f in files) > MAX_UPLOAD_CHARS:
+            raise ValueError("Upload at most 80 MB of traces at once.")
+        return files
 
 
 class Source(Body):

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { tasteGet, tasteReset, tasteUploadTraces, type TasteWorkspace } from "@/lib/taste-api";
+import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
@@ -17,6 +17,7 @@ import ModelPanel from "./ModelPanel";
 import { useWizardDraft } from "./useWizardDraft";
 import { useDictation } from "./useDictation";
 import { takeWizardMessage } from "./wizard-navigation";
+import { uploadWebsiteTraces } from "./website-traces";
 import WebsiteEvalCard from "./cards/WebsiteEvalCard";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
@@ -240,12 +241,9 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     if (Array.from(files).every(f => /\.jsonl$/i.test(f.name))) {
       setAttaching("Reading your traces…");
       try {
-        const uploaded = await tasteUploadTraces(sessionId, await Promise.all(Array.from(files).map(async file => {
-          if (file.size > 8_000_000) throw new Error("Upload traces in files of up to 8 MB each.");
-          return {name:file.name,content:await file.text()};
-        })));
-        setModelId(uploaded.model_id);
-        send(`My traces have been uploaded. Background job ${uploaded.job_id} is collecting their feedback. Use website_eval wait for this job and then finish to return my grading endpoint. Ask only if essential information is missing.`, "event");
+        const uploaded = await uploadWebsiteTraces(sessionId, Array.from(files).map((file) => ({ file, path: file.name })));
+        setModelId(uploaded.modelId);
+        send(uploaded.event, "event");
       } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
       return;
     }
@@ -262,7 +260,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
   }
 
-  const ctx: WizardCtx = { modelId, send, refresh, version, busy };
+  const ctx: WizardCtx = { modelId, send, refresh, version, busy, sessionId, adoptModel: setModelId };
   const lastCardIds = new Map<string, string>();
   for (const entry of entries ?? []) if (entry.role === "assistant") for (const p of entry.parts) if (p.type === "card") { lastCardIds.set(p.kind, p.id); if(p.kind === "website_eval" && p.props.section === "preferences") lastCardIds.set("labeler",p.id); }
 

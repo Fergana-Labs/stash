@@ -95,12 +95,19 @@ can manage later changes through MCP. Traffic and corrections remain available i
 ## Website and UI preference evals
 The user experience has THREE steps only: supply traces (uploads or connected history),
 answer a clarification IF genuinely needed, receive a working grading API endpoint.
-Use website_eval prepare, search/read real history yourself, website_eval learn to collect
-relevant source evidence, then website_eval finish. After a job completes, call finish
+Call website_eval prepare first. On a new eval it shows a card where the user uploads past
+traces or chooses their connected history. Then stop with one short sentence and wait for
+their choice; do not search history in that turn. After an upload, wait for the upload job
+and call finish. If they choose connected history, search/read real history yourself,
+website_eval learn to collect relevant source evidence, then website_eval finish. After a job completes, call finish
 again; it either continues building or returns the endpoint and completes setup.
 Do not offer a menu of actions. Never mention GEPA, weight refinement, skills, experiment
 arms, train/dev/test splits, probe architecture, research blockers or optimization in setup.
 Those are internal research concerns, not decisions the user needs to make.
+Show what you learned with website_eval review: its card lists each preference with the
+quote and screenshot, and asks the user about unclear examples with buttons. Never list
+preferences, quotes, labels, or open questions in chat text; the card is where the user
+sees and answers them. Your text around a card is one or two short sentences.
 Clear likes and corrections in their traces are labels: extract them automatically with
 quotes and actual output attribution. Never ask for blanket manual review. Exclude uncertain
 interpretations and teacher guesses. Ask at most two concrete questions ONLY if the actual
@@ -292,7 +299,15 @@ TOOLS = [
         {
             "operation": {
                 "type": "string",
-                "enum": ["prepare", "learn", "extract_labels", "status", "wait", "finish"],
+                "enum": [
+                    "prepare",
+                    "learn",
+                    "extract_labels",
+                    "review",
+                    "status",
+                    "wait",
+                    "finish",
+                ],
             },
             "name": {"type": "string", "maxLength": 160},
             "selections": {
@@ -681,7 +696,7 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
                 "api_ready": website["endpoint"]["ready"],
             },
             "website_eval": website,
-            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. History discovery is your job; do not ask the user to search or import.",
+            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. The user supplies traces through the upload card or picks connected history; after that, history discovery is your job. Never ask them to type search queries.",
         }
     detail = await service.get_detail(owner_id, UUID(model_id))
     version = detail["draft"] or detail["active"]
@@ -1232,6 +1247,12 @@ async def website_tool(owner, session, args, progress):
     if op == "prepare":
         binding = await taste.bind_wizard(owner, session, name=args.get("name", "Website design"))
         state = await taste.detail(owner)
+        if not state["examples"] and not state["jobs"]:
+            return {
+                "eval_id": binding["model_id"],
+                "existing_examples": 0,
+                "next": "The card asks the user to upload past traces or use their connected history. Say so in one sentence and stop until they choose.",
+            }, _card("website_eval", section="sources")
         return {
             "eval_id": binding["model_id"],
             "existing_examples": len(state["examples"]),
@@ -1273,8 +1294,9 @@ async def website_tool(owner, session, args, progress):
             return {
                 "status": "needs_information",
                 "missing": state["labels"]["build_gaps"],
-                "next": "Inspect the supplied traces for this feedback, then ask only about what is genuinely missing. Validation data is optional; never invent synthetic human labels.",
-            }, _card("website_eval", section="progress")
+                "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
+                "next": "The preferences card shows what is missing and asks the user about unclear examples. Say so in one sentence; do not restate examples or quotes. If no example needs their call, inspect the supplied traces for more feedback. Never invent synthetic human labels.",
+            }, _card("website_eval", section="preferences")
         operation = "build"
     elif op in ("status", "wait") and active:
         return {
@@ -1291,6 +1313,12 @@ async def website_tool(owner, session, args, progress):
             {"sources": args["selections"][:10]},
         )
         operation = "collect_all"
+    elif op == "review":
+        return {
+            "labels": state["labels"],
+            "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
+            "next": "The card shows the learned preferences and any open questions. Do not restate them in text.",
+        }, _card("website_eval", section="preferences")
     elif op == "extract_labels":
         operation = op
     else:

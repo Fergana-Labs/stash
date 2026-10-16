@@ -7,15 +7,29 @@ import { tasteGet, type TasteWorkspace } from "@/lib/taste-api";
 import { CopyText } from "@/components/taste/website-eval-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { CardShell, useWizard } from "../wizard-ui";
+import TraceSourcesCard from "./TraceSourcesCard";
+import PreferencesCard from "./PreferencesCard";
 
 /** A single setup result. Older research cards resolve to this same surface. */
 export default function WebsiteEvalCard({
-  jobId,
-  readOnly = false,
+  section,
+  ...props
 }: {
   section?: string;
   jobId?: string;
   exampleIds?: string[];
+  readOnly?: boolean;
+}) {
+  if (section === "sources") return <TraceSourcesCard />;
+  if (section === "preferences") return <PreferencesCard />;
+  return <EvalProgress {...props} />;
+}
+
+function EvalProgress({
+  jobId,
+  readOnly = false,
+}: {
+  jobId?: string;
   readOnly?: boolean;
 }) {
   const { send } = useWizard();
