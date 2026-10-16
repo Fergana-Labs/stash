@@ -45,8 +45,9 @@ export default function EvalsPage() {
     })),
   ];
   const archived = new Set(taste?.related_eval_ids ?? []);
-  const visible = rows.filter(row => !taste || showDrafts || (!archived.has(row.id) && !(row.draft && row.examples === 0))).filter((row) => `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()));
-  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<div className="flex gap-1.5"><Button size="xs" variant="outline" className={actionClass} asChild><Link href="/reward-models/wizard">Build with the wizard</Link></Button><Button size="xs" className={actionClass} asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button></div>}>
+  // The website demo in progress always shows, even before it has examples.
+  const visible = rows.filter(row => !taste || showDrafts || row.id === taste.model_id || (!archived.has(row.id) && !(row.draft && row.examples === 0))).filter((row) => `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()));
+  return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<Button size="xs" className={actionClass} asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button>}>
     <EvalsViewToggle view="evals" />
     <label className="mb-3 flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={showDrafts} onChange={event=>setShowDrafts(event.target.checked)}/>Show empty drafts and supporting taste evals</label>
     {error && <p role="alert" className="text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p>}
