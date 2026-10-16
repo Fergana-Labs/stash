@@ -10,6 +10,7 @@ Demo graders are marked ``"demo": true`` so they are never mistaken for a
 fitted probe. The real build and predict paths are unchanged when the flag is off.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -22,6 +23,7 @@ MAX_REFERENCE_IMAGES = 6
 # References shown to the judge on every check: screens the user liked and disliked.
 JUDGE_REFERENCES_PER_LABEL = 2
 APPROVE = 0.7
+JUDGE_READS = 2
 
 
 def enabled() -> bool:
@@ -33,22 +35,37 @@ def is_demo_grader(model: dict) -> bool:
 
 
 def _json(text: str) -> dict:
-    return json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()))
+    """The JSON object in a reply, tolerating code fences or prose around it."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.S)
+        if not match:
+            raise
+        return json.loads(match.group(0))
 
 
 async def _ask(system: str, content: list, max_tokens: int) -> dict:
     from anthropic import AsyncAnthropic
 
-    reply = await AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY).messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=max_tokens,
-        temperature=0,
-        system=system,
-        messages=[{"role": "user", "content": content}],
-    )
-    if reply.stop_reason != "end_turn":
-        raise ValueError("The grader response was cut off. Retry.")
-    return _json("".join(c.text for c in reply.content if c.type == "text"))
+    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    for attempt in range(2):
+        reply = await client.messages.create(
+            model=settings.ANTHROPIC_MODEL,
+            max_tokens=max_tokens,
+            temperature=0,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+        )
+        try:
+            if reply.stop_reason != "end_turn":
+                raise ValueError("cut off")
+            return _json("".join(c.text for c in reply.content if c.type == "text"))
+        except (ValueError, json.JSONDecodeError):
+            if attempt:
+                raise ValueError("The grader did not return a readable verdict. Retry.") from None
+    raise AssertionError("unreachable")
 
 
 BUILD_SYSTEM = """You distill one person's design taste from example websites they chose: \
@@ -186,8 +203,13 @@ async def judge(model: dict, item: dict, image_path, refs=()) -> dict:
             },
         },
     ]
-    result = await _ask(JUDGE_SYSTEM.format(rules=rules), content, 1200)
-    score = max(0, min(100, int(result.get("score", 0)))) / 100
+    # Two independent reads, averaged: a single read of the same screen can swing widely.
+    reads = await asyncio.gather(
+        *(_ask(JUDGE_SYSTEM.format(rules=rules), content, 1200) for _ in range(JUDGE_READS))
+    )
+    scores = [max(0, min(100, int(r.get("score", 0)))) for r in reads]
+    result = reads[scores.index(min(scores))]  # the stricter read's feedback
+    score = sum(scores) / len(scores) / 100
     return {
         "label": "liked" if score >= 0.5 else "disliked",
         "score": round(score, 3),
