@@ -27,7 +27,7 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
     wzReport(modelId).then((r) => setReport(r.report)).catch(() => {});
   }, [modelId, version]);
 
-  if(website?.model_id===modelId && modelId) return <aside aria-label="Model" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border bg-surface/30 px-4 py-4 lg:block"><h2 className="m-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Your eval</h2><p className="mt-2 text-[13px] font-semibold">{website.name}</p><p className="text-xs text-muted-foreground">Learned from your corrections and rendered work.</p><ul className="m-0 mt-4 list-none space-y-2.5 p-0"><Step done label="Goal and labels"/><Step done={website.labels.usable>0} label="Preferences" detail={`${website.labels.usable} learned from feedback · ${website.labels.needs_clarification} uncertain`}/><Step done={!!website.grader.version} label="Grader" detail={website.grader.version?`Frozen model + linear probe · ${website.grader.version.slice(0,8)}`:"Not built yet"}/><Step done={website.grader.released} label="Validation" detail={website.grader.released?"Ready to use":"Needs attention"}/><Step done={website.trials.some(t=>t.method==='gepa'&&t.status==='scored')} label="GEPA experiment"/><Step done={website.trials.some(t=>t.method==='posttrained'&&t.status==='scored')} label="Independent weight experiment"/></ul></aside>;
+  if (website?.model_id === modelId && modelId) return null;
   const v = detail?.draft ?? detail?.active;
   const criteria = v ? userCriteria(v.rubric) : [];
   const counts = detail?.counts;

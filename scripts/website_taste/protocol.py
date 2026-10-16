@@ -100,7 +100,7 @@ def tasks() -> list[dict]:
     ]
 
 
-def split_examples(examples: list[dict]) -> list[dict]:
+def split_examples(examples: list[dict], *, require_holdout=True) -> list[dict]:
     """Union duplicate pixels and sessions before assigning deterministic partitions."""
     parent = {}
 
@@ -125,10 +125,10 @@ def split_examples(examples: list[dict]) -> list[dict]:
     counts = Counter(root("session:" + r["session_id"]) for r in examples)
     groups = sorted(counts, key=lambda group: (-counts[group], digest(group)))
     # Three or more independent groups are required; never split revisions to fake n.
-    if len(groups) < 3:
+    if len(groups) < 3 and require_holdout:
         raise ValueError("Need at least three independent preference groups for train/dev/test")
     partitions = {
-        group: ("dev" if i == 1 else "test" if i == 2 else "train")
+        group: ("dev" if i == 1 else "test" if i == 2 else "train") if len(groups) >= 3 else "train"
         for i, group in enumerate(groups)
     }
     return [
@@ -145,7 +145,11 @@ def split_examples(examples: list[dict]) -> list[dict]:
 
 
 def validate_dataset(
-    examples: list[dict], task_list: list[dict], *, label_policy="human_reviewed"
+    examples: list[dict],
+    task_list: list[dict],
+    *,
+    label_policy="human_reviewed",
+    require_holdout=True,
 ) -> None:
     from .preferences import usable_label
 
@@ -186,7 +190,7 @@ def validate_dataset(
             if key in table and table[key] != partition:
                 raise ValueError("Related evidence crosses experiment partitions")
             table[key] = partition
-    for partition in ("train", "dev", "test"):
+    for partition in ("train", "dev", "test") if require_holdout else ("train",):
         if {e["label"] for e in examples if e["partition"] == partition} != {"liked", "disliked"}:
             raise ValueError(f"Need both preference labels in {partition}")
     task_ids, task_groups, briefs = set(), {}, {}
@@ -209,8 +213,11 @@ def seal(
     model: dict,
     *,
     label_policy="human_reviewed",
+    require_holdout=True,
 ) -> dict:
-    validate_dataset(examples, task_list, label_policy=label_policy)
+    validate_dataset(
+        examples, task_list, label_policy=label_policy, require_holdout=require_holdout
+    )
     data = {
         "schema": 1,
         "examples": examples,
@@ -228,6 +235,8 @@ def seal(
         "dpo_beta": 0.1,
         "dpo_min_reward_gap": 0.1,
     }
+    if not require_holdout:
+        data["require_holdout"] = False
     if label_policy != "human_reviewed":
         data["label_policy"] = label_policy
     sha = digest(json.dumps(data, sort_keys=True))
@@ -246,7 +255,10 @@ def load(output: Path) -> dict:
         raise ValueError("Frozen experiment was modified")
     data["sha256"] = sha
     validate_dataset(
-        data["examples"], data["tasks"], label_policy=data.get("label_policy", "human_reviewed")
+        data["examples"],
+        data["tasks"],
+        label_policy=data.get("label_policy", "human_reviewed"),
+        require_holdout=data.get("require_holdout", True),
     )
     return data
 

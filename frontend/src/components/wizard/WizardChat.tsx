@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
+import { tasteGet, tasteReset, tasteUploadTraces, type TasteWorkspace } from "@/lib/taste-api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
@@ -46,7 +46,7 @@ const EVAL_STARTERS = [
 ];
 
 const TITLES: Record<Card["kind"], string> = {
-  website_eval: "Website design eval",
+  website_eval: "Your eval",
   choices: "Quick choices", uploader: "Add examples", labeler: "Label examples", criteria: "Criteria",
   report: "Training report", playground: "Try it", review: "Review predictions", robustness: "Robustness", examples: "Examples",
   brief: "Eval brief", inbox: "Inbox", golden: "Golden set", agreement: "Agreement", topics: "Topics",
@@ -237,7 +237,19 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   }, [inject, pending, entries, send]);
 
   async function attach(files: FileList) {
-    if (!modelId) { setError("Tell the wizard what you want to classify first, then attach examples."); return; }
+    if (Array.from(files).every(f => /\.jsonl$/i.test(f.name))) {
+      setAttaching("Reading your traces…");
+      try {
+        const uploaded = await tasteUploadTraces(sessionId, await Promise.all(Array.from(files).map(async file => {
+          if (file.size > 8_000_000) throw new Error("Upload traces in files of up to 8 MB each.");
+          return {name:file.name,content:await file.text()};
+        })));
+        setModelId(uploaded.model_id);
+        send(`My traces have been uploaded. Background job ${uploaded.job_id} is collecting their feedback. Use website_eval wait for this job and then finish to return my grading endpoint. Ask only if essential information is missing.`, "event");
+      } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
+      return;
+    }
+    if (!modelId) { setError("Attach your exported JSONL traces, or describe what you want to judge first."); return; }
     const rows: NewExample[] = [];
     try {
       for (const [i, file] of Array.from(files).entries()) {
@@ -299,8 +311,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
           </div>
           <form className="shrink-0 border-t border-border px-5 py-3" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
             <div className="mx-auto flex max-w-3xl items-end gap-2 rounded border border-border bg-background px-2 py-1.5 focus-within:border-foreground/30">
-              <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title={modelId ? "Attach files as examples (images, PDFs, docs)" : "Describe your model first"} disabled={!!attaching || restarting} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
-              <input ref={fileInput} type="file" multiple hidden accept=".txt,.md,.json,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => { if (e.target.files?.length) void attach(e.target.files); e.target.value = ""; }} />
+              <Button type="button" size="icon-sm" variant="ghost" aria-label="Attach examples" title="Upload traces or examples" disabled={!!attaching || restarting} onClick={() => fileInput.current?.click()}><Paperclip /></Button>
+              <input ref={fileInput} type="file" multiple hidden accept=".jsonl,.txt,.md,.json,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => { if (e.target.files?.length) void attach(e.target.files); e.target.value = ""; }} />
               <textarea
                 ref={messageInput}
                 aria-label="Message the wizard"

@@ -462,19 +462,21 @@ async def test_website_preference_setup_is_part_of_existing_eval_wizard(
     assert (
         result["existing_examples"] == 1
         and card["kind"] == "website_eval"
-        and card["props"]["section"] == "preferences"
+        and card["props"]["section"] == "progress"
     )
     state = await wizard.status(owner, current["model_id"])
-    assert state["website_eval"]["grader"]["parameters"] == 3
+    assert state["website_eval"]["endpoint"]["ready"]
     assert "search or import" in state["note"]
     result, card = await wizard.run_tool(
         owner, current, "website_eval", {"operation": "results"}, lambda *args: None
     )
-    assert card["props"]["section"] == "results"
-    with pytest.raises(taste.Conflict):
-        await wizard.run_tool(
-            owner, current, "website_eval", {"operation": "publish"}, lambda *args: None
-        )
+    assert card["props"]["section"] == "connect"
+    result, card = await wizard.run_tool(
+        owner, current, "website_eval", {"operation": "finish"}, lambda *args: None
+    )
+    assert result["published"] and result["endpoint"]["ready"]
+    assert card["props"]["section"] == "connect"
+    assert (await taste.detail(owner))["grader"]["released"] is False
 
 
 @pytest.mark.parametrize("bad_field", ["id", "target", "quote"])
@@ -657,3 +659,157 @@ async def test_demo_reset_is_owner_scoped_and_waits_for_active_jobs(
     response = await client.post("/api/v1/taste/reset", headers=headers, json=request)
     assert response.status_code == 409 and "still working" in response.text
     assert (await taste.workspace(owner))["config"] == row["config"]
+
+
+async def test_initial_endpoint_build_needs_no_validation_split(
+    client, pool, tmp_path, monkeypatch
+):
+    from scripts.website_taste import probe_pipeline, protocol
+
+    owner, _ = await user(client, pool)
+    row = await taste.workspace(owner, create=True)
+    items = []
+    for i, label in enumerate(("liked", "disliked", "liked", "disliked")):
+        path = tmp_path / f"{i}.png"
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" + str(i).encode())
+        packet = evidence.packet(
+            "Build a website", {"steps": [], "coverage": {"complete": False}}, path
+        )
+        packet["supervision"] = {
+            "label": label,
+            "human_reviewed": True,
+            "partition": "train",
+            "group": "one-source",
+            "quote": "Explicit feedback",
+            "provenance": {},
+        }
+        items.append(packet)
+    taste.write(
+        tmp_path / "evidence.json", {"examples": items, "heldout_status": "not_yet_reserved"}
+    )
+    row["config"] = {"dataset": str(tmp_path), "budget": str(tmp_path)}
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path / "work"))
+    monkeypatch.setattr(probe_pipeline, "extract_features", lambda *a, **kw: None)
+    monkeypatch.setattr(probe_pipeline, "fit_probe", lambda *a, **kw: None)
+    monkeypatch.setattr(taste, "refresh_saved_scores", lambda *a: None)
+    assert not taste.label_summary(row)["build_gaps"]
+    result = taste.execute(row, "build")
+    from pathlib import Path
+
+    frozen = protocol.load(Path(result["experiment"]))
+    assert {e["partition"] for e in frozen["examples"]} == {"train"}
+    assert frozen["require_holdout"] is False
+    assert (
+        taste.read(Path(result["dataset"]) / "evidence.json")["heldout_status"] == "not_available"
+    )
+
+
+async def test_uploaded_traces_feed_same_automatic_pipeline(client, pool, tmp_path, monkeypatch):
+    from backend.services.intuition import wizard
+    from scripts.website_taste.preferences import validate_proposals
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TASTE_CLOUD_ENABLED", "1")
+    monkeypatch.setattr(taste_tasks.run, "delay", lambda *args: None)
+
+    async def extract(batch, cache):
+        return validate_proposals(
+            [{**r, "render_inspected": True} for r in batch],
+            {
+                "proposals": [
+                    {
+                        "id": r["id"],
+                        "label": "disliked",
+                        "scope": "overall",
+                        "quote": "This looks terrible",
+                        "explicit": True,
+                        "target": "single",
+                        "image_role": "output",
+                        "preference": "Improve visual craft",
+                    }
+                    for r in batch
+                ]
+            },
+        )
+
+    monkeypatch.setattr(taste, "extract_feedback", extract)
+    owner, headers = await user(client, pool)
+    session = await wizard.create_session(owner)
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nfixture").decode()
+    lines = [
+        {"type": "response_item", "payload": {"type": "message", "role": role, "content": content}}
+        for role, content in [
+            ("developer", [{"type": "input_text", "text": "PRIVATE SYSTEM CONTENT"}]),
+            ("user", [{"type": "input_text", "text": "Build a website"}]),
+            ("assistant", [{"type": "output_text", "text": "Created the website"}]),
+            (
+                "user",
+                [
+                    {"type": "input_text", "text": "This looks terrible"},
+                    {"type": "input_image", "image_url": "data:image/png;base64," + png},
+                ],
+            ),
+        ]
+    ]
+    request = {
+        "session_id": session["id"],
+        "files": [{"name": "session.jsonl", "content": "\n".join(json.dumps(v) for v in lines)}],
+    }
+    response = await client.post("/api/v1/taste/traces", headers=headers, json=request)
+    assert response.status_code == 200, response.text
+    await taste.run_job(UUID(response.json()["job_id"]))
+    row = await taste.workspace(owner)
+    packet = taste.data(row)["examples"][0]
+    assert packet["supervision"]["label"] == "disliked"
+    assert "This looks terrible" not in json.dumps(packet["input"])
+    assert "PRIVATE SYSTEM CONTENT" not in json.dumps(packet["input"])
+    assert (await taste.detail(owner))["labels"]["usable"] == 1
+    assert {
+        t["name"]
+        for t in await wizard.setup_tools(
+            owner, await wizard.get_session(owner, UUID(session["id"]))
+        )
+    } == {"website_eval", "search_history", "read_history"}
+    with pytest.raises(ValueError, match="private storage"):
+        await taste.learn_uploaded_traces(row, ["/etc/passwd"])
+
+
+async def test_collection_continues_to_endpoint_without_browser(
+    client, pool, tmp_path, monkeypatch
+):
+    owner, _ = await user(client, pool)
+    row = await taste.workspace(owner, create=True)
+    monkeypatch.setenv("TASTE_CLOUD_ENABLED", "1")
+    monkeypatch.setattr(taste_tasks.run, "delay", lambda *a: None)
+    monkeypatch.setattr(taste, "extract_existing_labels", AsyncMock(return_value={"usable": 4}))
+    monkeypatch.setattr(taste, "label_summary", lambda row: {"build_gaps": []})
+    job = await taste.enqueue(owner, "extract_labels", {"automatic": True})
+    await taste.run_job(job["job_id"])
+    build = await pool.fetchrow(
+        "SELECT * FROM taste_jobs WHERE workspace_id=$1 AND operation='build'", row["id"]
+    )
+    assert build and build["status"] == "queued" and build["input"]["automatic"]
+    monkeypatch.setattr(taste, "execute", lambda *a: {"probe": str(tmp_path)})
+    await taste.run_job(build["id"])
+    fresh = await taste.workspace(owner)
+    assert fresh["config"]["published"] is True
+    assert fresh["fitted_revision"] == fresh["revision"]
+
+
+async def test_failed_endpoint_fit_does_not_retry_paid_work(client, pool, monkeypatch):
+    from backend.services.intuition import wizard
+
+    owner, _ = await user(client, pool)
+    session = await wizard.create_session(owner)
+    await taste.bind_wizard(owner, session)
+    row = await taste.workspace(owner)
+    await pool.execute(
+        "INSERT INTO taste_jobs(workspace_id,operation,status,progress) VALUES($1,'build','failed','Provider unavailable')",
+        row["id"],
+    )
+    result, _ = await wizard.website_tool(owner, session, {"operation": "finish"}, lambda *a: None)
+    assert result["status"] == "needs_attention"
+    assert result["error"] == "Provider unavailable"
+    assert (
+        await pool.fetchval("SELECT count(*) FROM taste_jobs WHERE workspace_id=$1", row["id"]) == 1
+    )

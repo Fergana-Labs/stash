@@ -51,11 +51,24 @@ def reserve(output, kind):
         fcntl.flock(stream, fcntl.LOCK_EX)
         stream.seek(0)
         rows = [json.loads(line) for line in stream if line.strip()]
-        if sum(r["kind"] == kind for r in rows) >= (3 if kind == "extract" else 2):
+        # An operator may allocate a larger portion of the already approved
+        # pilot to serving. The original ledger and all previous reservations
+        # remain authoritative across fits, requests, and demo resets.
+        policy = read_json(output / "probe-budget-policy.json")
+        limit = float(policy.get("limit_usd", 3))
+        calls = int(
+            policy.get(
+                "max_extract_calls" if kind == "extract" else "max_fit_calls",
+                3 if kind == "extract" else 2,
+            )
+        )
+        if not 0 < limit <= 25 or not 0 < calls <= 100:
+            raise ValueError("Invalid pilot compute allocation")
+        if sum(r["kind"] == kind for r in rows) >= calls:
             raise ValueError("Probe cloud call budget exhausted; inspect existing receipts")
         allocation = 0.93 if kind == "extract" else 0.05
-        if sum(r["reserved_usd"] for r in rows) + allocation > 3:
-            raise ValueError("The probe's $3 allocation within the shared $25 budget is exhausted")
+        if sum(r["reserved_usd"] for r in rows) + allocation > limit:
+            raise ValueError("The allocated compute budget is exhausted")
         stream.write(
             json.dumps(
                 {

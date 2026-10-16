@@ -72,6 +72,11 @@ export interface TasteWorkspace {
   examples: TasteExample[];
   blockers: string[];
   related_eval_ids: string[];
+  endpoint: {
+    ready: boolean;
+    path: string | null;
+    quality_note: string | null;
+  };
   grader: {
     version: string | null;
     released: boolean;
@@ -113,6 +118,14 @@ export const tasteReset = (sessionId: string) =>
   });
 export const tasteCreate = () =>
   apiFetch<TasteWorkspace>(base, { method: "POST" });
+export const tasteUploadTraces = (
+  sessionId: string,
+  files: { name: string; content: string }[],
+) =>
+  apiFetch<{ session_id: string; model_id: string; job_id: string }>(
+    `${base}/traces`,
+    { method: "POST", body: JSON.stringify({ session_id: sessionId, files }) },
+  );
 export const tasteReview = (id: string, label: string, note: string) =>
   apiFetch<TasteWorkspace>(`${base}/examples/${id}`, {
     method: "PATCH",

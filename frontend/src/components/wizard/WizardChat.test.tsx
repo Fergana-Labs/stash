@@ -4,11 +4,11 @@ import type { WizardEvent } from "@/lib/wizard-api";
 import WizardChat from "./WizardChat";
 import { stageWizardMessage } from "./wizard-navigation";
 
-const api = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), draft: vi.fn(), stream: vi.fn(), taste: vi.fn(), reset: vi.fn(), router: { replace: vi.fn() } }));
+const api = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), draft: vi.fn(), stream: vi.fn(), taste: vi.fn(), reset: vi.fn(), upload: vi.fn(), router: { replace: vi.fn() } }));
 vi.mock("@/lib/wizard-api", async () => ({
   ...await vi.importActual("@/lib/wizard-api"), wzGet: api.get, wzCreate: api.create, wzSaveDraft: api.draft, streamWizard: api.stream,
 }));
-vi.mock("@/lib/taste-api", () => ({tasteGet: api.taste, tasteReset: api.reset}));
+vi.mock("@/lib/taste-api", () => ({tasteGet: api.taste, tasteReset: api.reset, tasteUploadTraces: api.upload}));
 vi.mock("next/navigation", () => ({ useRouter: () => api.router }));
 vi.mock("./ModelPanel", () => ({ default: () => null }));
 
@@ -145,4 +145,18 @@ it("redirects archived demo chats to their fresh replacement", async () => {
   render(<WizardChat sessionId="session" />);
   await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/wizard/clean-session"));
   expect(api.stream).not.toHaveBeenCalled();
+});
+
+it("accepts an exported trace before an eval exists and continues automatically", async () => {
+  api.get.mockResolvedValue({id:"session", model_id:null, title:"New eval", transcript:[]});
+  api.upload.mockResolvedValue({model_id:"website-eval", job_id:"upload-job"});
+  const {container} = render(<WizardChat sessionId="session" />);
+  await screen.findByRole("heading", {name:"New eval"});
+  const input = container.querySelector('input[type="file"]')!;
+  expect(input.getAttribute("accept")).toContain(".jsonl");
+  const file = new File(['{"type":"response_item"}'], "history.jsonl", {type:"application/jsonl"});
+  Object.defineProperty(file,"text",{value:async()=>'{"type":"response_item"}'});
+  fireEvent.change(input,{target:{files:[file]}});
+  await waitFor(()=>expect(api.upload).toHaveBeenCalledWith("session",[{name:"history.jsonl",content:'{"type":"response_item"}'}]));
+  await waitFor(()=>expect(api.stream).toHaveBeenCalledWith("session",expect.stringContaining("upload-job"),"event",expect.any(Function)));
 });

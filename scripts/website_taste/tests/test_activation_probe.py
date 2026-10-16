@@ -284,3 +284,22 @@ def test_fresh_holdout_attestation_rejects_already_used_source(tmp_path):
     (source / "classifier-training.json").write_text("{}")
     with pytest.raises(ValueError, match="already used"):
         evidence.prepare(source, history, tmp_path / "second", fresh_human_holdout=True)
+
+
+def test_serving_allocation_preserves_original_ledger(tmp_path):
+    from scripts.website_taste import probe_pipeline
+
+    original = [{"kind": "extract", "reserved_usd": 0.93} for _ in range(3)]
+    original.append({"kind": "fit", "reserved_usd": 0.05})
+    ledger = tmp_path / "probe-cloud-ledger.jsonl"
+    ledger.write_text("".join(json.dumps(r) + "\n" for r in original))
+    with pytest.raises(ValueError, match="budget exhausted"):
+        probe_pipeline.reserve(tmp_path, "extract")
+    (tmp_path / "probe-budget-policy.json").write_text(
+        json.dumps({"limit_usd": 4, "max_extract_calls": 4})
+    )
+    probe_pipeline.reserve(tmp_path, "extract")
+    entries = [json.loads(s) for s in ledger.read_text().splitlines()]
+    assert entries[:4] == original and len(entries) == 5
+    with pytest.raises(ValueError, match="budget exhausted"):
+        probe_pipeline.reserve(tmp_path, "extract")

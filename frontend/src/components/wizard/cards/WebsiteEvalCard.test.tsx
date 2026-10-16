@@ -1,124 +1,70 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import WebsiteEvalCard from "./WebsiteEvalCard";
-const api = vi.hoisted(() => ({
-  get: vi.fn(),
-  image: vi.fn(),
-  review: vi.fn(),
-  send: vi.fn(),
-  refresh: vi.fn(),
-}));
-vi.mock("@/lib/taste-api", () => ({
-  tasteGet: api.get,
-  tasteImage: api.image,
-  tasteReview: api.review,
-  tasteInspect: vi.fn(),
-  tasteCheckpoint: vi.fn(),
-  tasteCompare: vi.fn(),
-}));
+const api = vi.hoisted(() => ({ get: vi.fn(), send: vi.fn(), router: {replace: vi.fn()} }));
+vi.mock("next/navigation", () => ({useRouter: () => api.router}));
+vi.mock("@/lib/taste-api", () => ({ tasteGet: api.get }));
 vi.mock("../wizard-ui", async (original) => ({
   ...(await original<typeof import("../wizard-ui")>()),
-  useWizard: () => ({ send: api.send, refresh: api.refresh, busy: false }),
+  useWizard: () => ({ send: api.send }),
 }));
-const id = "a".repeat(64);
-function state() {
-  return {
-    id: "workspace",
-    model_id: "eval",
-    name: "Website design",
-    reviewed: 0,
-    labels: {
-      usable: 1,
-      from_feedback: 1,
-      liked: 0,
-      disliked: 1,
-      needs_clarification: 0,
-      model_guesses: 0,
-      build_gaps: [],
-    },
-    examples: [
-      {
-        id,
-        label: "disliked",
-        suggested_label: "disliked",
-        reviewed: false,
-        usable: true,
-        label_status: "from_feedback",
-        needs_clarification: false,
-        quote: "Please remove the cards",
-        note: "",
-        partition: "train",
-        reference: false,
-      },
-    ],
-    grader: { version: "probe-v1", parameters: 2049, released: false },
-    blockers: ["Needs validation"],
-    jobs: [],
-    trials: [],
-    predictions: [],
-  };
-}
+const state = () => ({
+  endpoint: {
+    ready: true,
+    path: "/api/v1/intuitions/eval/predict",
+    quality_note: "Accuracy has not been independently established yet.",
+  },
+  jobs: [],
+});
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   api.get.mockResolvedValue(state());
-  api.image.mockResolvedValue({ data_url: "data:image/png;base64,AA==" });
-  api.review.mockResolvedValue({
-    ...state(),
-    reviewed: 1,
-    examples: [{ ...state().examples[0], reviewed: true, label: "liked" }],
-  });
 });
-it("uses explicit feedback without requiring manual labels, with optional corrections inline", async () => {
-  render(<WebsiteEvalCard />);
-  expect(await screen.findByText("Please remove the cards")).toBeVisible();
+it("ends with the endpoint even when independent accuracy evidence is missing", async () => {
+  render(<WebsiteEvalCard section="connect" />);
+  expect(await screen.findByText("Your eval is ready")).toBeVisible();
   expect(
-    screen.queryByRole("textbox", { name: /search/i }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
-  expect(screen.getByText(/No confirmation needed/)).toBeVisible();
-  expect(api.review).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByText("Correct this interpretation (optional)"));
-  fireEvent.click(screen.getByRole("button", { name: "Keep this" }));
-  await waitFor(() => expect(api.review).toHaveBeenCalledWith(id, "liked", ""));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Continue with clear feedback" }),
-  );
-  expect(api.send).toHaveBeenCalledWith(
-    expect.stringContaining(
-      "Continue automatically with the 1 source-grounded labels",
-    ),
-    "event",
-  );
-});
-it("asks the wizard agent to run experiments instead of launching from another workflow", async () => {
-  render(<WebsiteEvalCard section="experiments" />);
-  await screen.findByText(/GEPA changes instructions/);
-  fireEvent.click(screen.getByRole("button", { name: "Run GEPA" }));
-  expect(api.send).toHaveBeenCalledWith(
-    expect.stringContaining("independent GEPA"),
-  );
-  expect(
-    screen.getByText(/Both optimization experiments are blocked/),
+    screen.getByText("http://localhost:3000/api/v1/intuitions/eval/predict"),
   ).toBeVisible();
+  expect(
+    screen.getByText("Accuracy has not been independently established yet."),
+  ).toBeVisible();
+  expect(screen.queryByText(/blocked until/)).not.toBeInTheDocument();
+  expect(api.send).not.toHaveBeenCalled();
 });
-it("continues the agent conversation once when a durable background job finishes", async () => {
+it("renders persisted research cards as the same simple endpoint with no experiment choices", async () => {
+  render(<WebsiteEvalCard section="experiments" />);
+  await screen.findByText("Your eval is ready");
+  for (const name of [
+    "Write the skill",
+    "Run GEPA",
+    "Refine weights",
+    "Compare results",
+    "Continue",
+  ])
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  expect(screen.queryByText(/GEPA/)).not.toBeInTheDocument();
+});
+it("continues automatically after collection without making the user choose an action", async () => {
   api.get.mockResolvedValue({
-    ...state(),
-    jobs: [
-      {
-        id: "job-1",
-        operation: "build",
-        status: "succeeded",
-        progress: "Completed",
-      },
-    ],
+    endpoint: { ready: false, path: null },
+    jobs: [{ id: "job-1", operation: "collect_all", status: "succeeded" }],
   });
   render(<WebsiteEvalCard section="progress" jobId="job-1" />);
   await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
   expect(api.send).toHaveBeenCalledWith(
-    expect.stringContaining("Read website_eval status and continue"),
+    expect.stringContaining("Call website_eval finish"),
     "event",
   );
-  expect(sessionStorage.getItem("website-eval-job:job-1")).toBe("seen");
+  expect(
+    screen.queryByRole("button", { name: "Continue" }),
+  ).not.toBeInTheDocument();
+});
+
+it("opens the endpoint automatically when background setup has published it", async () => {
+  api.get.mockResolvedValue({...state(), published: true, model_id: "eval"});
+  render(<WebsiteEvalCard section="progress" jobId="job-1" />);
+  await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/evals/eval"));
+  expect(api.send).not.toHaveBeenCalled();
 });

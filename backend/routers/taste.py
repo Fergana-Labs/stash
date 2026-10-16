@@ -30,6 +30,16 @@ class Reset(Body):
     session_id: UUID
 
 
+class TraceFile(Body):
+    name: str = Field(max_length=200)
+    content: str = Field(min_length=1, max_length=8_000_000)
+
+
+class TraceUpload(Body):
+    session_id: UUID
+    files: list[TraceFile] = Field(min_length=1, max_length=10)
+
+
 class Source(Body):
     kind: Literal["local", "session", "trace"]
     id: str = Field(min_length=1, max_length=128)
@@ -103,6 +113,13 @@ async def review(identity: str, req: Review, user: User):
 @router.post("/reset")
 async def reset(req: Reset, user: User):
     return await checked(taste.reset_demo(user["id"], req.session_id))
+
+
+@router.post("/traces")
+async def traces(req: TraceUpload, user: User):
+    return await checked(
+        taste.upload_traces(user["id"], req.session_id, [f.model_dump() for f in req.files])
+    )
 
 
 @router.get("/images/{kind}/{identity}")

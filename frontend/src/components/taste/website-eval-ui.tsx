@@ -56,7 +56,7 @@ export function CopyText({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-surface p-4 pr-20 font-mono text-xs">
+      <pre className="max-h-80 overflow-auto whitespace-pre sm:whitespace-pre-wrap sm:break-words rounded border border-border bg-surface p-4 pt-11 sm:pt-4 sm:pr-20 font-mono text-xs">
         {text}
       </pre>
       <Button

@@ -124,24 +124,6 @@ def label_summary(row):
     examples = effective_examples(row)
     usable = [e for e in examples if e["usable"]]
     partitions = {e["id"]: e["partition"] for e in usable}
-    dataset = data(row)
-    if dataset.get("heldout_status") == "not_yet_reserved" and usable:
-        from scripts.website_taste.protocol import split_examples
-
-        partitions = {
-            e["id"]: e["partition"]
-            for e in split_examples(
-                [
-                    {
-                        "id": e["id"],
-                        "session_id": e["supervision"]["group"],
-                        "sha256": e["input"]["render"]["sha256"],
-                    }
-                    for e in dataset["examples"]
-                    if e["id"] in partitions
-                ]
-            )
-        }
     counts = {
         part: {
             label: sum(e["label"] == label and partitions[e["id"]] == part for e in usable)
@@ -158,16 +140,16 @@ def label_summary(row):
         "disliked": sum(e["label"] == "disliked" for e in usable),
         "partitions": counts,
         "build_gaps": (
-            ["Need at least four clear training examples."]
+            ["I need a few more clear examples of your feedback."]
             if sum(counts["train"].values()) < 4
             else []
         )
-        + [
-            f"Need clear {label} feedback in the separate {part} set."
-            for part, labels in counts.items()
-            for label, count in labels.items()
-            if not count
-        ],
+        + (["I need an example you clearly liked."] if not counts["train"]["liked"] else [])
+        + (
+            ["I need an example you clearly wanted changed."]
+            if not counts["train"]["disliked"]
+            else []
+        ),
     }
 
 
@@ -260,6 +242,15 @@ async def detail(owner):
         "published": row["config"].get("published", False),
         "fresh_start": row["config"].get("fresh_start", False),
         "name": row["name"],
+        "endpoint": {
+            "ready": bool(model) and row["revision"] == row["fitted_revision"],
+            "path": f"/api/v1/intuitions/{row['config']['model_id']}/predict"
+            if row["config"].get("model_id")
+            else None,
+            "quality_note": "Accuracy has not been independently established yet."
+            if reasons
+            else None,
+        },
         "revision": row["revision"],
         "fitted_revision": row["fitted_revision"],
         "examples": examples,
@@ -375,6 +366,7 @@ async def _enqueue(owner, operation, payload):
             "collect",
             "collect_all",
             "extract_labels",
+            "upload_traces",
         )
         and os.environ.get("TASTE_CLOUD_ENABLED") != "1"
     ):
@@ -386,7 +378,7 @@ async def _enqueue(owner, operation, payload):
         if gaps:
             raise Conflict(
                 " ".join(gaps)
-                + " Search history for those gaps before asking the user; uncertain examples do not require a blanket review."
+                + " Look through the supplied traces first; ask only about missing feedback."
             )
     try:
         job = await get_pool().fetchrow(
@@ -441,7 +433,9 @@ async def _run_job(job_id):
             raise ValueError("Cloud execution is disabled for this deployment.")
         if op in ("gepa", "weights", "evaluate") and blockers(row):
             raise ValueError(" ".join(blockers(row)))
-        if op == "collect_all":
+        if op == "upload_traces":
+            result = await learn_uploaded_traces(row, job["input"]["files"])
+        elif op == "collect_all":
             result = {"sessions": 0, "messages": []}
             sources = row["config"].get("sources", [])[:10]
             if not sources:
@@ -491,15 +485,38 @@ async def _run_job(job_id):
                 await pool.execute(
                     "UPDATE taste_workspaces SET config=config || $2::jsonb,fitted_revision=$3 WHERE id=$1",
                     row["id"],
-                    result,
+                    {**result, **({"published": True} if job["input"].get("automatic") else {})},
                     row["revision"],
                 )
-                result = {"message": "Grader built. Check validation before running experiments."}
+                result = {"message": "Your eval is ready to call. Return its API endpoint."}
         await pool.execute(
             "UPDATE taste_jobs SET status='succeeded',progress='Completed',result=$2,updated_at=now() WHERE id=$1",
             job_id,
             result,
         )
+        if job["input"].get("automatic") and op in (
+            "upload_traces",
+            "collect_all",
+            "extract_labels",
+        ):
+            # Continue even if the browser was closed. Reset and new jobs share
+            # this owner lock, so completed old work cannot start a new run.
+            async with pool.acquire() as conn:
+                key = row["owner_user_id"].int % (2**63 - 1)
+                await conn.execute("SELECT pg_advisory_lock($1)", key)
+                try:
+                    fresh = await workspace(row["owner_user_id"])
+                    same_run = all(
+                        fresh["config"].get(k) == row["config"].get(k)
+                        for k in ("model_id", "run_id")
+                    )
+                    if same_run and not label_summary(fresh)["build_gaps"]:
+                        try:
+                            await _enqueue(row["owner_user_id"], "build", {"automatic": True})
+                        except Conflict:
+                            pass  # A concurrent finish already queued the build.
+                finally:
+                    await conn.execute("SELECT pg_advisory_unlock($1)", key)
     except Exception as exc:
         # Provider exceptions may include request data. Keep the detailed exception
         # in worker logs, and return only bounded, credential-redacted diagnostics.
@@ -510,6 +527,77 @@ async def _run_job(job_id):
             job_id,
             clean(str(exc))[:1200],
         )
+
+
+async def upload_traces(owner, session_id, files):
+    from .intuition import wizard
+
+    session = await wizard.get_session(owner, session_id)
+    binding = await bind_wizard(owner, session)
+    row = await workspace(owner)
+    directory = work_root(row) / "uploads"
+    saved = []
+    for file in files:
+        path = directory / (str(uuid4()) + ".jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_text(file["content"])
+        path.chmod(0o600)
+        saved.append(str(path))
+    queued = await enqueue(owner, "upload_traces", {"files": saved, "automatic": True})
+    return {**binding, "job_id": str(queued["job_id"]), "files_received": len(files)}
+
+
+async def learn_uploaded_traces(row, paths):
+    from scripts.website_taste import evidence
+    from scripts.website_taste.corpus import public_events
+
+    assets, count, screenshots = [], 0, 0
+    for raw_path in paths:
+        path = Path(raw_path).resolve()
+        if path.is_symlink() or not path.is_relative_to(work_root(row)):
+            raise ValueError("Trace upload is outside this account's private storage")
+        session_id = hashlib.sha256(path.read_bytes()).hexdigest()
+        for event in public_events(path):
+            if event.get("kind") != "message" or event.get("role") != "user":
+                continue
+            count += 1
+            images = event.get("images", [])
+            for index, url in enumerate(images):
+                match = re.fullmatch(
+                    r"data:image/(?:png|jpeg|webp);base64,([A-Za-z0-9+/=\s]+)", url
+                )
+                if not match:
+                    continue
+                pixels = base64.b64decode(match[1])
+                if len(pixels) > 8_000_000:
+                    continue
+                assets.append(
+                    {
+                        "id": f"{session_id}:{event['line']}:{index + 1}",
+                        "session_id": session_id,
+                        "line": event["line"],
+                        "image_index": index + 1,
+                        "image_count": len(images),
+                        "sha256": hashlib.sha256(pixels).hexdigest(),
+                        "image_base64": match[1],
+                        "feedback": event["text"],
+                        "trace": evidence.history_trace(path, event["line"]),
+                    }
+                )
+                screenshots += 1
+                if len(assets) == 12:
+                    await propose_assets(
+                        await workspace(row["owner_user_id"]), {"assets": assets}, None
+                    )
+                    assets = []
+    if assets:
+        await propose_assets(await workspace(row["owner_user_id"]), {"assets": assets}, None)
+    return {
+        "files_received": len(paths),
+        "feedback_messages": count,
+        "outputs_found": screenshots,
+        "next": "Call finish to create the API. If no outputs were embedded, ask for the finished outputs needed to judge these traces.",
+    }
 
 
 async def collect_history(row, payload, job_id, *, discover_only):
@@ -895,13 +983,22 @@ def execute(row, operation):
                         "sha256": v["input"]["render"]["sha256"],
                     }
                     for v in rows
-                ]
+                ],
+                require_holdout=False,
             )
+            training = [r for r in partitions if r["partition"] == "train"]
+            labels = {r["id"]: r["supervision"]["label"] for r in rows}
+            if len(training) < 4 or {labels[r["id"]] for r in training} != {"liked", "disliked"}:
+                partitions = [{**r, "partition": "train"} for r in partitions]
             for value, assigned in zip(rows, partitions):
                 value["supervision"].update(
                     partition=assigned["partition"], group=assigned["group"]
                 )
-            dataset["heldout_status"] = "untouched_source_feedback_test"
+            dataset["heldout_status"] = (
+                "untouched_source_feedback_test"
+                if any(r["supervision"]["partition"] == "test" for r in rows)
+                else "not_available"
+            )
         elif row["revision"] != row["fitted_revision"] and grader(row):
             dataset["heldout_status"] = "previously_inspected_test"
         experiment_dir = directory / "generation"
@@ -932,6 +1029,7 @@ def execute(row, operation):
             original.get("model")
             or {"id": "Qwen/Qwen3-8B", "revision": "b968826d9c46dd6066d109eabc6255188de91218"},
             label_policy="source_grounded",
+            require_holdout=False,
         )
         dataset.update(
             examples=rows, label_policy="source_grounded", source_experiment=frozen["sha256"]
@@ -1350,21 +1448,12 @@ async def wizard_state(owner, model_id):
         return None
     result = await detail(owner)
     result = {
-        k: result[k]
-        for k in (
-            "id",
-            "name",
-            "grader",
-            "reviewed",
-            "labels",
-            "blockers",
-            "examples",
-            "jobs",
-            "history",
-            "skill",
-            "trials",
-        )
+        k: result[k] for k in ("id", "name", "endpoint", "labels", "examples", "jobs", "history")
     }
+
+    result["jobs"] = [
+        j for j in result["jobs"] if j["operation"] not in ("skill", "gepa", "weights", "evaluate")
+    ]
     # The agent must not mistake a discarded extraction guess for an accepted
     # human label. The product API retains the original guess for inspection.
     result["examples"] = [
