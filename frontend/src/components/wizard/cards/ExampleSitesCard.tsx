@@ -8,19 +8,13 @@ import WebsiteEvalCard from "./WebsiteEvalCard";
 
 /** First step of a website eval: example sites the user likes and ones they don't. */
 export default function ExampleSitesCard() {
-  const [done, setDone] = useState<{ text: string; jobId: string | null } | null>(null);
-  if (done) {
-    return (
-      <>
-        <CardShell icon={Globe} title="Your example sites"><p role="status" className="m-0 text-[12.5px] text-muted-foreground">{done.text}</p></CardShell>
-        {/* Shows the build and opens the eval when its endpoint is ready. */}
-        {done.jobId && <WebsiteEvalCard section="progress" jobId={done.jobId} />}
-      </>
-    );
-  }
+  // undefined until uploaded; then the build job, if one started.
+  const [jobId, setJobId] = useState<string | null | undefined>(undefined);
+  // The chat already confirms what was added; only follow the build from here.
+  if (jobId !== undefined) return jobId ? <WebsiteEvalCard section="progress" jobId={jobId} /> : null;
   return (
     <CardShell icon={Globe} title="Show it example sites" subtitle="Upload pages, then mark each one good or bad">
-      <ExampleSites onDone={(text, jobId) => setDone({ text, jobId })} />
+      <ExampleSites onDone={(_text, job) => setJobId(job)} />
     </CardShell>
   );
 }
