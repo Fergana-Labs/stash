@@ -19,7 +19,7 @@ export default function ExampleSitesCard() {
     );
   }
   return (
-    <CardShell icon={Globe} title="Show it example sites" subtitle="A folder of pages you like (good/) and ones you don’t (bad/)">
+    <CardShell icon={Globe} title="Show it example sites" subtitle="Upload pages, then mark each one good or bad">
       <ExampleSites onDone={(text, jobId) => setDone({ text, jobId })} />
     </CardShell>
   );
