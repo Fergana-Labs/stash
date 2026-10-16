@@ -16,12 +16,14 @@ from uuid import UUID
 from stashai.plugin.codex_transcript import read_transcript
 
 MAX_RESULT = 10_000
+MAX_ASSET_RESULT = 6_000_000
 
 
 def validate_request(operation: str, args: dict) -> dict:
     allowed = {
         "search": {"query", "agent", "offset", "limit", "event_offset"},
         "read": {"id", "offset", "limit"},
+        "assets": {"id", "offset", "limit"},
     }
     if operation not in allowed or set(args) - allowed[operation]:
         raise ValueError("Unsupported history request")
@@ -218,8 +220,110 @@ class CodexHistory:
         item = self._inventory.get(args["id"])
         if not item or not self._safe(item["path"]):
             raise ValueError("Local session not found")
+        if operation == "assets":
+            return self.assets(item, args["offset"], min(args["limit"], 2))
         source, events = self._open(item)
         return pack_page(source, events, args["offset"], args["limit"])
+
+    def assets(self, item, offset, limit):
+        """Embedded pixels only. No filesystem paths or arbitrary local files."""
+        import base64
+        import hashlib
+
+        assets, tail, count, first = [], [], 0, None
+        next_offset, has_more = offset, False
+        image_cursor = 0
+        with item["path"].open("rb") as stream:
+
+            def bounded_lines():
+                while raw := stream.readline(8_000_001):
+                    if len(raw) > 8_000_000:
+                        while not raw.endswith(b"\n"):
+                            raw = stream.readline(8_000_001)
+                            if not raw:
+                                break
+                        yield b""
+                    else:
+                        yield raw
+
+            for line_index, raw in enumerate(bounded_lines()):
+                if len(raw) > 8_000_000:
+                    continue
+                try:
+                    row = json.loads(raw)
+                except (ValueError, UnicodeError):
+                    continue
+                payload = row.get("payload") or {}
+                if not isinstance(payload, dict):
+                    continue
+                content = payload.get("content") or []
+                images = (
+                    [
+                        b.get("image_url", "")
+                        for b in content
+                        if isinstance(b, dict) and b.get("type") == "input_image"
+                    ]
+                    if isinstance(content, list)
+                    else []
+                )
+                if payload.get("role") == "user" and row.get("type") == "response_item":
+                    for index, uri in enumerate(images):
+                        current = image_cursor
+                        image_cursor += 1
+                        if current < offset:
+                            continue
+                        next_offset = image_cursor
+                        if not isinstance(uri, str) or not uri.startswith(
+                            ("data:image/png;base64,", "data:image/jpeg;base64,")
+                        ):
+                            continue
+                        try:
+                            pixels = base64.b64decode(uri.split(",", 1)[1], validate=True)
+                        except ValueError:
+                            continue
+                        if len(pixels) > 2_000_000:
+                            continue
+                        trace = ([first] if first and first not in tail else []) + tail
+                        asset = {
+                            "id": f"{item['id']}:{line_index}:{index + 1}",
+                            "session_id": item["id"],
+                            "line": line_index,
+                            "image_index": index + 1,
+                            "image_count": len(images),
+                            "feedback": _text(content),
+                            "sha256": hashlib.sha256(pixels).hexdigest(),
+                            "image_base64": base64.b64encode(pixels).decode(),
+                            "trace": {
+                                "steps": trace,
+                                "coverage": {
+                                    "complete": not item["partial_history"] and count == len(trace),
+                                    "selected_steps": len(trace),
+                                    "public_steps_before_target": count,
+                                    "target_feedback_excluded": True,
+                                    "future_steps_excluded": True,
+                                },
+                            },
+                        }
+                        if (
+                            len(assets) >= limit
+                            or len(json.dumps({"assets": [*assets, asset]}))
+                            > MAX_ASSET_RESULT - 1000
+                        ):
+                            return {"assets": assets, "next_offset": current, "has_more": True}
+                        assets.append(asset)
+                for event in _events(item["path"], raw):
+                    normalized = {
+                        "id": str(count),
+                        "role": event["role"],
+                        "text": event["content"][:2400],
+                        "clipped": len(event["content"]) > 2400,
+                    }
+                    count += 1
+                    if first is None and event["role"] == "user":
+                        first = normalized
+                    tail.append(normalized)
+                    tail = tail[-8:]
+        return {"assets": assets, "next_offset": next_offset, "has_more": has_more}
 
     def _open(self, item):
         source = {k: v for k, v in item.items() if k not in ("path", "mtime")}

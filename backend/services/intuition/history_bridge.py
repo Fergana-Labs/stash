@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 import redis.asyncio as redis
 
-from stashai.local_history import MAX_RESULT, validate_request
+from stashai.local_history import MAX_ASSET_RESULT, MAX_RESULT, validate_request
 
 from ...config import settings
 
@@ -60,12 +60,13 @@ async def poll(owner: UUID, device_id: UUID) -> dict:
 
 async def complete(owner: UUID, device_id: UUID, request_id: UUID, result: dict) -> None:
     encoded = json.dumps(result)
-    if len(encoded) > MAX_RESULT:
-        raise ValueError("Local history response is too large")
     async with _redis() as client:
         pending = await client.get(_key(owner, f"pending:{request_id}"))
         if not pending or json.loads(pending)["device_id"] != str(device_id):
             raise LookupError("History request not found or expired")
+        limit = MAX_ASSET_RESULT if json.loads(pending)["operation"] == "assets" else MAX_RESULT
+        if len(encoded) > limit:
+            raise ValueError("Local history response is too large")
         # First delivery wins; stale/duplicate responses cannot replace it.
         await client.set(_key(owner, f"result:{request_id}"), encoded, ex=TTL, nx=True)
 

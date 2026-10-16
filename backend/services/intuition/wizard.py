@@ -41,6 +41,7 @@ MAX_RESULT_CHARS = 12000
 MAX_HISTORY_MESSAGES = 80
 
 CARD_KINDS = (
+    "website_eval",
     "choices",
     "uploader",
     "labeler",
@@ -90,6 +91,26 @@ many there are and next to zero-shot Jev. Fewer than ~20 held out is an early es
 is the best a judge can do. When people disagree, fix the label definitions, not the judge.
 10. This wizard is one-time setup. After the first trained version is saved, the user's own agent \
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
+
+## Website and UI preference evals
+When the user wants a website/UI to match their taste or to learn from past corrections,
+call website_eval operation prepare. This is a capability of this eval wizard, not a separate
+product, page, tab or search form. Search/read history yourself with the existing tools.
+Use short queries, page through results when needed, and choose relevant sessions; never
+ask the user to type queries or manually choose technical source IDs. If recovered examples
+already exist, open website_eval preferences immediately rather than re-collecting them.
+Use website_eval learn on selected real source IDs to gather screenshots and propose source-
+grounded preferences. Show inline cards for preferences, grader reports, connection details,
+experiments and results only when relevant. Read status/wait after background operations;
+when the completion event arrives, continue the setup yourself instead of asking the user to
+navigate. Missing source/render evidence and partial coverage must remain explicit.
+The personal grader is a frozen small vision-language model plus a linear probe. The agent
+collects evidence and audits; it must not replace the grader with its own verdict. Use
+website_eval build for this model, NOT the generic train/criteria/promote path. Validation
+failures are real blockers. GEPA and generator weight refinement are independent experiments;
+neither consumes the other's result. Compare identical briefs and show exact skills/diffs.
+Respect confirmed labels and the existing cloud budget. Never claim a job has finished merely
+because it was queued, and never invent successful designs or method rankings.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -261,6 +282,48 @@ BRIEF_SCHEMA = {
 }
 
 TOOLS = [
+    _tool(
+        "website_eval",
+        "Build a website-design preference eval in THIS wizard: learn from history, review rendered evidence, build the frozen-model probe, connect an agent, and run independent GEPA/weight experiments. Never send the user to a separate website-taste app.",
+        {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "prepare",
+                    "learn",
+                    "status",
+                    "preferences",
+                    "build",
+                    "skill",
+                    "gepa",
+                    "weights",
+                    "evaluate",
+                    "connect",
+                    "results",
+                    "experiments",
+                    "publish",
+                    "wait",
+                ],
+            },
+            "name": {"type": "string", "maxLength": 160},
+            "selections": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string", "enum": ["local", "session", "trace"]},
+                        "id": {"type": "string"},
+                        "match_offset": {"type": "integer", "minimum": 0},
+                    },
+                    "required": ["kind", "id"],
+                },
+            },
+            "job_id": {"type": "string"},
+            "example_ids": {"type": "array", "maxItems": 6, "items": {"type": "string"}},
+        },
+        ["operation"],
+    ),
     _tool(
         "search_history",
         "Search the user's recorded Stash sessions/traces and connected local Codex history. No import required. Works before creating a model. Empty query browses recent sessions.",
@@ -520,22 +583,32 @@ def _session(row) -> dict:
 
 
 async def create_session(owner_id: UUID, model_id: UUID | None = None) -> dict:
+    mapped = None
     if model_id is not None:
         model = await service._model(owner_id, model_id)
-        if model["active_version_id"]:
+        from .. import taste
+
+        mapped = await taste.mapped_model(owner_id, model_id)
+        if model["active_version_id"] or (mapped and mapped["config"].get("published")):
             raise service.Conflict("Setup is complete. Edit this eval through MCP.")
     row = await get_pool().fetchrow(
         "INSERT INTO intuition_wizard_sessions (owner_user_id, model_id) VALUES ($1, $2) RETURNING *",
         owner_id,
         model_id,
     )
+    if mapped:
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
+            mapped["id"],
+            {"wizard_session_id": str(row["id"])},
+        )
     return await get_session(owner_id, row["id"])
 
 
 async def list_sessions(owner_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         """SELECT s.id, s.model_id, s.title, s.created_at, s.updated_at, m.name AS model_name,
-                  CASE WHEN m.active_version_id IS NULL THEN 'draft' ELSE 'saved' END AS status,
+                  CASE WHEN m.active_version_id IS NOT NULL OR EXISTS(SELECT 1 FROM taste_workspaces t WHERE t.owner_user_id=s.owner_user_id AND t.config->>'model_id'=s.model_id::text AND t.config->>'published'='true') THEN 'saved' ELSE 'draft' END AS status,
                   s.draft_input
              FROM intuition_wizard_sessions s
              LEFT JOIN intuition_models m ON m.id = s.model_id
@@ -548,7 +621,7 @@ async def list_sessions(owner_id: UUID) -> list[dict]:
 async def get_session(owner_id: UUID, session_id: UUID) -> dict:
     row = await get_pool().fetchrow(
         """SELECT s.*, m.name AS model_name,
-                  CASE WHEN m.active_version_id IS NULL THEN 'draft' ELSE 'saved' END AS status
+                  CASE WHEN m.active_version_id IS NOT NULL OR EXISTS(SELECT 1 FROM taste_workspaces t WHERE t.owner_user_id=s.owner_user_id AND t.config->>'model_id'=s.model_id::text AND t.config->>'published'='true') THEN 'saved' ELSE 'draft' END AS status
              FROM intuition_wizard_sessions s LEFT JOIN intuition_models m ON m.id = s.model_id
             WHERE s.id = $1 AND s.owner_user_id = $2""",
         session_id,
@@ -604,6 +677,23 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
             "note": "No model yet: save_brief holds what you learn and it is saved with the model.",
             "judge": providers.status(),
             "embeddings": probes.embeddings.is_configured(),
+        }
+    from .. import taste
+
+    website = await taste.wizard_state(owner_id, model_id)
+    if website:
+        return {
+            "model": {
+                "id": model_id,
+                "name": website["name"],
+                "output_type": "choice",
+                "labels": [{"id": "liked"}, {"id": "disliked"}],
+                "live_version": website["grader"]["version"]
+                if website["grader"]["released"]
+                else None,
+            },
+            "website_eval": website,
+            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. History discovery is your job; do not ask the user to search or import.",
         }
     detail = await service.get_detail(owner_id, UUID(model_id))
     version = detail["draft"] or detail["active"]
@@ -695,6 +785,8 @@ async def run_tool(
     owner_id: UUID, session: dict, name: str, args: dict, progress
 ) -> tuple[dict, dict | None]:
     """Execute one tool. Returns (result for Claude, card to render or None)."""
+    if name == "website_eval":
+        return await website_tool(owner_id, session, args, progress)
     if name == "search_history":
         return await history.search(owner_id, **args), None
     if name == "read_history":
@@ -897,6 +989,7 @@ def _blocks(content) -> list[dict]:
 
 
 ACTIVITY = {
+    "website_eval": "Working on your eval",
     "search_history": "Searching your history",
     "read_history": "Reading a past session",
     "add_history_examples": "Adding history examples for review",
@@ -1015,7 +1108,7 @@ async def stream_turn(
                     if card:
                         parts.append({"type": "card", **card})
                         yield {"type": "card", **card}
-                    if use.name == "create_model":
+                    if use.name in ("create_model", "website_eval") and session["model_id"]:
                         yield {
                             "type": "model",
                             "model_id": session["model_id"],
@@ -1057,7 +1150,10 @@ async def stream_turn(
                         "is_error": is_error,
                     }
                 )
-                if use.name == "promote" and not is_error:
+                if (
+                    use.name == "promote"
+                    or (use.name == "website_eval" and use.input.get("operation") == "publish")
+                ) and not is_error:
                     # Publishing the first usable version ends the one-time setup.
                     for pending_use in uses[len(results) :]:
                         results.append(
@@ -1110,3 +1206,75 @@ def _repair_dangling(messages: list[dict]) -> None:
                 ],
             }
         )
+
+
+async def website_tool(owner, session, args, progress):
+    from .. import taste
+
+    op = args["operation"]
+    if op == "prepare":
+        binding = await taste.bind_wizard(owner, session, name=args.get("name", "Website design"))
+        state = await taste.wizard_state(owner, binding["model_id"])
+        return {
+            "eval_id": binding["model_id"],
+            "existing_examples": len(state["examples"]),
+            "reviewed": state["reviewed"],
+            "history": state["history"],
+            "next": "Review existing preferences"
+            if state["examples"]
+            else "Search history yourself, read relevant sessions, then learn from them.",
+        }, _card("website_eval", section="preferences") if state["examples"] else None
+    row = await taste.workspace(owner)
+    if not session.get("model_id") or row["config"].get("model_id") != session["model_id"]:
+        raise service.Conflict("Prepare this website eval first.")
+    if op == "publish":
+        blockers = taste.blockers(row)
+        if blockers:
+            raise service.Conflict(" ".join(blockers))
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
+            row["id"],
+            {"published": True},
+        )
+        return {"published": True, "eval_id": session["model_id"]}, None
+    if op in ("preferences", "connect", "results", "experiments"):
+        return {"opened": op}, _card("website_eval", section=op, exampleIds=args.get("example_ids"))
+    if op in ("status", "wait"):
+        state = await taste.detail(owner)
+        job = next((j for j in state["jobs"] if str(j["id"]) == args.get("job_id")), None)
+        if op == "wait" and job and job["status"] in ("queued", "running"):
+            return {
+                "job": job,
+                "next": "The inline progress card will send a completion event; continue after that event.",
+            }, _card("website_eval", section="progress", jobId=str(job["id"]))
+        return {
+            "grader": state["grader"],
+            "reviewed": state["reviewed"],
+            "examples": len(state["examples"]),
+            "blockers": state["blockers"],
+            "jobs": state["jobs"][:3],
+            "trials": [
+                {k: t[k] for k in ("id", "task", "methodLabel", "status", "score")}
+                for t in state["trials"]
+            ],
+        }, _card("website_eval", section="grader")
+    if op == "learn":
+        selections = args.get("selections") or []
+        if not selections:
+            raise ValueError("Search history and select real source IDs first.")
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
+            row["id"],
+            {"sources": selections[:10]},
+        )
+        operation = "collect_all"
+    else:
+        operation = op
+    queued = await taste.enqueue(owner, operation, {})
+    identity = str(queued["job_id"])
+    progress("website_eval", "Background work queued; progress stays in this conversation")
+    return {
+        "job_id": identity,
+        "status": "queued",
+        "next": "The inline card will notify you when the job finishes. Do not launch duplicates.",
+    }, _card("website_eval", section="progress", jobId=identity)

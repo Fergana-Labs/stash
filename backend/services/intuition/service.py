@@ -993,6 +993,19 @@ async def predict(
     run: str | None = None,
     step: int | None = None,
 ) -> dict:
+    from .. import taste
+
+    if await taste.mapped_model(owner_id, model_id):
+        if version_id:
+            raise Conflict(
+                "This eval uses a versioned activation probe; call its checkpoint API with the current probe version."
+            )
+        from ...routers.taste import Prediction
+
+        request = Prediction.model_validate(item)
+        return await taste.predict(
+            owner_id, request.model_dump(mode="json", exclude={"ref"}), ref=ref
+        )
     model = await _model(owner_id, model_id)
     version = await _serving_version(model, which, version_id)
     run_link = await _run_link(owner_id, run, step) if log else None

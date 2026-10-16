@@ -75,7 +75,7 @@ def feature_path(output, identity):
     return output / "activations" / (digest(REPRESENTATION + identity) + ".json")
 
 
-def extract_features(output, packets, remote=None):
+def extract_features(output, packets, remote=None, *, budget_output=None):
     cached, missing = {}, {}
     for row in packets:
         # Cached activations still require the same canonical packet and pixels.
@@ -91,7 +91,7 @@ def extract_features(output, packets, remote=None):
         if len(missing) > 32:
             raise ValueError("Pilot permits at most 32 uncached packets per cloud call")
         payloads = [evidence.model_payload(row) for row in missing.values()]
-        reserve(output, "extract")
+        reserve(budget_output or output, "extract")
         if remote is None:
             import modal
 
@@ -128,7 +128,7 @@ def extract_features(output, packets, remote=None):
     return [cached[row["id"]] for row in packets]
 
 
-def fit_probe(output, remote=None):
+def fit_probe(output, remote=None, *, budget_output=None):
     dataset = dataset_at(output)
     file = output / "activation-probe.json"
     if file.exists():
@@ -146,7 +146,7 @@ def fit_probe(output, remote=None):
                 "partition": value["supervision"]["partition"],
             }
         )
-    reserve(output, "fit")
+    reserve(budget_output or output, "fit")
     if remote is None:
         import modal
 
@@ -196,8 +196,9 @@ def load_probe(output):
 
 
 class ProbeScorer:
-    def __init__(self, output, *, exploratory=False, remote=None):
+    def __init__(self, output, *, exploratory=False, remote=None, budget_output=None):
         self.output, self.remote = output, remote
+        self.budget_output = budget_output
         self.probe = load_probe(output)
         audit = read_json(output / "probe-audit.json")
         if (
@@ -220,7 +221,9 @@ class ProbeScorer:
         }
 
     def score_packet(self, value):
-        feature = extract_features(self.output, [value], remote=self.remote)[0]
+        feature = extract_features(
+            self.output, [value], remote=self.remote, budget_output=self.budget_output
+        )[0]
         return {
             **activation_head.predict(self.probe["head"], feature["activation"]),
             "reward": self.identity,

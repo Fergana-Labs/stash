@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {tasteGet,type TasteWorkspace} from "@/lib/taste-api";
 import { imGet, type ModelDetail } from "@/lib/intuition-api";
 import { wzReport, type TrainingReport } from "@/lib/wizard-api";
 import { pct, userCriteria } from "./wizard-ui";
@@ -16,14 +17,17 @@ function Step({ done, label, detail }: { done: boolean; label: string; detail?: 
 
 /** The model as it stands, beside the chat: a checklist the wizard is filling in. */
 export default function ModelPanel({ modelId, version }: { modelId: string | null; version: number }) {
+  const [website,setWebsite]=useState<TasteWorkspace|null>(null);
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
   useEffect(() => {
     if (!modelId) return;
+    void tasteGet().then(setWebsite).catch(()=>{});
     imGet(modelId).then(setDetail).catch(() => {});
     wzReport(modelId).then((r) => setReport(r.report)).catch(() => {});
   }, [modelId, version]);
 
+  if(website?.model_id===modelId && modelId) return <aside aria-label="Model" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border bg-surface/30 px-4 py-4 lg:block"><h2 className="m-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Your eval</h2><p className="mt-2 text-[13px] font-semibold">{website.name}</p><p className="text-xs text-muted-foreground">Learned from your corrections and rendered work.</p><ul className="m-0 mt-4 list-none space-y-2.5 p-0"><Step done label="Goal and labels"/><Step done={website.reviewed>0} label="Preferences" detail={`${website.reviewed}/${website.examples.length} reviewed`}/><Step done={!!website.grader.version} label="Grader" detail={website.grader.version?`Frozen model + linear probe · ${website.grader.version.slice(0,8)}`:"Not built yet"}/><Step done={website.grader.released} label="Validation" detail={website.grader.released?"Ready to use":"Needs attention"}/><Step done={website.trials.some(t=>t.method==='gepa'&&t.status==='scored')} label="GEPA experiment"/><Step done={website.trials.some(t=>t.method==='posttrained'&&t.status==='scored')} label="Independent weight experiment"/></ul></aside>;
   const v = detail?.draft ?? detail?.active;
   const criteria = v ? userCriteria(v.rubric) : [];
   const counts = detail?.counts;

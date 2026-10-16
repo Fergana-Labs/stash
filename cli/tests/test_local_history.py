@@ -171,3 +171,52 @@ def test_search_continuation_does_not_skip_the_rest_of_a_long_session(tmp_path, 
 def test_requests_cannot_choose_paths_commands_or_unbounded_reads(operation, args):
     with pytest.raises(ValueError):
         validate_request(operation, args)
+
+
+def test_visual_assets_are_paged_without_losing_images_or_leaking_target_feedback(tmp_path):
+    import base64
+
+    pixels = base64.b64encode(b"\x89PNG\r\n\x1a\nsmall").decode()
+    sid, path = transcript(
+        tmp_path,
+        extra=[
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "Target criticism: remove all of the cards"},
+                        *[
+                            {"type": "input_image", "image_url": "data:image/png;base64," + pixels}
+                            for _ in range(3)
+                        ],
+                    ],
+                },
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "FUTURE_RESPONSE"}],
+                },
+            },
+        ],
+    )
+    history = CodexHistory(tmp_path)
+    first = history.run("assets", {"id": sid, "limit": 2})
+    assert len(first["assets"]) == 2 and first["has_more"]
+    second = history.run("assets", {"id": sid, "offset": first["next_offset"], "limit": 2})
+    assert len(second["assets"]) == 1 and not second["has_more"]
+    assert {a["id"] for a in first["assets"]}.isdisjoint(a["id"] for a in second["assets"])
+    for asset in [*first["assets"], *second["assets"]]:
+        assert "Target criticism" in asset["feedback"]
+        assert "Target criticism" not in json.dumps(asset["trace"])
+        assert "FUTURE_RESPONSE" not in json.dumps(asset["trace"])
+        assert "PRIVATE" not in json.dumps(asset["trace"])
+    assert "image_base64" in first["assets"][0]
+    with pytest.raises(ValueError):
+        history.run("assets", {"id": "/etc/passwd"})
+    with pytest.raises(ValueError):
+        history.run("assets", {"id": sid, "path": str(path)})

@@ -1,6 +1,6 @@
-import JudgeWorkspace from "@/components/judge/JudgeWorkspace";
+import EvalDestination from "@/components/judge/EvalDestination";
 
 export default async function EvalPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <JudgeWorkspace key={id} id={id} />;
+  return <EvalDestination key={id} id={id} />;
 }

@@ -276,6 +276,10 @@ async def set_criteria(ctx: Context, intuition_id: str, questions: list[dict]) -
 async def train(ctx: Context, intuition_id: str) -> dict:
     """Train on the confirmed labels and report held-out results. Takes up to a minute."""
     user = await _user(ctx)
+    from ..services import taste
+
+    if await taste.mapped_model(user["id"], _id(intuition_id)):
+        return await taste.enqueue(user["id"], "build", {})
     report = await fusion.train(user["id"], _id(intuition_id))
     return {
         "held_out": {k: report["holdout"][k] for k in ("n", "accuracy", "accuracy_interval")},
@@ -292,6 +296,21 @@ async def train(ctx: Context, intuition_id: str) -> dict:
 async def ship(ctx: Context, intuition_id: str, force: bool = False) -> dict:
     """Make the trained draft the live version (refuses if the gate fails unless force)."""
     user = await _user(ctx)
+    from ..services import taste
+
+    mapped = await taste.mapped_model(user["id"], _id(intuition_id))
+    if mapped:
+        reasons = taste.blockers(mapped)
+        if reasons:
+            raise service.Conflict(" ".join(reasons))
+        from ..database import get_pool
+
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
+            mapped["id"],
+            {"published": True},
+        )
+        return {"live_version": taste.grader(mapped)["version"]}
     detail = await service.promote(user["id"], _id(intuition_id), force=force)
     return {"live_version": detail["active"]["number"]}
 
@@ -374,3 +393,46 @@ async def give_feedback(
 
 
 app = mcp.streamable_http_app()
+
+
+@mcp.tool()
+async def get_taste_grader(ctx: Context) -> dict:
+    """Read your canonical website-taste grader, evidence counts, readiness and version."""
+    from ..services import taste
+
+    user = await _user(ctx)
+    result = await taste.detail(user["id"])
+    return {k: result[k] for k in ("id", "name", "grader", "reviewed", "blockers", "history")}
+
+
+@mcp.tool()
+async def check_website_taste(
+    ctx: Context,
+    brief: str,
+    trace: list[dict],
+    screenshot_base64: str,
+    html: str = "",
+    trace_complete: bool = False,
+    ref: str | None = None,
+) -> dict:
+    """Check current work with your personal frozen-model taste probe.
+
+    Collect the public conversation/tool trace, current HTML, and an actual PNG/JPEG
+    screenshot from the working environment. Send pixels, never just a description.
+    Report missing/clipped materials with trace_complete=false. Do not send private
+    reasoning or credentials. Returns the exact grader version and a saved receipt.
+    This exploratory readout is not a calibrated probability of approval.
+    """
+    from ..services import taste
+    from .taste import Prediction
+
+    user = await _user(ctx)
+    req = Prediction(
+        brief=brief,
+        trace=trace,
+        screenshot_base64=screenshot_base64,
+        html=html,
+        trace_complete=trace_complete,
+        ref=ref,
+    )
+    return await taste.predict(user["id"], req.model_dump(mode="json", exclude={"ref"}), ref=ref)

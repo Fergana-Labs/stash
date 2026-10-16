@@ -64,12 +64,38 @@ def html_only(text: str) -> str:
 
 
 def render(html: Path, png: Path):
-    subprocess.run(
-        ["node", str(ROOT / "scripts/render_website_demo.cjs"), str(html), str(png)],
-        check=True,
-        timeout=45,
-        capture_output=True,
-    )
+    script = ROOT / "scripts/render_website_demo.cjs"
+    if script.is_file():
+        subprocess.run(
+            ["node", str(script), str(html), str(png)], check=True, timeout=45, capture_output=True
+        )
+        return
+    # Production Python image has Playwright but no frontend/Node installation.
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(
+                viewport={"width": 1440, "height": 960},
+                device_scale_factor=1,
+                java_script_enabled=False,
+            )
+            page.route("**/*", lambda route: route.abort())
+            policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:\">"
+            page.set_content(
+                re.sub(
+                    r"<head[^>]*>",
+                    lambda m: m.group(0) + policy,
+                    html.read_text(),
+                    count=1,
+                    flags=re.I,
+                ),
+                timeout=30000,
+            )
+            page.screenshot(path=str(png), type="png", animations="disabled")
+        finally:
+            browser.close()
 
 
 class Runner:
