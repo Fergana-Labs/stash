@@ -231,6 +231,32 @@ def test_actual_gepa_library_optimizes_instructions_on_dev_not_test(tmp_path):
     assert not set(seen) & {t["brief"] for t in protocol.tasks() if t["partition"] == "test"}
 
 
+def test_weight_evaluation_does_not_require_or_consume_gepa(tmp_path, monkeypatch):
+    from scripts.website_taste import experiment
+
+    monkeypatch.setattr(
+        experiment,
+        "load",
+        lambda output: {"sha256": "frozen", "tasks": [{"id": "test", "partition": "test"}]},
+    )
+    monkeypatch.setattr(experiment, "save_blind_gallery", lambda *args: None)
+    (tmp_path / "SKILL.md").write_text("Original baseline")
+    seen = []
+
+    class Fake:
+        def run(self, task, instruction, arm, **kwargs):
+            seen.append((instruction, arm, kwargs["adapter"]))
+            return {"id": arm}
+
+    report = experiment.evaluate(tmp_path, Fake(), adapter="weights-only")
+    assert report["arms"] == ["base", "skill", "posttrained"]
+    assert seen[-1] == ("Original baseline", "posttrained", "weights-only")
+    (tmp_path / "GEPA-SKILL.md").write_text("Optimized instructions")
+    report = experiment.evaluate(tmp_path, Fake(), adapter="weights-only")
+    assert "gepa" in report["arms"]
+    assert seen[-1] == ("Original baseline", "posttrained", "weights-only")
+
+
 def test_automatic_labels_require_explicit_exploratory_policy(tmp_path):
     rows = [
         {

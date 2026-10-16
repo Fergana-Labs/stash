@@ -95,7 +95,7 @@ and actual feedback. GEPA starts from this same baseline, not a deliberately
 weak seed. The current classifier method is rubric/verdict features plus a
 calibrated head; this does not claim to implement an unconfirmed newer NSP method.
 
-The existing classifier release gate must pass. A separate pilot gate requires
+The existing classifier release gate and the personal-taste development checks must pass: at least four development examples, at least two per label, at least 75% agreement, and at least 50% recall for each label. A general release gate can otherwise pass without enough development observations. A separate pilot gate requires
 at least six untouched, human-labeled classifier-test examples and at least 75%
 agreement before GPU optimization can run. This is a small pilot threshold, not
 a claim that the classifier is generally accurate. A failed test does not
@@ -155,7 +155,7 @@ generation-call ledger. Reward changes cannot reuse the same GEPA run directory.
 
 The baseline and GEPA arms keep Qwen weights fixed. The post-trained arm uses
 the same ordinary skill as the skill-only arm to isolate the weight change.
-Evaluation without an adapter explicitly reports only three arms.
+GEPA and weight refinement are independent experiments, not pipeline stages. Weight refinement can run and be evaluated without any GEPA result. With an adapter, its inference uses the original baseline skill, never the GEPA skill. Evaluation includes only the arms whose artifacts exist.
 
 ## Judge the outcome
 
@@ -168,17 +168,55 @@ python -m scripts.website_taste.gallery --output /private/tmp/website-taste-auto
 Open `http://localhost:3458`. The design journal reads the live output folder,
 refreshes automatically, and shows previews while they are being scored. It
 includes chronological and score sorting, brief/method filters, keyboard image
-navigation, and a two-design comparison. The worker PID is optional; without it,
+navigation, exact skills and diffs, and a two-design comparison. It defaults to the research brief so the prompt stays fixed across attempts. Incomplete attempts remain visible. The independent GEPA and weight-refinement branches appear side by side. The worker PID is optional; without it,
 the site watches outputs without claiming the underlying compute is active.
 
-The server binds to loopback only and serves a summary API plus known PNG
-screenshots. It does not expose raw history, model instructions, credentials,
-source HTML, or arbitrary files. Completed designs that used unchanged seed
+The server binds to loopback only. Its allowlisted endpoints serve experiment summaries, known PNG screenshots, exact per-trial instructions and baseline diffs, and saved agent-judge inspection reports. Those reports include the evaluated trace/source and the specific training preference quotes supplied to the judge. It does not expose the raw history corpus, credentials, or arbitrary files. Generated HTML is displayed as text and is never executed by the gallery. Completed designs that used unchanged seed
 instructions are marked as the skill baseline even during GEPA search. DPO
 sampling is distinct from post-trained inference. Invalid HTML is displayed as
 invalid output, not as an aesthetic dislike. Retries of one request share one
 saved-output card. The journal is a separate local site; it does not replace the
 Stash app on port 3457 or deploy a public copy of private experiment outputs.
+
+
+### Inspect the trace-and-render agent judge
+
+The original automatic pilot was stopped after a human rejected its 92.5-scored
+monitoring dashboard. Its development agreement was only 1/3; about 98% of
+reported feature influence came from the generic verdict. That classifier's old
+scores are preserved for diagnosis, not treated as valid rewards. The presence
+of `pilot-invalidated.json` blocks all further GPU commands from that directory.
+The cloud application and local pilot driver were stopped; no weight training ran.
+A new judge must be validated in a separate experiment before optimization resumes.
+
+The journal's **The judge** tab shows both the failed classifier and the new
+exploratory agent evaluator. For a saved complete trial:
+
+```sh
+python -m scripts.website_taste.trace_judge --output /private/tmp/website-taste-auto --trial SAVED_64_HEX_TRIAL_ID
+```
+
+This calls a bounded, single Claude agent via API; it loads no local model and
+launches no GPU job. The agent reads paged public trace messages and the actual
+HTML source, then views the rendered PNG directly. It cannot finish without
+inspecting every trace/source page and the screenshot. It cites training-only
+preference IDs and known trace steps; unknown citations are rejected. Candidate
+skills are run context, not authoritative preference evidence. Held-out labels,
+old reward scores, and post-hoc human ratings are excluded from the input packet.
+
+Every report saves exact inputs, model/prompt identity, input hashes, tool reads,
+usage, observable findings, task fulfillment, correction handling, and limitations.
+The verdict is `liked`, `disliked`, or `uncertain`, with **no calibrated percentage**.
+It is not wired into either optimizer. Source/pixel provenance and static-desktop
+limitations are explicit. Original Qwen samples are single-turn HTML generations;
+this adapter does not invent tool calls, edits, or correction turns for them.
+It does not yet connect arbitrary historical multi-step sessions to final artifacts.
+The existing backend trace investigator remains a separate implementation.
+
+This is a prototype check of the known failure, not an independent test set.
+Getting that example right does not establish judge quality. New human-rated
+outputs and both-label checks are still needed before comparing methods or
+using the replacement as an optimization reward.
 
 Method names and scores are visible in this journal. It is an unblinded progress
 view; viewing final candidates here can compromise a later blinded preference

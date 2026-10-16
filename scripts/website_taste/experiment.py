@@ -213,8 +213,9 @@ def evaluate(output: Path, runner: Runner, *, adapter: str | None = None):
     arms = {
         "base": "",
         "skill": (output / "SKILL.md").read_text(),
-        "gepa": (output / "GEPA-SKILL.md").read_text(),
     }
+    if (output / "GEPA-SKILL.md").exists():
+        arms["gepa"] = (output / "GEPA-SKILL.md").read_text()
     if adapter:
         # Keep the ordinary skill in both arms to isolate the weight change.
         arms["posttrained"] = arms["skill"]
@@ -230,6 +231,7 @@ def evaluate(output: Path, runner: Runner, *, adapter: str | None = None):
         "arms": list(arms),
         "receipts": receipts,
         "posttraining_included": bool(adapter),
+        "experiment_relationship": "Independent branches: GEPA changes instructions with frozen weights; DPO changes weights using the original baseline skill. Neither branch consumes the other's outputs.",
         "human_preferences": "pending",
         "claim": "Classifier rewards are optimization metrics; no ranking by human preference is established.",
     }

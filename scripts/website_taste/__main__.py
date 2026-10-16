@@ -157,9 +157,17 @@ def main():
             parser.error(
                 "This step launches cloud GPU work. Obtain approval for cloud-plan.json, then pass --allow-cloud."
             )
+        if (output / "pilot-invalidated.json").exists():
+            raise ValueError(
+                "This reward was invalidated by human feedback. Fit and validate a new classifier before launching more GPU work."
+            )
         scorer = json.loads((output / "classifier.json").read_text())
         if not scorer["pilot_gate_passed"] or scorer["experiment"] != frozen["sha256"]:
             raise ValueError("The frozen taste classifier has not passed the pilot gate")
+        if not classifier.development_gate(
+            json.loads((output / "classifier-training.json").read_text())
+        ):
+            raise ValueError("The frozen taste classifier failed the development checks")
         # Importing the cloud module may create private Modal volumes; do this only
         # after the explicit operator gate, never during plan/discover/review commands.
         from .cloud import RemoteGenerator

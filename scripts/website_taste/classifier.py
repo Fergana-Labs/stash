@@ -9,6 +9,25 @@ from pathlib import Path
 from .protocol import load
 
 
+def development_gate(report):
+    """An overall release gate may pass without enough held-out observations.
+
+    Personal-taste optimization additionally needs both classes to work; a
+    generic 'liked' prior must not pass merely because some designs are liked.
+    """
+    held = report.get("holdout", {})
+    classes = held.get("classification", {}).get("per_class", {})
+    return (
+        held.get("n", 0) >= 4
+        and (held.get("accuracy") or 0) >= 0.75
+        and all(
+            classes.get(label, {}).get("support", 0) >= 2
+            and (classes.get(label, {}).get("recall") or 0) >= 0.5
+            for label in ("liked", "disliked")
+        )
+    )
+
+
 def fit(output: Path, stash, reflect):
     experiment = load(output)
     automatic = experiment.get("label_policy") == "automatic_exploratory"
@@ -16,6 +35,8 @@ def fit(output: Path, stash, reflect):
         prior = json.loads((output / "classifier.json").read_text())
         if prior["experiment"] != experiment["sha256"]:
             raise ValueError("Classifier belongs to a different frozen experiment")
+        if not development_gate(json.loads((output / "classifier-training.json").read_text())):
+            raise ValueError("The saved classifier failed the personal-taste development checks")
         return prior
     if (output / "classifier-training.json").exists():
         raise ValueError(
@@ -54,6 +75,10 @@ task-specific operations. Focus on properties a vision model can observe in pixe
     (output / "classifier-training.json").write_text(json.dumps(report, indent=2))
     if not report["gate"]["passed"]:
         raise ValueError("Classifier failed the existing release gate")
+    if not development_gate(report):
+        raise ValueError(
+            "Taste classifier failed development checks: need >=4 examples, >=75% agreement, and support/recall for both labels. Do not promote or launch optimization."
+        )
     promoted = stash.call("POST", f"/intuitions/{mid}/draft/promote", json={})
     version_id = promoted["model"]["active_version_id"]
     rows = []

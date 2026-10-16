@@ -6,7 +6,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from scripts.website_taste.gallery import handler, snapshot
+from scripts.website_taste.gallery import agent_report, handler, instructions_for, snapshot
 
 
 def write(path, value):
@@ -101,3 +101,37 @@ def test_gallery_serves_only_screenshots_and_handles_symlink_escape(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_exact_skill_diff_and_judge_report_bind_to_saved_trial(tmp_path):
+    identity = "a" * 64
+    write(
+        tmp_path / "experiment.json",
+        {
+            "system": "Fixed instructions",
+            "tasks": [{"id": "brief", "brief": "Same website prompt"}],
+        },
+    )
+    (tmp_path / "SKILL.md").write_text("Starting skill")
+    (tmp_path / "trials.jsonl").write_text(
+        json.dumps({"id": identity, "instructions": "Revised skill", "task": "brief", "seed": 713})
+        + "\n"
+    )
+    result = instructions_for(tmp_path, identity)
+    assert result["brief"] == "Same website prompt" and result["seed"] == 713
+    assert result["skill"] == "Revised skill" and not result["isBaseline"]
+    assert "-Starting skill" in result["changes"] and "+Revised skill" in result["changes"]
+    assert instructions_for(tmp_path, "../auth") is None
+    before = snapshot(tmp_path)
+    write(tmp_path / "pilot-invalidated.json", {"reason": "Human rejection"})
+    (tmp_path / "human-feedback.jsonl").write_text(
+        json.dumps({"trial_id": identity, "label": "disliked"}) + '\n{"partial":'
+    )
+    write(
+        tmp_path / "agent-judge" / identity / "latest.json",
+        {"fingerprint": "new", "validated": False},
+    )
+    after = snapshot(tmp_path)
+    assert after["invalidated"] and after["trials"][0]["humanLabel"] == "disliked"
+    assert before["revision"] != after["revision"]
+    assert agent_report(tmp_path, identity)["validated"] is False
