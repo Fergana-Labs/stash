@@ -190,26 +190,36 @@ INSPECT = r"""([x, y, w, h]) => {
   return out;
 }"""
 
-MEASURE = """(texts) => texts.map((needle) => {
-  const all = [...document.querySelectorAll("body *")].filter((el) => {
-    if (!el.textContent || !el.textContent.includes(needle)) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
+MEASURE = r"""(texts) => {
+  const ctx = document.createElement("canvas").getContext("2d");
+  return texts.map((needle) => {
+    const all = [...document.querySelectorAll("body *")].filter((el) => {
+      if (!el.textContent || !el.textContent.includes(needle)) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+    // The innermost elements that contain the text.
+    const hits = all.filter((el) => ![...el.children].some((c) => all.includes(c))).slice(0, 3);
+    return { text: needle, matches: hits.map((el) => {
+      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      // Baseline from the glyphs themselves: the text's line box top plus the font's ascent.
+      // Works inside flex and grid layouts, where an inline probe would not sit on the baseline.
+      let baseline = null;
+      const node = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+      if (node) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const box = range.getClientRects()[0];
+        ctx.font = s.font;
+        const m = ctx.measureText(node.textContent.trim());
+        if (box) baseline = Math.round((box.top + m.fontBoundingBoxAscent) * 10) / 10;
+      }
+      return { tag: el.tagName.toLowerCase(), left: Math.round(r.left), top: Math.round(r.top),
+        width: Math.round(r.width), height: Math.round(r.height), baseline,
+        font_size: s.fontSize, line_height: s.lineHeight, font_weight: s.fontWeight };
+    }) };
   });
-  // The innermost elements that contain the text.
-  const hits = all.filter((el) => ![...el.children].some((c) => all.includes(c))).slice(0, 3);
-  return { text: needle, matches: hits.map((el) => {
-    const r = el.getBoundingClientRect(), s = getComputedStyle(el);
-    const probe = document.createElement("span");
-    probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
-    el.appendChild(probe);
-    const baseline = probe.getBoundingClientRect().top;
-    probe.remove();
-    return { tag: el.tagName.toLowerCase(), left: Math.round(r.left), top: Math.round(r.top),
-      width: Math.round(r.width), height: Math.round(r.height), baseline: Math.round(baseline * 10) / 10,
-      font_size: s.fontSize, line_height: s.lineHeight, font_weight: s.fontWeight };
-  }) };
-})"""
+}"""
 
 
 def _half(png: bytes) -> bytes:
