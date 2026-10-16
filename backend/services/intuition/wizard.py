@@ -98,7 +98,7 @@ call website_eval operation prepare. This is a capability of this eval wizard, n
 product, page, tab or search form. Search/read history yourself with the existing tools.
 Use short queries, page through results when needed, and choose relevant sessions; never
 ask the user to type queries or manually choose technical source IDs. If recovered examples
-already exist, open website_eval preferences immediately rather than re-collecting them.
+already exist, prepare reuses them and extracts any legacy feedback labels automatically.
 Use website_eval learn on selected real source IDs to gather screenshots and propose source-
 grounded preferences. Show inline cards for preferences, grader reports, connection details,
 experiments and results only when relevant. Read status/wait after background operations;
@@ -111,6 +111,28 @@ failures are real blockers. GEPA and generator weight refinement are independent
 neither consumes the other's result. Compare identical briefs and show exact skills/diffs.
 Respect confirmed labels and the existing cloud budget. Never claim a job has finished merely
 because it was queued, and never invent successful designs or method rankings.
+Clear approval, criticism, desired references, and aesthetic corrections in the user's own
+history ARE human supervision. They do NOT require another manual confirmation. Use the
+returned labels.usable/from_feedback counts, not reviewed, to assess readiness. Show a short
+summary of what was learned with supporting quotes; optional correction controls are not a
+mandatory labeling task. Exclude model_guesses and uncertain examples from fitting. Do not
+ask the user to label every example, confirm all suggestions, or approve the automatic labels.
+Look for more evidence yourself first, especially missing liked examples or source artifacts.
+If labels.build_gaps is empty, continue to build within the existing cloud budget. If evidence
+is insufficient or contradictory after a meaningful history search, explain the specific gap
+and ask at most two targeted questions, each tied to an actual output. Pending uncertain cases
+do not block using the clear examples. An aesthetic aspect correction is a weak negative for
+that aspect, not proof the whole design is bad. Silence and an agent's claimed fix are not likes.
+The generic manual-labeling script below applies to invented/model-inferred suggestions;
+it does not override observed, source-grounded human feedback. Grader quality, freshness of
+held-out checks, and human counterexamples remain independent validation requirements.
+Use the inline preferences card to show extracted labels; do not reconstruct a label table
+in prose. Only examples with usable=true count as labels. An uncertain example can retain
+a rejected extraction guess: that is NOT accepted feedback. Do not invent missing images:
+render_available says whether the screenshot exists; trace coverage describes context only.
+When history search is already authorized, never ask "want me to look?" or offer manual
+pasting instead. Search yourself when this turn calls for action. A status-only request can
+describe the specific evidence gap without ending in a permission question.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -291,6 +313,7 @@ TOOLS = [
                 "enum": [
                     "prepare",
                     "learn",
+                    "extract_labels",
                     "status",
                     "preferences",
                     "build",
@@ -1215,12 +1238,27 @@ async def website_tool(owner, session, args, progress):
     if op == "prepare":
         binding = await taste.bind_wizard(owner, session, name=args.get("name", "Website design"))
         state = await taste.wizard_state(owner, binding["model_id"])
+        row = await taste.workspace(owner)
+        if any(
+            e["supervision"].get("label_source") == "explicit_feedback_auto"
+            and not (e["supervision"].get("feedback_evidence") or {}).get("render_inspected")
+            and e["supervision"].get("autolabel_receipt")
+            for e in taste.data(row).get("examples", [])
+        ):
+            queued = await taste.enqueue(owner, "extract_labels", {})
+            return {
+                "eval_id": binding["model_id"],
+                "job_id": str(queued["job_id"]),
+                "next": "Extracting clear labels from existing human feedback; no manual relabeling or GPU training. Continue after completion.",
+            }, _card("website_eval", section="progress", jobId=str(queued["job_id"]))
         return {
             "eval_id": binding["model_id"],
             "existing_examples": len(state["examples"]),
             "reviewed": state["reviewed"],
+            "labels": state["labels"],
+            "feedback_examples": state["examples"],
             "history": state["history"],
-            "next": "Review existing preferences"
+            "next": "Use clear feedback automatically. Search for missing evidence if labels.build_gaps is nonempty; otherwise continue building. Ask only targeted questions when necessary."
             if state["examples"]
             else "Search history yourself, read relevant sessions, then learn from them.",
         }, _card("website_eval", section="preferences") if state["examples"] else None
@@ -1250,6 +1288,14 @@ async def website_tool(owner, session, args, progress):
         return {
             "grader": state["grader"],
             "reviewed": state["reviewed"],
+            "labels": state["labels"],
+            "accepted_feedback": [e for e in state["examples"] if e["usable"]],
+            "uncertain_feedback": [
+                {k: e[k] for k in ("id", "quote", "reason", "render_available")}
+                for e in state["examples"]
+                if e["needs_clarification"]
+            ],
+            "next": "Show accepted feedback in the preferences card, not a reconstructed prose table. Use only usable examples. Search for specific gaps without asking permission when continuing setup; a status-only request needs no permission question.",
             "examples": len(state["examples"]),
             "blockers": state["blockers"],
             "jobs": state["jobs"][:3],

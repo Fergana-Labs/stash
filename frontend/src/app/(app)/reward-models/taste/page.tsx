@@ -17,7 +17,7 @@ export default function Page() {
           stageWizardMessage(r.session_id, {
             id: Date.now(),
             kind: "event",
-            text: "Continue in this eval wizard using the existing recovered website examples. Show the relevant preference review inline. Do not collect new data or launch training or optimization in this resume step.",
+            text: "Continue in this eval wizard using the existing recovered website examples. Use clear feedback automatically and show a brief evidence summary inline. Do not collect new data or launch training or optimization in this resume step.",
           });
         }
         router.replace(`/reward-models/wizard/${r.session_id}`);

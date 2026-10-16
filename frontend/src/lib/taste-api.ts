@@ -5,8 +5,18 @@ export interface TasteExample {
   label: string;
   suggested_label: string;
   reviewed: boolean;
+  usable: boolean;
+  label_status:
+    | "from_feedback"
+    | "confirmed"
+    | "uncertain"
+    | "model_guess"
+    | "skipped";
+  needs_clarification: boolean;
+  reason: string;
   note: string;
   quote: string;
+  scope?: string;
   partition: string;
   source: string;
   reference: boolean;
@@ -48,6 +58,16 @@ export interface TasteWorkspace {
   revision: number;
   fitted_revision: number;
   reviewed: number;
+  labels: {
+    usable: number;
+    from_feedback: number;
+    needs_clarification: number;
+    model_guesses: number;
+    liked: number;
+    disliked: number;
+    build_gaps: string[];
+    partitions: Record<string, Record<string, number>>;
+  };
   examples: TasteExample[];
   blockers: string[];
   related_eval_ids: string[];

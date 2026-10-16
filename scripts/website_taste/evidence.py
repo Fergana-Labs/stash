@@ -133,6 +133,7 @@ def from_example(row, candidates):
             "group",
             "quote",
             "scope",
+            "feedback_evidence",
             "label_source",
             "human_reviewed",
             "autolabel_receipt",

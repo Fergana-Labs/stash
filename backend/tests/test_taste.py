@@ -262,8 +262,9 @@ async def test_history_job_survives_redelivery_and_serializes_real_source_dates(
     assert len((await taste.workspace(owner))["config"]["sources"]) == 1
 
 
-async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_without_resetting_budget(
-    client, pool, tmp_path, monkeypatch
+@pytest.mark.parametrize("automatic", [False, True])
+async def test_build_connects_grounded_evidence_without_manual_review_or_resetting_budget(
+    client, pool, tmp_path, monkeypatch, automatic
 ):
     from scripts.website_taste import probe_pipeline, protocol
     from scripts.website_taste.corpus import digest
@@ -272,9 +273,13 @@ async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_w
     row = await taste.workspace(owner, create=True)
     examples = []
     for partition in ("train", "dev", "test"):
-        for label in ("liked", "disliked"):
-            image = tmp_path / f"{partition}-{label}.png"
-            image.write_bytes(b"\x89PNG\r\n\x1a\n" + (partition + label).encode())
+        for index, label in enumerate(
+            ("liked", "disliked", "liked", "disliked")
+            if partition == "train"
+            else ("liked", "disliked")
+        ):
+            image = tmp_path / f"{partition}-{label}-{index}.png"
+            image.write_bytes(b"\x89PNG\r\n\x1a\n" + (partition + label + str(index)).encode())
             packet = evidence.packet(
                 "Build a website", {"steps": [], "coverage": {"complete": False}}, image
             )
@@ -282,11 +287,41 @@ async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_w
                 "partition": partition,
                 "group": partition,
                 "label": label,
-                "human_reviewed": True,
+                "human_reviewed": not automatic,
                 "quote": "Explicit choice",
                 "provenance": {"reference_image": False},
             }
+            if automatic:
+                packet["supervision"].update(
+                    label_source="explicit_feedback_auto",
+                    scope="overall",
+                    feedback_evidence={
+                        "schema": 1,
+                        "render_inspected": True,
+                        "image_role": "output",
+                        "explicit": True,
+                        "target": "single",
+                        "image_count": 1,
+                        "image_index": 1,
+                        "session_id": partition,
+                        "line": 2,
+                        "sha256": packet["input"]["render"]["sha256"],
+                        "feedback": "Explicit choice",
+                        "quote": "Explicit choice",
+                        "label": label,
+                        "scope": "overall",
+                    },
+                )
             examples.append(packet)
+    # Neither uncertainty nor a teacher's opinion holds up the clear examples.
+    import copy
+
+    for source in ("teacher_inferred", "explicit_feedback_auto"):
+        value = copy.deepcopy(examples[0])
+        value["id"] = source
+        value["supervision"].update(human_reviewed=False, label_source=source)
+        value["supervision"].pop("feedback_evidence", None)
+        examples.append(value)
     dataset = {
         "examples": examples,
         "heldout_status": "previously_inspected_test",
@@ -295,6 +330,20 @@ async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_w
     dataset["sha256"] = digest(json.dumps(dataset, sort_keys=True))
     taste.write(tmp_path / "evidence.json", dataset)
     row["config"] = {"probe": str(tmp_path), "budget": str(tmp_path)}
+    await pool.execute(
+        "UPDATE taste_workspaces SET config=$2 WHERE id=$1", row["id"], row["config"]
+    )
+    if automatic:
+        state = await taste.detail(owner)
+        assert state["labels"]["usable"] == 8 and state["reviewed"] == 0
+        assert state["labels"]["needs_clarification"] == 1
+        assert state["labels"]["model_guesses"] == 1
+        assert not state["labels"]["build_gaps"]
+        monkeypatch.setenv("TASTE_CLOUD_ENABLED", "1")
+        dispatch = []
+        monkeypatch.setattr(taste_tasks.run, "delay", lambda job: dispatch.append(job))
+        queued = await taste.enqueue(owner, "build", {})
+        assert dispatch == [str(queued["job_id"])]
     monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path / "work"))
     calls = []
     monkeypatch.setattr(taste, "refresh_saved_scores", lambda *args: None)
@@ -305,10 +354,10 @@ async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_w
 
     def fit(output, *, budget_output):
         assert budget_output == tmp_path
-        assert all(
-            e["supervision"]["human_reviewed"]
-            for e in taste.read(output / "evidence.json")["examples"]
-        )
+        fitted = taste.read(output / "evidence.json")["examples"]
+        assert len(fitted) == 8
+        assert all(e["supervision"]["human_reviewed"] is not automatic for e in fitted)
+        assert all("feedback_evidence" not in e["input"] for e in fitted)
         calls.append("remote-fit")
 
     monkeypatch.setattr(probe_pipeline, "extract_features", extract)
@@ -324,6 +373,8 @@ async def test_build_connects_reviewed_evidence_to_a_new_generation_experiment_w
     assert calls == ["remote-extract", "remote-fit"]
     assert result["budget"] == str(tmp_path)
     assert {e["partition"] for e in frozen["examples"]} == {"train", "dev", "test"}
+    assert frozen["label_policy"] == "source_grounded"
+    assert all(e["human_reviewed"] is not automatic for e in frozen["examples"])
 
 
 def test_rebuilt_probe_rechecks_human_counterexamples_without_promoting_agent_opinions(
@@ -424,3 +475,82 @@ async def test_website_preference_setup_is_part_of_existing_eval_wizard(
         await wizard.run_tool(
             owner, current, "website_eval", {"operation": "publish"}, lambda *args: None
         )
+
+
+@pytest.mark.parametrize("bad_field", ["id", "target", "quote"])
+async def test_feedback_extraction_repairs_source_ids_and_reuses_receipts(
+    tmp_path, monkeypatch, bad_field
+):
+    from types import SimpleNamespace
+
+    from scripts.website_taste.preferences import source_label
+
+    image = tmp_path / "image.png"
+    image.write_bytes(b"test-pixels")
+    import hashlib
+
+    pixel_hash = hashlib.sha256(image.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        "scripts.website_taste.autolabel.pixels",
+        lambda _: {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": "AA=="},
+        },
+    )
+    source = {
+        "id": "long-exact-session-id:3:1",
+        "session_id": "session",
+        "line": 3,
+        "sha256": pixel_hash,
+        "file": str(image),
+        "image_index": 1,
+        "image_count": 2,
+        "feedback": "This website looks terrible",
+    }
+    proposal = {
+        "id": "e1",
+        "label": "disliked",
+        "quote": source["feedback"],
+        "scope": "overall",
+        "image_role": "output",
+        "explicit": True,
+        "target": "explicit",
+        "reason": "Direct visual criticism",
+    }
+
+    def reply(value):
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(value))]
+        )
+
+    create = AsyncMock(
+        side_effect=[
+            reply(
+                {
+                    "proposals": [
+                        {
+                            **proposal,
+                            bad_field: {
+                                "id": "made-up",
+                                "target": "single",
+                                "quote": "Paraphrased criticism",
+                            }[bad_field],
+                        }
+                    ]
+                }
+            ),
+            reply({"proposals": [proposal]}),
+        ]
+    )
+    monkeypatch.setattr(
+        "anthropic.AsyncAnthropic",
+        lambda **kwargs: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    first = await taste.extract_feedback([source], tmp_path)
+    assert first[0]["id"] == source["id"]
+    assert source_label(
+        {**first[0], "label_source": "explicit_feedback_auto"}, pixel_sha=pixel_hash
+    )
+    assert create.await_count == 2
+    again = await taste.extract_feedback([source], tmp_path)
+    assert again == first and create.await_count == 2

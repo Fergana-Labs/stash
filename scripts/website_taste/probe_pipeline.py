@@ -167,8 +167,8 @@ def fit_probe(output, remote=None, *, budget_output=None):
         "heldout_status": dataset["heldout_status"],
         "agent_role": "Evidence curation and audit only. Agent verdicts are not probe inputs or features.",
         "limitations": [
-            "Automatic label interpretations have not been human-reviewed.",
-            "Existing teacher-test examples were already examined in an earlier pilot; this is not independent human validation.",
+            "Source-grounded labels preserve observed human feedback separately from optional fresh manual review; ambiguous interpretations and teacher guesses are not confirmed human labels.",
+            "Only untouched, separately grouped checks with human feedback qualify as independent validation; previously inspected or teacher-labeled checks do not.",
             "Positive reference images and negative generated interfaces may confound style with evidence provenance.",
             "History packets select bounded public spans before the target feedback; they do not claim complete long-session coverage.",
             "Historical screenshots mostly lack their contemporaneous source HTML; missing artifacts are explicit.",

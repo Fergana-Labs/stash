@@ -147,10 +147,19 @@ def split_examples(examples: list[dict]) -> list[dict]:
 def validate_dataset(
     examples: list[dict], task_list: list[dict], *, label_policy="human_reviewed"
 ) -> None:
-    if label_policy not in ("human_reviewed", "automatic_exploratory"):
+    from .preferences import usable_label
+
+    if label_policy not in ("human_reviewed", "automatic_exploratory", "source_grounded"):
         raise ValueError("Unknown label policy")
     groups, pixels, ids = {}, {}, set()
     for example in examples:
+        grounded = label_policy == "source_grounded" and usable_label(
+            example, pixel_sha=example.get("sha256")
+        )
+        if label_policy == "source_grounded" and not grounded:
+            raise ValueError(
+                "Need clear human feedback tied to the output; exclude guesses or ask for clarification"
+            )
         if label_policy == "human_reviewed" and (
             example.get("human_reviewed") is False
             or example.get("label_source") in ("explicit_feedback_auto", "teacher_inferred")
@@ -164,7 +173,7 @@ def validate_dataset(
             and bool(example.get("autolabel_receipt"))
         )
         if (label_policy == "automatic_exploratory" and not automatic) or (
-            example.get("needs_review", True) and not automatic
+            example.get("needs_review", True) and not automatic and not grounded
         ):
             raise ValueError("Review preference labels before fitting the classifier")
         if example["label"] not in ("liked", "disliked"):

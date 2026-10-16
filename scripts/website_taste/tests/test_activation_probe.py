@@ -107,7 +107,7 @@ def test_high_teacher_agreement_cannot_release_an_unreviewed_probe():
     gate = activation_head.release_gate(dataset, {"dev": scores, "test": scores})
     assert not gate["passed"]
     assert gate["checks"]["test_agreement"]
-    assert not gate["checks"]["human_reviewed_labels"]
+    assert not gate["checks"]["source_grounded_labels"]
     assert not gate["checks"]["fresh_human_holdout"]
 
 

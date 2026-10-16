@@ -112,52 +112,67 @@ export function ReviewCard({
             {example.reference ? "Reference you shared" : "Past website output"}
           </span>
           <span>
-            {example.reviewed ? "Reviewed" : "Suggested from your feedback"} ·{" "}
-            {example.partition}
+            {example.reviewed
+              ? "Confirmed by you"
+              : example.usable
+                ? "Learned from your feedback"
+                : example.label_status === "model_guess"
+                  ? "Model guess · excluded"
+                  : "Unclear · excluded"}{" "}
+            · {example.partition}
           </span>
         </div>
         <blockquote className="m-0 border-l-2 border-brand-500/40 pl-3 text-sm">
           {example.quote ||
-            "No explicit feedback quote. Judge the design yourself."}
+            "No clear human feedback is attached to this output."}
         </blockquote>
-        <label className="block text-xs text-muted-foreground">
-          What matters to you?
-          <textarea
-            className={cn(inputClass, "mt-1")}
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional: what should the agent learn?"
-          />
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {[
-            ["liked", "Keep this"],
-            ["disliked", "Change this"],
-            ["skip", "Skip"],
-          ].map(([label, title]) => (
-            <Button
-              key={label}
-              size="sm"
-              disabled={busy}
-              variant={
-                example.reviewed && example.label === label
-                  ? "default"
-                  : "outline"
-              }
-              onClick={() => void save(label)}
-            >
-              {title}
-              {example.reviewed && example.label === label && <Check />}
-            </Button>
-          ))}
-        </div>
-        {!example.reviewed && (
-          <p className="m-0 text-xs text-muted-foreground">
-            Suggestion: {example.suggested_label}. Your choice becomes the
-            label.
-          </p>
-        )}
+        <p className="m-0 text-xs text-muted-foreground">
+          {example.usable
+            ? `Label: ${example.label}${example.reference ? " · desired reference" : example.scope === "aspect" ? " · specific visual aspect" : ""}. No confirmation needed.`
+            : "This example is excluded unless clearer evidence or your answer supplies a label."}{" "}
+          {example.reason}
+        </p>
+        <details>
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            {example.usable
+              ? "Correct this interpretation (optional)"
+              : "Clarify this example"}
+          </summary>
+          <div className="mt-3 space-y-3">
+            <label className="block text-xs text-muted-foreground">
+              What matters to you?
+              <textarea
+                className={cn(inputClass, "mt-1")}
+                rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Optional: what should the agent learn?"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["liked", "Keep this"],
+                ["disliked", "Change this"],
+                ["skip", "Skip"],
+              ].map(([label, title]) => (
+                <Button
+                  key={label}
+                  size="sm"
+                  disabled={busy}
+                  variant={
+                    example.usable && example.label === label
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() => void save(label)}
+                >
+                  {title}
+                  {example.usable && example.label === label && <Check />}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </details>
       </div>
     </article>
   );

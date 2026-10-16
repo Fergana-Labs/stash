@@ -82,11 +82,18 @@ def metrics(head, rows):
 
 
 def release_gate(dataset, reports):
+    from .preferences import usable_label
+
     dev, test = reports["dev"], reports["test"]
-    human = all(e["supervision"].get("human_reviewed") is True for e in dataset["examples"])
+    grounded = bool(dataset["examples"]) and all(
+        usable_label(e["supervision"], pixel_sha=e.get("input", {}).get("render", {}).get("sha256"))
+        for e in dataset["examples"]
+    )
     checks = {
-        "human_reviewed_labels": human,
-        "fresh_human_holdout": dataset.get("heldout_status") == "untouched_human_test",
+        "source_grounded_labels": grounded,
+        "fresh_human_holdout": grounded
+        and dataset.get("heldout_status")
+        in ("untouched_human_test", "untouched_source_feedback_test"),
         "development_both_classes": all(
             c["n"] >= 2 and (c["recall"] or 0) >= 0.5 for c in dev["per_class"].values()
         ),

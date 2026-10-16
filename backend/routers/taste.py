@@ -32,7 +32,15 @@ class Source(Body):
 
 class Job(Body):
     operation: Literal[
-        "discover", "collect", "collect_all", "build", "skill", "gepa", "weights", "evaluate"
+        "discover",
+        "collect",
+        "collect_all",
+        "extract_labels",
+        "build",
+        "skill",
+        "gepa",
+        "weights",
+        "evaluate",
     ]
     query: str = Field(default="website", max_length=200)
     history_source: Literal["all", "recorded", "local"] = "all"

@@ -27,12 +27,24 @@ function state() {
     model_id: "eval",
     name: "Website design",
     reviewed: 0,
+    labels: {
+      usable: 1,
+      from_feedback: 1,
+      liked: 0,
+      disliked: 1,
+      needs_clarification: 0,
+      model_guesses: 0,
+      build_gaps: [],
+    },
     examples: [
       {
         id,
         label: "disliked",
         suggested_label: "disliked",
         reviewed: false,
+        usable: true,
+        label_status: "from_feedback",
+        needs_clarification: false,
         quote: "Please remove the cards",
         note: "",
         partition: "train",
@@ -57,18 +69,25 @@ beforeEach(() => {
     examples: [{ ...state().examples[0], reviewed: true, label: "liked" }],
   });
 });
-it("reviews pixels inline without a separate navigation or search form", async () => {
+it("uses explicit feedback without requiring manual labels, with optional corrections inline", async () => {
   render(<WebsiteEvalCard />);
   expect(await screen.findByText("Please remove the cards")).toBeVisible();
   expect(
     screen.queryByRole("textbox", { name: /search/i }),
   ).not.toBeInTheDocument();
   expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  expect(screen.getByText(/No confirmation needed/)).toBeVisible();
+  expect(api.review).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("Correct this interpretation (optional)"));
   fireEvent.click(screen.getByRole("button", { name: "Keep this" }));
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(id, "liked", ""));
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Continue with clear feedback" }),
+  );
   expect(api.send).toHaveBeenCalledWith(
-    expect.stringContaining("Continue using my saved labels"),
+    expect.stringContaining(
+      "Continue automatically with the 1 source-grounded labels",
+    ),
     "event",
   );
 });

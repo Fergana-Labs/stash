@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from uuid import UUID
 
+from scripts.website_taste.preferences import source_label, usable_label
+
 from ..database import get_pool
 from .intuition import history, history_bridge
 from .intuition.service import Conflict, NotFound
@@ -74,31 +76,108 @@ def effective_examples(row):
     for item in data(row).get("examples", []):
         supervision = item["supervision"]
         review = row["reviews"].get(item["id"], {})
+        label = review.get("label", supervision["label"])
+        observed = source_label(supervision, pixel_sha=item["input"]["render"]["sha256"])
+        reviewed = bool(review) or supervision.get("human_reviewed") is True
+        usable = label in ("liked", "disliked") and (reviewed or observed)
+        inferred = supervision.get("label_source") == "teacher_inferred"
         result.append(
             {
                 "id": item["id"],
-                "label": review.get("label", supervision["label"]),
+                "label": label,
                 "suggested_label": supervision["label"],
-                "reviewed": bool(review) or supervision.get("human_reviewed") is True,
+                "reviewed": reviewed,
+                "usable": usable,
+                "label_status": "skipped"
+                if label == "skip"
+                else "confirmed"
+                if reviewed
+                else "from_feedback"
+                if observed
+                else "model_guess"
+                if inferred
+                else "uncertain",
+                "needs_clarification": not usable
+                and not inferred
+                and label != "skip"
+                and supervision.get("scope") not in ("functional", "unrelated")
+                and (supervision.get("feedback_evidence") or {}).get("image_role")
+                not in ("comparison", "unrelated"),
+                "reason": (supervision.get("feedback_evidence") or {}).get("reason")
+                or supervision.get("abstention", ""),
                 "note": review.get("note", ""),
                 "quote": supervision.get("quote", ""),
+                "scope": supervision.get("scope", "overall"),
                 "partition": supervision["partition"],
                 "source": supervision.get("label_source", "history"),
                 "coverage": item["input"]["trace"]["coverage"],
+                "render_available": item["input"]["render"].get("available", False),
                 "reference": supervision.get("provenance", {}).get("reference_image", False),
             }
         )
     return result
 
 
+def label_summary(row):
+    examples = effective_examples(row)
+    usable = [e for e in examples if e["usable"]]
+    partitions = {e["id"]: e["partition"] for e in usable}
+    dataset = data(row)
+    if dataset.get("heldout_status") == "not_yet_reserved" and usable:
+        from scripts.website_taste.protocol import split_examples
+
+        partitions = {
+            e["id"]: e["partition"]
+            for e in split_examples(
+                [
+                    {
+                        "id": e["id"],
+                        "session_id": e["supervision"]["group"],
+                        "sha256": e["input"]["render"]["sha256"],
+                    }
+                    for e in dataset["examples"]
+                    if e["id"] in partitions
+                ]
+            )
+        }
+    counts = {
+        part: {
+            label: sum(e["label"] == label and partitions[e["id"]] == part for e in usable)
+            for label in ("liked", "disliked")
+        }
+        for part in ("train", "dev", "test")
+    }
+    return {
+        "usable": len(usable),
+        "from_feedback": sum(e["label_status"] == "from_feedback" for e in examples),
+        "needs_clarification": sum(e["needs_clarification"] for e in examples),
+        "model_guesses": sum(e["label_status"] == "model_guess" for e in examples),
+        "liked": sum(e["label"] == "liked" for e in usable),
+        "disliked": sum(e["label"] == "disliked" for e in usable),
+        "partitions": counts,
+        "build_gaps": (
+            ["Need at least four clear training examples."]
+            if sum(counts["train"].values()) < 4
+            else []
+        )
+        + [
+            f"Need clear {label} feedback in the separate {part} set."
+            for part, labels in counts.items()
+            for label, count in labels.items()
+            if not count
+        ],
+    }
+
+
 def blockers(row):
     model = grader(row)
     if not model:
-        return ["Build your grader after reviewing the evidence."]
+        return ["Build your grader from the clear feedback in your history."]
     checks = model.get("release_gate", {}).get("checks", {})
     descriptions = {
-        "human_reviewed_labels": "Confirm the suggested preference labels.",
-        "fresh_human_holdout": "Check the grader on fresh human-reviewed examples.",
+        "human_reviewed_labels": "The current grader includes unverified interpretations or model guesses. Rebuild using source-grounded feedback; no blanket manual labeling is required.",
+        "source_grounded_labels": "Find more clear feedback tied to its output; exclude uncertain interpretations and model guesses from fitting.",
+        "fresh_human_holdout": "Validate on fresh, separate examples with clear human feedback; search history before asking for more.",
         "development_both_classes": "The development check needs at least two examples per label and adequate recall.",
         "development_agreement": "The grader has not passed the development agreement check.",
         "test_both_classes": "The final check needs examples of both liked and disliked designs.",
@@ -180,6 +259,7 @@ async def detail(owner):
         "fitted_revision": row["fitted_revision"],
         "examples": examples,
         "reviewed": sum(e["reviewed"] for e in examples),
+        "labels": label_summary(row),
         "blockers": reasons,
         "grader": {
             "version": model.get("version"),
@@ -267,16 +347,29 @@ async def enqueue(owner, operation, payload):
         if reasons:
             raise Conflict(" ".join(reasons))
     if (
-        operation in ("build", "gepa", "weights", "evaluate", "skill", "collect", "collect_all")
+        operation
+        in (
+            "build",
+            "gepa",
+            "weights",
+            "evaluate",
+            "skill",
+            "collect",
+            "collect_all",
+            "extract_labels",
+        )
         and os.environ.get("TASTE_CLOUD_ENABLED") != "1"
     ):
         raise Conflict(
             "Cloud execution is disabled for this deployment. Existing results remain available."
         )
-    if operation == "build" and not any(
-        e["reviewed"] and e["label"] != "skip" for e in effective_examples(row)
-    ):
-        raise Conflict("Review at least one preference before building the grader.")
+    if operation == "build":
+        gaps = label_summary(row)["build_gaps"]
+        if gaps:
+            raise Conflict(
+                " ".join(gaps)
+                + " Search history for those gaps before asking the user; uncertain examples do not require a blanket review."
+            )
     try:
         job = await get_pool().fetchrow(
             "INSERT INTO taste_jobs(workspace_id,operation,input) VALUES($1,$2,$3) RETURNING id",
@@ -353,6 +446,12 @@ async def _run_job(job_id):
                     part = {"source_id": source["id"], "skipped": str(exc)[:300]}
                 result["sessions"] += 1
                 result["messages"].append(part)
+        elif op == "extract_labels":
+            await pool.execute(
+                "UPDATE taste_jobs SET progress='Reading your corrections and matching each one to its output',updated_at=now() WHERE id=$1",
+                job_id,
+            )
+            result = await extract_existing_labels(row)
         elif op in ("discover", "collect"):
             result = await collect_history(
                 row, job["input"], job_id, discover_only=op == "discover"
@@ -467,12 +566,7 @@ async def collect_history(row, payload, job_id, *, discover_only):
 
 
 async def propose_assets(row, assets, page):
-    from anthropic import AsyncAnthropic
-
     from scripts.website_taste import evidence
-    from scripts.website_taste.preferences import SYSTEM, validate_proposals
-
-    from ..config import settings
 
     directory = work_root(row) / "collected"
     dataset = copy.deepcopy(data(row))
@@ -497,31 +591,11 @@ async def propose_assets(row, assets, page):
             "next_asset_offset": assets.get("next_offset"),
             "has_more": assets.get("has_more"),
         }
-    reply = await AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY).messages.create(
-        model=settings.ANTHROPIC_FAST_MODEL,
-        max_tokens=2400,
-        system=SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": json.dumps(
-                    [
-                        {k: r[k] for k in ("id", "image_index", "image_count", "feedback")}
-                        for r in batch
-                    ]
-                ),
-            }
-        ],
-    )
-    if reply.stop_reason != "end_turn":
-        raise ValueError("Preference extraction was interrupted. Retry this page.")
-    text = "".join(c.text for c in reply.content if c.type == "text")
-    proposals = validate_proposals(
-        batch, json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()))
-    )
+    proposals = await extract_feedback(batch, directory / "extractions")
     initial_count = len(dataset["examples"])
     for proposal in proposals:
-        if proposal["label"] == "unknown":
+        # Purely functional/unrelated screenshots are not a preference labeling queue.
+        if proposal["scope"] in ("functional", "unrelated"):
             continue
         trace = proposal["trace"]
         packet = evidence.packet(
@@ -530,12 +604,19 @@ async def propose_assets(row, assets, page):
         packet["supervision"] = {
             "label": proposal["label"],
             "quote": proposal["quote"],
-            "preference": proposal["preference"],
+            "preference": proposal.get("preference", ""),
+            "scope": proposal["scope"],
+            "feedback_evidence": proposal["feedback_evidence"],
+            "abstention": proposal.get("abstention", ""),
             "human_reviewed": False,
             "label_source": "explicit_feedback_auto",
             "partition": "train",
             "group": proposal["session_id"],
-            "provenance": {"reference_image": proposal["scope"] == "reference"},
+            "provenance": {
+                **proposal["provenance"],
+                "reference_image": proposal["scope"] == "reference"
+                or proposal.get("image_role") == "reference",
+            },
         }
         if packet["id"] not in {e["id"] for e in dataset["examples"]}:
             dataset["examples"].append(packet)
@@ -547,9 +628,203 @@ async def propose_assets(row, assets, page):
             {"dataset": str(directory)},
         )
     return {
+        "automatically_labeled": sum(not p["needs_review"] for p in proposals),
         "proposed": sum(p["label"] != "unknown" for p in proposals),
         "next_asset_offset": assets.get("next_offset"),
         "has_more": assets.get("has_more"),
+    }
+
+
+async def extract_feedback(batch, cache):
+    # One selected output per request prevents a comparison message from being
+    # expanded into contradictory labels for the same screenshot. Only API
+    # requests run concurrently; no models are loaded on this machine.
+    semaphore = asyncio.Semaphore(3)
+
+    async def one(row):
+        async with semaphore:
+            return await _extract_one_feedback(row, cache)
+
+    return [p for result in await asyncio.gather(*(one(row) for row in batch)) for p in result]
+
+
+async def _extract_one_feedback(row, cache):
+    from anthropic import AsyncAnthropic
+
+    from scripts.website_taste.autolabel import pixels
+    from scripts.website_taste.preferences import SYSTEM, VISUAL_SYSTEM, validate_proposals
+
+    from ..config import settings
+
+    # Short, server-mapped aliases prevent opaque transcript IDs from being
+    # mistranscribed. Validate every returned alias before associating evidence.
+    image = Path(row["file"]) if row.get("file") else None
+    visible = bool(image and image.is_file())
+    if visible and hashlib.sha256(image.read_bytes()).hexdigest() != row["sha256"]:
+        raise ValueError("Screenshot changed before feedback extraction")
+    row = {**row, "render_inspected": visible}
+    batch = [row]
+    system = (
+        SYSTEM
+        + VISUAL_SYSTEM
+        + "\nThere is exactly ONE selected output in this request. Return exactly ONE proposal with id=e1, for its image_index ONLY. Other images in the same human message provide context; do not return labels for those images. If you cannot identify the selected image from the words alone, use unknown."
+    )
+    aliases = {"e1": row}
+    payload = [
+        {"id": alias, **{k: r[k] for k in ("image_index", "image_count", "feedback")}}
+        for alias, r in aliases.items()
+    ]
+    content = [{"type": "text", "text": json.dumps(payload)}]
+    if visible:
+        content.append(pixels(image))
+    messages = [{"role": "user", "content": content}]
+    cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for attempt in range(2):
+        identity = hashlib.sha256(
+            (system + settings.ANTHROPIC_MODEL + json.dumps(messages, sort_keys=True)).encode()
+        ).hexdigest()
+        file = cache / (identity + ".json")
+        saved = read(file)
+        if saved:
+            text = saved["text"]
+        else:
+            reply = await AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY).messages.create(
+                model=settings.ANTHROPIC_MODEL,
+                max_tokens=1500,
+                system=system,
+                messages=messages,
+            )
+            if reply.stop_reason != "end_turn":
+                raise ValueError("Preference extraction was interrupted. Retry this page.")
+            text = "".join(c.text for c in reply.content if c.type == "text")
+            write(file, {"model": settings.ANTHROPIC_MODEL, "text": text, "sources": payload})
+        try:
+            response = json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()))
+            for proposal in response.get("proposals", []):
+                if proposal.get("id") not in aliases:
+                    raise ValueError("Extraction returned unknown evidence")
+                proposal["id"] = aliases[proposal["id"]]["id"]
+                if proposal.get("label") in ("liked", "disliked") and (
+                    (row["image_count"] > 1 and proposal.get("target") == "single")
+                    or not proposal.get("quote")
+                    or proposal["quote"] not in row["feedback"]
+                ):
+                    raise ValueError(
+                        "Use an exact source quote and the original message's image count for attribution"
+                    )
+            checked = validate_proposals(batch, response)
+            for p in checked:
+                p["feedback_evidence"]["extraction_model"] = settings.ANTHROPIC_MODEL
+                p["feedback_evidence"]["extraction_receipt"] = str(file)
+            return checked
+        except (ValueError, TypeError, KeyError):
+            if attempt:
+                # One unreliable output must not block the rest of the clear
+                # history or silently become an approved label.
+                return validate_proposals(
+                    batch,
+                    {
+                        "proposals": [
+                            {
+                                "id": row["id"],
+                                "label": "unknown",
+                                "scope": "overall",
+                                "quote": "",
+                                "explicit": False,
+                                "target": "ambiguous",
+                                "preference": "",
+                                "reason": "Could not reliably associate this feedback with its output.",
+                            }
+                        ]
+                    },
+                )
+            messages.extend(
+                [
+                    {"role": "assistant", "content": text},
+                    {
+                        "role": "user",
+                        "content": "Invalid output. Return ONE e1 proposal. Quote an EXACT substring, preserving typos and punctuation. target refers to the ORIGINAL message: if image_count>1, single is INVALID; use explicit if the words and attached pixels identify this selected image, or ambiguous/unknown otherwise. Use unknown when uncertain.",
+                    },
+                ]
+            )
+    raise AssertionError("Unreachable")
+
+
+async def extract_existing_labels(row):
+    """Upgrade legacy extraction receipts, without changing frozen weights or spending GPU budget."""
+    from scripts.website_taste.evidence import clean
+
+    dataset = copy.deepcopy(data(row))
+    batch = []
+    for item in dataset["examples"]:
+        s = item["supervision"]
+        previous = s.get("feedback_evidence") or {}
+        if s.get("label_source") != "explicit_feedback_auto" or (
+            previous.get("render_inspected")
+            and (
+                source_label(s, pixel_sha=item["input"]["render"]["sha256"])
+                or previous.get("explicit") is False
+                or previous.get("image_role") in ("comparison", "unrelated")
+            )
+        ):
+            continue
+        # These are operator-registered local bundle receipts, never HTTP paths.
+        receipt = read(Path(s.get("autolabel_receipt") or "/nonexistent-taste-receipt"))
+        try:
+            context = json.loads(receipt.get("prompt", "").rsplit("\n", 1)[-1])
+        except (ValueError, TypeError):
+            continue
+        p = s.get("provenance", {})
+        if not p.get("session_id") or not context.get("feedback"):
+            continue
+        batch.append(
+            {
+                "id": item["id"],
+                "file": item.get("image_file"),
+                **p,
+                "sha256": item["input"]["render"]["sha256"],
+                "feedback": clean(context["feedback"]),
+                "image_count": context.get("image_count"),
+            }
+        )
+    proposals = []
+    for start in range(0, len(batch), 12):
+        proposals.extend(
+            await extract_feedback(batch[start : start + 12], work_root(row) / "label-extractions")
+        )
+    by_id = {p["id"]: p for p in proposals}
+    for item in dataset["examples"]:
+        if item["id"] not in by_id:
+            continue
+        p = by_id[item["id"]]
+        item["supervision"].update(
+            {
+                k: p.get(k)
+                for k in (
+                    "label",
+                    "scope",
+                    "quote",
+                    "preference",
+                    "feedback_evidence",
+                    "abstention",
+                )
+            }
+        )
+        item["supervision"].setdefault("provenance", {})["reference_image"] = (
+            p["scope"] == "reference" or p.get("image_role") == "reference"
+        )
+    if proposals:
+        dataset.pop("sha256", None)
+        directory = work_root(row) / ("labels-" + str(row["revision"] + 1))
+        write(directory / "evidence.json", dataset)
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb,revision=revision+1 WHERE id=$1",
+            row["id"],
+            {"dataset": str(directory)},
+        )
+    return {
+        "labels": label_summary(await workspace(row["owner_user_id"])),
+        "message": "Clear feedback is usable automatically. Uncertain cases and model guesses remain excluded. Frozen grader unchanged.",
     }
 
 
@@ -565,6 +840,9 @@ def execute(row, operation):
 
     probe, root = location(row, "probe"), location(row, "experiment")
     if operation == "build":
+        gaps = label_summary(row)["build_gaps"]
+        if gaps:
+            raise ValueError(" ".join(gaps))
         dataset = copy.deepcopy(data(row))
         rows = []
         for value in dataset["examples"]:
@@ -578,9 +856,12 @@ def execute(row, operation):
                     label_source="human_review",
                     review_note=review["note"],
                 )
-            rows.append(value)
-        if not rows or not all(r["supervision"].get("human_reviewed") for r in rows):
-            raise ValueError("Review or skip every proposed preference before building.")
+            if usable_label(value["supervision"], pixel_sha=value["input"]["render"]["sha256"]):
+                rows.append(value)
+        if not rows:
+            raise ValueError(
+                "No clear feedback tied to an output. Search history for more evidence or ask a targeted question."
+            )
         if {
             r["supervision"]["label"] for r in rows if r["supervision"]["partition"] == "train"
         } != {"liked", "disliked"}:
@@ -602,7 +883,7 @@ def execute(row, operation):
                 value["supervision"].update(
                     partition=assigned["partition"], group=assigned["group"]
                 )
-            dataset["heldout_status"] = "untouched_human_test"
+            dataset["heldout_status"] = "untouched_source_feedback_test"
         elif row["revision"] != row["fitted_revision"] and grader(row):
             dataset["heldout_status"] = "previously_inspected_test"
         experiment_dir = directory / "generation"
@@ -618,8 +899,10 @@ def execute(row, operation):
                 "quote": v["supervision"].get("quote", ""),
                 "preference": v["supervision"].get("preference", ""),
                 "review_note": v["supervision"].get("review_note", ""),
-                "human_reviewed": True,
-                "label_source": "human_review",
+                "human_reviewed": v["supervision"].get("human_reviewed", False),
+                "label_source": v["supervision"].get("label_source", "human_review"),
+                "scope": v["supervision"].get("scope"),
+                "feedback_evidence": v["supervision"].get("feedback_evidence"),
                 "needs_review": False,
             }
             for v in rows
@@ -630,9 +913,10 @@ def execute(row, operation):
             original.get("tasks") or protocol.tasks(),
             original.get("model")
             or {"id": "Qwen/Qwen3-8B", "revision": "b968826d9c46dd6066d109eabc6255188de91218"},
+            label_policy="source_grounded",
         )
         dataset.update(
-            examples=rows, label_policy="human_reviewed", source_experiment=frozen["sha256"]
+            examples=rows, label_policy="source_grounded", source_experiment=frozen["sha256"]
         )
         dataset.pop("sha256", None)
         dataset["sha256"] = hashlib.sha256(json.dumps(dataset, sort_keys=True).encode()).hexdigest()
@@ -661,10 +945,8 @@ def execute(row, operation):
     if not root:
         raise ValueError("Build a grader and reserve experiment tasks before running experiments.")
     if operation == "skill":
-        if row["revision"] != row["fitted_revision"] or any(
-            not e["reviewed"] for e in effective_examples(row)
-        ):
-            raise ValueError("Build from confirmed preferences before writing the skill.")
+        if row["revision"] != row["fitted_revision"]:
+            raise ValueError("Build from source-grounded preferences before writing the skill.")
         experiment.make_skill(root, experiment.Reflector(root, "claude-sonnet-4-6"))
         return {"skill": "ready"}
     scorer = ProbeScorer(probe, budget_output=location(row, "budget"))
@@ -971,13 +1253,14 @@ async def wizard_state(owner, model_id):
     if row["config"].get("model_id") != str(model_id):
         return None
     result = await detail(owner)
-    return {
+    result = {
         k: result[k]
         for k in (
             "id",
             "name",
             "grader",
             "reviewed",
+            "labels",
             "blockers",
             "examples",
             "jobs",
@@ -986,6 +1269,13 @@ async def wizard_state(owner, model_id):
             "trials",
         )
     }
+    # The agent must not mistake a discarded extraction guess for an accepted
+    # human label. The product API retains the original guess for inspection.
+    result["examples"] = [
+        e if e["usable"] else {**e, "label": "unknown", "suggested_label": "unknown"}
+        for e in result["examples"]
+    ]
+    return result
 
 
 async def mapped_model(owner, model_id):

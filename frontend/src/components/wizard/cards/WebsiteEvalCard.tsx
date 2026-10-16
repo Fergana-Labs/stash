@@ -67,7 +67,7 @@ export default function WebsiteEvalCard({
         setIds(
           exampleIds ??
             next.examples
-              .filter((e) => !e.reviewed)
+              .filter((e) => e.usable)
               .slice(0, 3)
               .map((e) => e.id),
         );
@@ -109,7 +109,7 @@ export default function WebsiteEvalCard({
     }
   }
   const job = data?.jobs.find((j) => j.id === jobId);
-  const pending = data?.examples.filter((e) => !e.reviewed) ?? [];
+  const pending = data?.examples.filter((e) => e.needs_clarification) ?? [];
   const examples = data?.examples.filter((e) => ids?.includes(e.id)) ?? [];
   const tasks = [
     ...new Map(data?.trials.map((t) => [t.task, t.brief]) ?? []).entries(),
@@ -146,10 +146,18 @@ export default function WebsiteEvalCard({
           {section === "preferences" && (
             <>
               <p className="text-xs text-muted-foreground">
-                {data.reviewed}/{data.examples.length} reviewed. These
-                suggestions come from your actual feedback; you choose what they
-                mean.
+                {data.labels.usable} labels learned from your feedback:{" "}
+                {data.labels.liked} liked, {data.labels.disliked} disliked.
+                Clear corrections are used automatically; you can inspect or
+                correct them here.
               </p>
+              {(pending.length > 0 || data.labels.model_guesses > 0) && (
+                <p className="text-xs text-muted-foreground">
+                  {pending.length} uncertain cases and{" "}
+                  {data.labels.model_guesses} model guesses are excluded. They
+                  do not hold up using the clear examples.
+                </p>
+              )}
               {examples.map((example) => (
                 <ReviewCard
                   key={example.id}
@@ -168,8 +176,8 @@ export default function WebsiteEvalCard({
               {examples.length === 0 && (
                 <p className="text-sm">
                   {pending.length
-                    ? "I can bring the next examples into this conversation."
-                    : "There are no unreviewed suggestions here."}
+                    ? "I’ll look for clearer evidence and ask only about what’s missing."
+                    : "No clear feedback has been linked to an output yet. I’ll search your history first."}
                 </p>
               )}
               <Button
@@ -177,12 +185,12 @@ export default function WebsiteEvalCard({
                 disabled={busy}
                 onClick={() =>
                   send(
-                    `I have reviewed these website examples. Continue using my saved labels; ${pending.length} suggestions remain.`,
+                    `Continue automatically with the ${data.labels.usable} source-grounded labels. Exclude uncertain cases and model guesses. Search history for any specific evidence gaps before asking me targeted questions. Respect the existing compute budget.`,
                     "event",
                   )
                 }
               >
-                Continue
+                Continue with clear feedback
               </Button>
             </>
           )}
@@ -273,7 +281,7 @@ export default function WebsiteEvalCard({
                 {[
                   [
                     "Write the skill",
-                    "Create the baseline skill from my reviewed training preferences.",
+                    "Create the baseline skill from my source-grounded training preferences.",
                   ],
                   [
                     "Run GEPA",
