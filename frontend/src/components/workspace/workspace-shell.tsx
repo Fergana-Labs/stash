@@ -7,6 +7,7 @@ import DeveloperGate from "@/components/developer/DeveloperGate";
 import { useScope } from "@/lib/scope-store";
 import { useWorkspace } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
 import Rail from "./rail";
@@ -177,6 +178,10 @@ export default function WorkspaceShell({
     );
   }
 
+  const contentFrameClass = user.reward_models_enabled && user.product_checkpoint !== "floodgate-2026-10-05"
+    ? "rounded-tl-[4px] border-l border-t border-border bg-base"
+    : "rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]";
+
   return (
     // Chrome surface — the content panel floats on top of it.
     <div className="flex h-screen flex-col overflow-hidden bg-sidebar">
@@ -191,7 +196,7 @@ export default function WorkspaceShell({
             <div className="flex h-full">
               {showExplorer && <ExplorerPanel section={section} />}
               {/* Floating content panel: clean white paper, subtly elevated. */}
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
+              <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", contentFrameClass)}>
                 {renderRouteContent ? (
                   <main className="flex h-full min-h-0 flex-col overflow-hidden">{children}</main>
                 ) : (
@@ -200,7 +205,7 @@ export default function WorkspaceShell({
               </div>
             </div>
           ) : (
-            <main className="h-full overflow-y-auto rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">{children}</main>
+            <main className={cn("h-full overflow-y-auto", contentFrameClass)}>{children}</main>
           )}
         </div>
       </div>

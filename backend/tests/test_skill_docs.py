@@ -9,7 +9,7 @@ from backend.services import skill_service
 from .conftest import unique_name
 
 SKILL_DOCS = Path(__file__).resolve().parents[2] / "docs" / "skills"
-SKILL_NAMES = ("brief", "cleanup", "overview", "resurface", "slides")
+SKILL_NAMES = ("brief", "cleanup", "intuitions", "overview", "resurface", "slides")
 
 
 def test_every_documented_skill_has_routing_metadata():

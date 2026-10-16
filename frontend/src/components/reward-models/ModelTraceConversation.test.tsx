@@ -40,9 +40,9 @@ it("keeps scroll anchors unique when the same trace is open under multiple model
   expect(new Set(ids).size).toBe(ids.length);
 });
 
-it("numbers feedback consistently with the displayed rows after pairing tool results", () => {
+it("numbers feedback by the stored step index + 1, the one scheme every view uses", () => {
   const followup = { ...trace.steps[0], id: "answer", index: 4, role: "assistant" as const, content: "Answer" };
   render(<ModelTraceConversation trace={{ ...trace, steps: [...trace.steps, followup] }} scores={[]} modelName="Parts accuracy" feedback={(step, number) => step.id === "answer" ? <span>Feedback for step {number}</span> : null} />);
   fireEvent.click(screen.getByRole("button", { name: "Expand assistant message" }));
-  expect(screen.getByText("Feedback for step 4")).toBeVisible();
+  expect(screen.getByText("Feedback for step 5")).toBeVisible();
 });

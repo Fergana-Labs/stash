@@ -31,7 +31,13 @@ def _roots(path: Path) -> list[Path]:
     return [path.parent]
 
 
-def _expand(path: Path, raw: bytes, roots: list[Path], seen: set[Path]) -> bytes:
+def _expand(
+    path: Path,
+    raw: bytes,
+    roots: list[Path],
+    seen: set[Path],
+    allowed_roots: list[Path] | None = None,
+) -> bytes:
     meta = _meta(raw)
     base = meta.get("payload", {}).get("history_base")
     if not base:
@@ -57,6 +63,10 @@ def _expand(path: Path, raw: bytes, roots: list[Path], seen: set[Path]) -> bytes
     for root in roots:
         for candidate in root.rglob(f"*{thread_id}*.jsonl"):
             candidate = candidate.resolve()
+            if allowed_roots is not None and not any(
+                candidate.is_relative_to(root) for root in allowed_roots
+            ):
+                continue
             if candidate in seen or candidate.stat().st_size < offset:
                 continue
             with candidate.open("rb") as file:
@@ -83,7 +93,7 @@ def _expand(path: Path, raw: bytes, roots: list[Path], seen: set[Path]) -> bytes
             f"Missing Codex history_base for {thread_id}; full transcript not uploaded"
         )
 
-    parent = _expand(matched[0], matched[1], roots, seen)
+    parent = _expand(matched[0], matched[1], roots, seen, allowed_roots)
     # Keep the current session's identity, including when it forked another
     # thread. Earlier session_meta headers are replaced, not sent as new turns.
     meta["payload"].pop("history_base", None)
@@ -95,9 +105,13 @@ def _expand(path: Path, raw: bytes, roots: list[Path], seen: set[Path]) -> bytes
     return header + earlier + current
 
 
-def read_transcript(path: Path) -> bytes:
+def read_transcript(path: Path, *, allowed_roots: list[Path] | None = None) -> bytes:
     """Read ordinary transcripts unchanged; inline any Codex history_base."""
     path = path.resolve()
+    if allowed_roots is not None:
+        allowed_roots = [root.resolve() for root in allowed_roots]
+        if not any(path.is_relative_to(root) for root in allowed_roots):
+            raise ValueError("Transcript is outside the allowed history roots")
     if path.stat().st_size > MAX_BYTES:
         raise ValueError("Transcript exceeds 128 MB")
-    return _expand(path, path.read_bytes(), _roots(path), set())
+    return _expand(path, path.read_bytes(), _roots(path), set(), allowed_roots)

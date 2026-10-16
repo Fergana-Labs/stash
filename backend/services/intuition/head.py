@@ -7,8 +7,18 @@ the decision" and users can edit weights by hand.
 choice:     softmax(W f + b) over the output labels (multinomial logistic).
 preference: score = w . f + b. Pairs use P(a beats b) = sigmoid(score_a - score_b)
             (Bradley-Terry; b cancels); good/bad items use sigmoid(score).
+multi:      one independent sigmoid(w_k . f + b_k) per issue; the decision is the set
+            of issues above 0.5, and its probability is the product over issues.
 
 All fitting is L-BFGS on a few dozen parameters, so it runs inline in the API.
+
+Verdict prior. When the rubric has a `verdict` question (Jev asked the task
+itself, zero-shot), L2 shrinks the weights toward "trust the verdict" instead
+of toward zero. With no data the head reproduces zero-shot Jev; every labeled
+example moves it away only as far as the evidence supports. This is what makes
+a handful of labels enough to start. Under the prior the bias is shrunk too:
+otherwise two labels that cover two of three classes would push the missing
+class's bias to minus infinity, and the head could never predict it.
 """
 
 from __future__ import annotations
@@ -19,15 +29,26 @@ import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 from scipy.special import expit, log_softmax
 
+from .spec import issues_label, issues_of
+
 GATE_LOG_LOSS_SLACK = 0.02
 MIN_GATE_EXAMPLES = 4
+VERDICT_ID = "verdict"
+
+
+def verdict_id(issue: str) -> str:
+    """Multi-issue models ask Jev one zero-shot yes/no question per issue."""
+    return f"{VERDICT_ID}-{issue}"
+
+
+PRIOR_STRENGTH = 4.0
 
 
 def answers_to_features(rubric: list[dict], answers: dict[str, dict]) -> list[float]:
     values = []
     for q in rubric:
         probabilities = answers[q["id"]]["probabilities"]
-        if q["type"] == "choice":
+        if q["type"] in ("choice", "eval", "probe"):
             values.extend(probabilities[option] for option in q["criteria"])
         elif q["type"] == "noul":
             values.append(probabilities["true"])
@@ -113,8 +134,37 @@ def compare(head: dict, features_a: list[float], features_b: list[float]) -> dic
     }
 
 
+def predict_multi(head: dict, features: list[float]) -> dict:
+    f = np.asarray(features, dtype=float)
+    p = expit(_choice_logits(head, f))
+    found = [c for c, pk in zip(head["classes"], p) if pk >= 0.5]
+    contributions = (np.asarray(head["weights"]) * f) / head["temperature"]
+    return {
+        "kind": "multi",
+        "label": issues_label(found),
+        "issues": found,
+        # Per issue, independently: P(this issue applies).
+        "probabilities": {c: float(pk) for c, pk in zip(head["classes"], p)},
+        "confidence": float(np.prod(np.maximum(p, 1 - p))),
+        "contributions": {
+            c: {n: float(v) for n, v in zip(head["feature_names"], row)}
+            for c, row in zip(head["classes"], contributions)
+        },
+    }
+
+
+def multi_probability(head: dict, features: list[float], label: str) -> float:
+    p = expit(_choice_logits(head, np.asarray(features, dtype=float)))
+    truth = issues_of(label)
+    return float(np.prod([pk if c in truth else 1 - pk for c, pk in zip(head["classes"], p)]))
+
+
 def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str]:
     """Probability assigned to the row's true label, and the predicted label."""
+    if output_type == "multi":
+        return multi_probability(head, row["f"], row["label"]), predict_multi(head, row["f"])[
+            "label"
+        ]
     if output_type == "choice":
         out = predict_choice(head, row["f"])
         return out["probabilities"][row["label"]], out["label"]
@@ -128,23 +178,47 @@ def row_probability(head: dict, output_type: str, row: dict) -> tuple[float, str
 # ── Fitting ──────────────────────────────────────────────────────────────
 
 
-def _choice_loss(theta, X, y, n_cls, l2):
+def verdict_prior(output_type: str, feature_names: list[str], classes: list[str]) -> np.ndarray:
+    """Weights that reproduce the zero-shot verdict; zeros when there is no verdict question."""
+    prior = np.zeros(
+        (len(classes) if output_type in ("choice", "multi") else 1, len(feature_names))
+    )
+    index = {name: i for i, name in enumerate(feature_names)}
+    if output_type == "multi":
+        for c, cls in enumerate(classes):
+            if verdict_id(cls) in index:
+                prior[c, index[verdict_id(cls)]] = PRIOR_STRENGTH
+    elif output_type == "choice":
+        for c, cls in enumerate(classes):
+            if f"{VERDICT_ID}={cls}" in index:
+                prior[c, index[f"{VERDICT_ID}={cls}"]] = PRIOR_STRENGTH
+    elif VERDICT_ID in index:
+        prior[0, index[VERDICT_ID]] = PRIOR_STRENGTH
+    return prior
+
+
+def _choice_loss(theta, X, y, n_cls, l2, W0, bias_l2):
     n_feat = X.shape[1]
     W = theta[: n_cls * n_feat].reshape(n_cls, n_feat)
     b = theta[n_cls * n_feat :]
     logp = log_softmax(X @ W.T + b, axis=1)
-    loss = -logp[np.arange(len(y)), y].mean() + 0.5 * l2 * np.sum(W * W)
+    loss = (
+        -logp[np.arange(len(y)), y].mean()
+        + 0.5 * l2 * np.sum((W - W0) ** 2)
+        + 0.5 * bias_l2 * b @ b
+    )
     p = np.exp(logp)
     p[np.arange(len(y)), y] -= 1
-    grad_W = p.T @ X / len(y) + l2 * W
-    grad_b = p.mean(axis=0)
+    grad_W = p.T @ X / len(y) + l2 * (W - W0)
+    grad_b = p.mean(axis=0) + bias_l2 * b
     return loss, np.concatenate([grad_W.ravel(), grad_b])
 
 
-def _preference_loss(theta, D, Xi, yi, l2):
+def _preference_loss(theta, D, Xi, yi, l2, w0, bias_l2, b0):
     w, b = theta[:-1], theta[-1]
     n = len(D) + len(Xi)
-    loss, grad_w, grad_b = 0.5 * l2 * w @ w, l2 * w, 0.0
+    loss = 0.5 * l2 * (w - w0) @ (w - w0) + 0.5 * bias_l2 * (b - b0) ** 2
+    grad_w, grad_b = l2 * (w - w0), bias_l2 * (b - b0)
     if len(D):
         m = D @ w  # pairs are oriented so the winner is first
         loss += np.logaddexp(0, -m).sum() / n
@@ -155,7 +229,7 @@ def _preference_loss(theta, D, Xi, yi, l2):
         loss += np.logaddexp(0, -signed).sum() / n
         coef = -expit(-signed) * np.where(yi == 1, 1, -1) / n
         grad_w = grad_w + Xi.T @ coef
-        grad_b = coef.sum()
+        grad_b = grad_b + coef.sum()
     return loss, np.concatenate([grad_w, [grad_b]])
 
 
@@ -165,20 +239,43 @@ def fit(
     if not rows:
         raise ValueError("No labeled, graded examples to fit")
     n_feat = len(feature_names)
+    prior = verdict_prior(output_type, feature_names, classes)
+    bias_l2 = l2 if prior.any() else 0.0
+    b0 = -PRIOR_STRENGTH / 2 if prior.any() else 0.0
     if output_type == "choice":
         index = {c: i for i, c in enumerate(classes)}
         X = np.asarray([r["f"] for r in rows], dtype=float)
         y = np.asarray([index[r["label"]] for r in rows])
         result = minimize(
             _choice_loss,
-            np.zeros(len(classes) * (n_feat + 1)),
-            args=(X, y, len(classes), l2),
+            np.concatenate([prior.ravel(), np.zeros(len(classes))]),
+            args=(X, y, len(classes), l2, prior, bias_l2),
             jac=True,
             method="L-BFGS-B",
         )
         weights = result.x[: len(classes) * n_feat].reshape(len(classes), n_feat)
         bias = result.x[len(classes) * n_feat :]
         bias = bias - bias.mean()  # softmax is shift-invariant; center for readability
+        converged, iterations = bool(result.success), int(result.nit)
+    elif output_type == "multi":
+        # One binary logistic per issue, each under its own verdict prior.
+        X = np.asarray([r["f"] for r in rows], dtype=float).reshape(len(rows), n_feat)
+        D = np.zeros((0, n_feat))
+        weights, bias, converged, iterations = [], [], True, 0
+        for c, cls in enumerate(classes):
+            y = np.asarray([1 if cls in issues_of(r["label"]) else 0 for r in rows])
+            b0_c = b0 if prior[c].any() else 0.0
+            result = minimize(
+                _preference_loss,
+                np.concatenate([prior[c], [b0_c]]),
+                args=(D, X, y, l2, prior[c], bias_l2, b0_c),
+                jac=True,
+                method="L-BFGS-B",
+            )
+            weights.append(result.x[:-1])
+            bias.append(result.x[-1])
+            converged, iterations = converged and bool(result.success), iterations + int(result.nit)
+        weights, bias = np.asarray(weights), np.asarray(bias)
     else:
         pairs = [r for r in rows if r["kind"] == "pair"]
         items = [r for r in rows if r["kind"] == "item"]
@@ -190,12 +287,13 @@ def fit(
         yi = np.asarray([1 if r["label"] == "good" else 0 for r in items])
         result = minimize(
             _preference_loss,
-            np.zeros(n_feat + 1),
-            args=(D, Xi, yi, l2),
+            np.concatenate([prior[0], [b0]]),
+            args=(D, Xi, yi, l2, prior[0], bias_l2, b0),
             jac=True,
             method="L-BFGS-B",
         )
         weights, bias = result.x[:-1].reshape(1, n_feat), result.x[-1:]
+        converged, iterations = bool(result.success), int(result.nit)
     return {
         "feature_names": feature_names,
         "classes": classes,
@@ -205,8 +303,8 @@ def fit(
         "l2": l2,
         "edited": False,
         "fit": {
-            "converged": bool(result.success),
-            "iterations": int(result.nit),
+            "converged": converged,
+            "iterations": iterations,
             "train_rows": len(rows),
         },
     }
@@ -230,33 +328,13 @@ def fit_temperature(head: dict, output_type: str, rows: list[dict]) -> float:
 # ── Evaluation ───────────────────────────────────────────────────────────
 
 
-def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
-    if not rows:
-        return {
-            "n": 0,
-            "accuracy": None,
-            "log_loss": None,
-            "ece": None,
-            "confusion": None,
-            "rows": [],
-        }
-    scored = []
-    for r in rows:
-        p_true, predicted = row_probability(head, output_type, r)
-        scored.append((r, p_true, predicted))
-    correct = [predicted == r["label"] for r, _, predicted in scored]
-    # Expected calibration error over the confidence of the predicted label.
-    confidences = []
-    for r, p_true, predicted in scored:
-        if output_type == "choice":
-            confidences.append(predict_choice(head, r["f"])["confidence"])
-        else:
-            confidences.append(max(p_true, 1 - p_true))
+def calibration(confidences: list[float], correct: list[bool]) -> tuple[float, list[dict]]:
+    """Expected calibration error over the confidence of the predicted label, and its bins."""
     bins: dict[int, list[tuple[float, bool]]] = {}
     for conf, ok in zip(confidences, correct):
         bins.setdefault(min(int(conf * 10), 9), []).append((conf, ok))
     ece = sum(
-        len(v) / len(scored) * abs(np.mean([c for c, _ in v]) - np.mean([o for _, o in v]))
+        len(v) / len(confidences) * abs(np.mean([c for c, _ in v]) - np.mean([o for _, o in v]))
         for v in bins.values()
     )
     reliability = [
@@ -268,18 +346,118 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
         }
         for k, v in sorted(bins.items())
     ]
+    return float(ece), reliability
+
+
+def classification(truth: list[str], predicted: list[str], classes: list[str]) -> dict:
+    """Precision, recall and F1 per class, their macro average, and Cohen's kappa.
+
+    Accuracy hides a judge that never flags the rare class; per-class recall and
+    precision show it, and kappa discounts the agreement chance alone would give."""
+    per = {}
+    for c in classes:
+        tp = sum(t == c and p == c for t, p in zip(truth, predicted))
+        fp = sum(t != c and p == c for t, p in zip(truth, predicted))
+        fn = sum(t == c and p != c for t, p in zip(truth, predicted))
+        precision = tp / (tp + fp) if tp + fp else None
+        recall = tp / (tp + fn) if tp + fn else None
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision is not None and recall is not None and precision + recall
+            else (0.0 if precision is not None and recall is not None else None)
+        )
+        per[c] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
+    scored = [v["f1"] for v in per.values() if v["f1"] is not None and v["support"]]
+    n = len(truth)
+    kappa = None
+    if n:
+        observed = sum(t == p for t, p in zip(truth, predicted)) / n
+        expected = sum((truth.count(c) / n) * (predicted.count(c) / n) for c in classes)
+        kappa = 1.0 if expected == 1 else (observed - expected) / (1 - expected)
+    return {
+        "per_class": per,
+        "macro_f1": float(np.mean(scored)) if scored else None,
+        "kappa": kappa,
+    }
+
+
+def by_difficulty(correct: list[bool], difficulty: list[float], bins: int = 10) -> list[dict]:
+    """Accuracy per difficulty bucket (deciles by default), easiest first."""
+    order = sorted(range(len(correct)), key=lambda i: difficulty[i])
+    out = []
+    for b in range(bins):
+        idx = order[b * len(order) // bins : (b + 1) * len(order) // bins]
+        if idx:
+            out.append(
+                {
+                    "bucket": b + 1,
+                    "n": len(idx),
+                    "difficulty": [difficulty[idx[0]], difficulty[idx[-1]]],
+                    "accuracy": float(np.mean([correct[i] for i in idx])),
+                }
+            )
+    return out
+
+
+def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
+    if not rows:
+        return {
+            "n": 0,
+            "accuracy": None,
+            "log_loss": None,
+            "ece": None,
+            "confusion": None,
+            "classification": None,
+            "rows": [],
+        }
+    scored = []
+    for r in rows:
+        p_true, predicted = row_probability(head, output_type, r)
+        scored.append((r, p_true, predicted))
+    correct = [predicted == r["label"] for r, _, predicted in scored]
+    confidences = []
+    for r, p_true, predicted in scored:
+        if output_type == "multi":
+            confidences.append(predict_multi(head, r["f"])["confidence"])
+        elif output_type == "choice":
+            confidences.append(predict_choice(head, r["f"])["confidence"])
+        else:
+            confidences.append(max(p_true, 1 - p_true))
+    ece, reliability = calibration(confidences, correct)
     confusion = None
     if output_type == "choice":
         confusion = {c: dict.fromkeys(head["classes"], 0) for c in head["classes"]}
         for r, _, predicted in scored:
             confusion[r["label"]][predicted] += 1
+    per_issue = None
+    if output_type == "multi":
+        # Exact-match accuracy is strict; per issue, how often the judge got that issue right.
+        per_issue = {
+            c: float(
+                np.mean(
+                    [
+                        (c in issues_of(r["label"])) == (c in issues_of(pred))
+                        for r, _, pred in scored
+                    ]
+                )
+            )
+            for c in head["classes"]
+        }
     return {
         "n": len(scored),
         "accuracy": float(np.mean(correct)),
+        "per_issue": per_issue,
         "log_loss": float(-np.mean([math.log(max(p, 1e-9)) for _, p, _ in scored])),
         "ece": float(ece),
         "reliability": reliability,
         "confusion": confusion,
+        "classification": classification(
+            [r["label"] for r, _, _ in scored],
+            [predicted for _, _, predicted in scored],
+            head["classes"]
+            if output_type == "choice"
+            else sorted({r["label"] for r, _, _ in scored} | {p for _, _, p in scored}),
+        ),
         "rows": [
             {
                 "example_id": r["example_id"],
@@ -292,30 +470,38 @@ def evaluate(head: dict, output_type: str, rows: list[dict]) -> dict:
     }
 
 
-def gate(candidate: dict, incumbent: dict | None) -> dict:
-    """Promotion check on the shared held-out split; mirrors the reward-compiler gate."""
-    checks = []
-    if candidate["n"] < MIN_GATE_EXAMPLES:
-        checks.append(
-            {
-                "name": "held_out_size",
-                "passed": False,
-                "detail": f"{candidate['n']} held-out examples; need {MIN_GATE_EXAMPLES}",
-            }
-        )
-    else:
-        checks.append(
-            {
-                "name": "held_out_size",
-                "passed": True,
-                "detail": f"{candidate['n']} held-out examples",
-            }
-        )
+def gate(
+    candidate: dict,
+    incumbent: dict | None,
+    *,
+    flips: list[dict] | None = None,
+    pinned: dict | None = None,
+) -> dict:
+    """Promotion check on the shared held-out split; mirrors the reward-compiler gate.
+
+    Blocking checks are regressions: a pinned example the candidate gets wrong, an
+    example the active version got right that the candidate now gets wrong (a flip),
+    and lower held-out accuracy or log loss once there are enough held-out examples
+    to compare. A small held-out set alone is advisory, so a first version on little
+    data can still be saved; it shows as limited data instead.
+    """
+    enough = candidate["n"] >= MIN_GATE_EXAMPLES
+    checks = [
+        {
+            "name": "held_out_size",
+            "passed": enough,
+            "blocking": False,
+            "detail": f"{candidate['n']} held-out examples"
+            + ("" if enough else f"; {MIN_GATE_EXAMPLES} are needed to compare accuracy"),
+        }
+    ]
     if incumbent is not None and incumbent["n"] and candidate["n"]:
+        comparable = enough and incumbent["n"] >= MIN_GATE_EXAMPLES
         checks.append(
             {
                 "name": "accuracy_not_lower",
                 "passed": candidate["accuracy"] >= incumbent["accuracy"] - 1e-9,
+                "blocking": comparable,
                 "detail": f"{candidate['accuracy']:.3f} vs active {incumbent['accuracy']:.3f}",
             }
         )
@@ -323,7 +509,30 @@ def gate(candidate: dict, incumbent: dict | None) -> dict:
             {
                 "name": "log_loss_within_slack",
                 "passed": candidate["log_loss"] <= incumbent["log_loss"] + GATE_LOG_LOSS_SLACK,
+                "blocking": comparable,
                 "detail": f"{candidate['log_loss']:.3f} vs active {incumbent['log_loss']:.3f} (+{GATE_LOG_LOSS_SLACK})",
             }
         )
-    return {"passed": all(c["passed"] for c in checks), "checks": checks}
+    if pinned is not None and pinned["n"]:
+        wrong = [r for r in pinned["rows"] if r["predicted"] != r["label"]]
+        checks.append(
+            {
+                "name": "pinned_examples",
+                "passed": not wrong,
+                "blocking": True,
+                "detail": f"{pinned['n'] - len(wrong)} of {pinned['n']} pinned examples correct",
+            }
+        )
+    if incumbent is not None and flips is not None:
+        checks.append(
+            {
+                "name": "no_flips",
+                "passed": not flips,
+                "blocking": True,
+                "detail": f"{len(flips)} examples the active version got right are now wrong"
+                if flips
+                else "No held-out or pinned example got worse",
+            }
+        )
+    passed = all(c["passed"] for c in checks if c["blocking"])
+    return {"passed": passed, "checks": checks}

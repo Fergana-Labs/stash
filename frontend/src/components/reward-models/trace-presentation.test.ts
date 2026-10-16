@@ -17,6 +17,11 @@ it("keeps immutable sources while numbering calls and results as one step withou
   expect(view.numberById.get("s3")).toBe(4);
   expect(view.numberById.get("s4")).toBe(4);
   expect(view.numberById.get("s1")).toBe(2);
+  // People read the stored index + 1; a merged call and result read as the call's step.
+  expect(view.labelById.get("s3")).toBe(4);
+  expect(view.labelById.get("s4")).toBe(4);
+  expect(view.labelById.get("s5")).toBe(6);
+  expect(view.commentSteps.find((s) => s.id === "s5")?.index).toBe(5);
   expect(original).toEqual(snapshot);
 });
 

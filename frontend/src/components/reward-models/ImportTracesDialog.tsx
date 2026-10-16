@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { rmImportTraces, rmListFormats } from "@/lib/api";
 import type { RmFormat } from "@/lib/types";
-import { Field } from "./rm-ui";
+import { Field, traceActionClass } from "./rm-ui";
 import { errorMessage } from "./rm-text";
 import { importTraceFiles, type FileImportResult, type TraceFile } from "./trace-files";
 
@@ -98,7 +98,7 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button size="xs" variant="outline" className={traceActionClass}>
           <Upload />
           Import traces
         </Button>

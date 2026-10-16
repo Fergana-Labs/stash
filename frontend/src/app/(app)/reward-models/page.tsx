@@ -4,7 +4,8 @@ import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TracesPage";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -12,7 +13,12 @@ import { Button } from "@/components/ui/button";
 import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
 import ConnectAgentDialog from "@/components/reward-models/ConnectAgentDialog";
 import TraceDropzone from "@/components/reward-models/TraceDropzone";
-import TraceTable from "@/components/reward-models/TraceTable";
+import TraceTable, { type TraceMatches } from "@/components/reward-models/TraceTable";
+import { Select } from "@/components/ui/select";
+import MonitorsSection from "@/components/behaviors/MonitorsSection";
+import CohortsSection from "@/components/behaviors/CohortsSection";
+import { BehaviorMultiSelect, SaveToEvalDialog, searchResultWindow, type TraceWindow } from "@/components/behaviors/behavior-ui";
+import { COHORT_DIMENSIONS, getBehaviorOverview, searchBehaviorTraces, type BehaviorTrend, type CohortBy, type SearchResponse, type SearchResult } from "@/lib/behaviors-api";
 import { RmPage } from "@/components/reward-models/rm-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { RmListSkeleton, RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
@@ -22,6 +28,11 @@ import type { RmTraceSummary } from "@/lib/types";
 
 // New runs stream in over OpenTelemetry, so the list refreshes itself.
 const POLL_MS = 5000;
+const DAY_MS = 86_400_000;
+const RANGES = [{ value: "all", label: "All time" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }];
+const GROUP_BY = [{ value: "none", label: "None" }, ...COHORT_DIMENSIONS];
+// The behaviors search caps a page at 100 rows; that page also supplies behavior chips for the plain list.
+const SEARCH_LIMIT = 100;
 
 function LatestTracesPage() {
   return (
@@ -45,6 +56,17 @@ function Traces() {
   // successful load (page visit, import, delete) turns it back on.
   const [polling, setPolling] = useState(false);
 
+  const [range, setRange] = useState("all");
+  const [groupBy, setGroupBy] = useState<CohortBy | "none">("none");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Set<string>>(() => new Set(searchParams.getAll("behavior")));
+  const [search, setSearch] = useState<{ key: string; response: SearchResponse } | null>(null);
+  const [searchError, setSearchError] = useState("");
+  const [trends, setTrends] = useState<BehaviorTrend[] | null>(null);
+  const [trendsError, setTrendsError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const days = range === "all" ? null : Number(range);
+
   const load = useCallback(async () => {
     try {
       setTraces(await rmListAllTraces());
@@ -66,6 +88,50 @@ function Traces() {
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [polling, load]);
+
+  // Monitors show daily hits; "All time" charts the last 30 days.
+  const overviewDays = days ?? 30;
+  const loadTrends = useCallback(async () => {
+    try {
+      setTrends((await getBehaviorOverview(overviewDays)).behaviors);
+      setTrendsError("");
+    } catch (e) {
+      setTrendsError(errorMessage(e));
+    }
+  }, [overviewDays]);
+  useEffect(() => { void loadTrends(); }, [loadTrends]);
+
+  // With a query or behavior filter the table shows search results; otherwise the same
+  // endpoint's browse page supplies behavior chips and outcomes for the newest traces.
+  const filterKey = [...filter].sort().join(",");
+  const searchDays = days ?? 365;
+  const searchKey = `${query.trim()}|${filterKey}|${searchDays}`;
+  const searchActive = !!query.trim() || filter.size > 0;
+  const traceCount = traces?.length ?? 0;
+  useEffect(() => {
+    if (groupBy !== "none") return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      // Similarity alone ranks every trace, matching or not; the rerank keeps only real matches.
+      searchBehaviorTraces({ q: query, behaviors: filterKey ? filterKey.split(",") : [], days: searchDays, limit: SEARCH_LIMIT, rerank: !!query.trim() })
+        .then((response) => { if (!cancelled) { setSearch({ key: searchKey, response }); setSearchError(""); } })
+        .catch((e) => { if (!cancelled) setSearchError(errorMessage(e)); });
+    }, query.trim() ? 600 : 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query, filterKey, searchDays, searchKey, groupBy, traceCount]);
+
+  const current = search?.key === searchKey ? search.response : null;
+  const matches: TraceMatches | null = searchActive
+    ? { results: current?.results ?? [], mode: current?.mode ?? null, query, behaviors: filterKey ? filterKey.split(",") : [], loading: !current && !searchError }
+    : null;
+  const behaviorsByTrace = useMemo(
+    () => new Map((search?.response.results ?? []).map((r) => [r.trace_id, r] as [string, SearchResult])),
+    [search],
+  );
+  const agents = [...new Set([...(traces ?? []).map((t) => t.agent), ...(search?.response.results ?? []).map((r) => r.agent)]
+    .filter((a): a is string => !!a))].sort();
+  const focusedId = filter.size === 1 ? [...filter][0] : null;
+  const shownTraces = days === null || !traces ? traces : traces.filter((t) => Date.parse(t.created_at) >= Date.now() - days * DAY_MS);
 
   async function remove(targets: RmTraceSummary[]) {
     if (!targets.length || deleting) return;
@@ -101,23 +167,42 @@ function Traces() {
   // Only ids that still exist count: a deleted trace from ?selected= must not be sent to training.
   const deletable = (traces ?? []).filter((t) => selected.has(t.id) && t.can_score !== false);
   const summary = summarizeSelection(traces ?? [], selected);
+  // A selected search row exports its matching window; a plain row exports the whole trace.
+  const windows: TraceWindow[] = [...selected].flatMap((id) => {
+    const hit = behaviorsByTrace.get(id);
+    if (hit && (searchActive || hit.behaviors.length)) return [searchResultWindow(hit, filter)];
+    const trace = traces?.find((t) => t.id === id);
+    return trace ? [{ trace_id: id, start_idx: 0, end_idx: Math.max(0, trace.step_count - 1) }] : [];
+  });
+
+  const controls = <>
+    {groupBy === "none" && <><label className="flex h-[26px] min-w-40 flex-1 items-center gap-1.5 rounded-[4px] border border-border bg-background px-2 sm:max-w-60 focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/10">
+      <Search className="size-3.5 text-muted-foreground" />
+      <input aria-label="Search traces" placeholder="Search traces…" value={query} onChange={(e) => setQuery(e.target.value)}
+        className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground" />
+    </label>
+    <BehaviorMultiSelect behaviors={trends?.map((t) => t.behavior) ?? []} selected={filter} onChange={setFilter} /></>}
+    <Select aria-label="Time range" value={range} onChange={setRange} options={RANGES} className="h-[26px] w-24 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:rounded-[2px] [&_[role=option]]:text-[11px]" />
+    <Select aria-label="Group by" value={groupBy} onChange={(v) => setGroupBy(v as CohortBy | "none")} options={GROUP_BY.map((option) => ({ ...option, label: `Group: ${option.label}` }))} className="h-[26px] w-32 rounded-[4px] px-2 text-[11px]" contentClassName="rounded-[4px] [&_[role=option]]:rounded-[2px] [&_[role=option]]:text-[11px]" />
+  </>;
 
   return (
     <TraceDropzone onImported={() => void load()}>
-      <RmPage
-        wide
-        title="Traces"
-        actions={(
-          <>
-            <ConnectAgentDialog />
-            <ImportTracesDialog onImported={() => void load()} />
-          </>
-        )}
-      >
+      <RmPage wide title="Traces">
+        <MonitorsSection
+          trends={trends}
+          error={trendsError}
+          onReload={() => void loadTrends()}
+          focusedId={focusedId}
+          onFocus={(id) => setFilter(new Set(id ? [id] : []))}
+          agents={agents}
+          actions={<ConnectAgentDialog />}
+        />
         {traces === null ? (
           <RmListSkeleton />
         ) : traces.length === 0 ? (
           <div className="py-24 text-center">
+            <div className="mb-3 flex justify-center"><ImportTracesDialog onImported={() => void load()} /></div>
             <p className="m-0 text-[16px] font-medium text-foreground">Drop trace files or folders anywhere here</p>
             <p className="m-0 mt-2 text-[13px] text-muted-foreground">JSON, JSONL, or NDJSON. Or connect your agent to send runs automatically.</p>
           </div>
@@ -131,20 +216,32 @@ function Traces() {
                 <Button variant="ghost" size="sm" disabled={!!deleting} onClick={() => setSelected(new Set())}>
                   Clear
                 </Button>
+                <Button variant="outline" size="sm" disabled={!!deleting || windows.length === 0} onClick={() => setSaving(true)}>
+                  Add to eval
+                </Button>
                 <Button variant="destructive" size="sm" disabled={!!deleting || deletable.length === 0} onClick={() => void remove(deletable)}>
                   {deleting ? "Deleting…" : "Delete selected"}
                 </Button>
               </div>
             )}
-            <TraceTable
-              traces={traces}
+            {searchError && groupBy === "none" && <p role="alert" className="mb-2 text-xs text-destructive">{searchError}</p>}
+            {groupBy !== "none" ? <>
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">{controls}<div className="ml-auto"><ImportTracesDialog onImported={() => void load()} /></div></div>
+              <CohortsSection by={groupBy} days={overviewDays} />
+            </> : <TraceTable
+              traces={shownTraces ?? []}
               selected={selected}
               onSelectedChange={setSelected}
               mode="browse"
               onDelete={(t) => void remove([t])}
               selectionDisabled={!!deleting}
               deletingId={deleting}
-            />
+              toolbar={controls}
+              toolbarActions={<ImportTracesDialog onImported={() => void load()} />}
+              matches={matches}
+              behaviorsByTrace={behaviorsByTrace}
+            />}
+            <SaveToEvalDialog open={saving} onOpenChange={setSaving} windows={windows} onSaved={() => setSelected(new Set())} />
           </>
         )}
       </RmPage>

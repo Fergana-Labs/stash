@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { OptimizationDetail } from "@/lib/optimization-api";
+import { scorerName } from "@/lib/optimization-scorer";
 import ContentDiff from "@/components/workbench/ContentDiff";
 import { RecordBadge } from "@/components/workbench/workbench-ui";
 import { date, signed, value } from "./RollingRewardChart";
@@ -10,7 +11,7 @@ export default function PromptEvolution({ program }: { program: OptimizationDeta
   const version = (id: string | null) => program.revisions.find((r) => r.id === id)?.version;
   return <section id="prompt-optimization" aria-label="Prompt evolution" className="mt-6 scroll-mt-4">
     <div className="mb-1 flex items-center justify-between gap-2"><h2 className="m-0 text-sm font-semibold text-foreground">Prompt evolution</h2><Link className="text-xs text-muted-foreground hover:text-foreground hover:underline" href={`/reward-models/optimization/${program.id}`}>Manage optimization →</Link></div>
-    <p className="mt-1 text-xs text-muted-foreground">{program.scope} · {program.reward_model.name} · Supplementary instruction history for this workload.</p>
+    <p className="mt-1 text-xs text-muted-foreground">{program.scope} · {scorerName(program)} · Supplementary instruction history for this workload.</p>
     {program.error && <p role="alert" className="text-sm text-red-600">{program.error}</p>}
     <div className="divide-y divide-border border-y border-border">{[...program.revisions].reverse().map((revision) => {
       const round = program.rounds.find((r) => r.candidate_id === revision.id);

@@ -330,7 +330,7 @@ it("explains why each unscored step lacks a grade", () => {
   expect(user).toBeVisible();
   fireEvent.focus(user);
   const tooltip = screen.getByRole("tooltip");
-  expect(tooltip).toHaveTextContent("(2)");
+  expect(tooltip).toHaveTextContent("step 2");
   expect(tooltip.querySelector("time")).toHaveAttribute("dateTime", "2026-10-08T00:46:47Z");
   expect(tooltip).toHaveTextContent("Please fix the duplicate notifications.");
   expect(tooltip).not.toHaveTextContent(/not graded|awaiting score/);
@@ -348,9 +348,9 @@ it("immediately shows scores and statuses on hover without jumping or relying on
   map.getBoundingClientRect = () => ({ left: 100, width: 300 }) as DOMRect;
   expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" })).not.toHaveAttribute("title");
   fireEvent.pointerEnter(map, { pointerType: "mouse", clientX: 110 });
-  expect(screen.getByRole("tooltip")).toHaveTextContent("(1)ResponseCredit +0.35");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("step 1ResponseCredit +0.35");
   fireEvent.pointerMove(map, { pointerType: "mouse", clientX: 250 });
-  expect(screen.getByRole("tooltip")).toHaveTextContent("(2)Responseawaiting score");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("step 2Responseawaiting score");
   expect(onJump).not.toHaveBeenCalled();
   fireEvent.pointerLeave(map);
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
@@ -360,7 +360,7 @@ it("shows the tooltip on keyboard focus and dismisses it on Escape or blur", () 
   renderMap();
   const bar = screen.getByRole("button", { name: "Step 1: Response, credit +0.25" });
   fireEvent.focus(bar);
-  expect(screen.getByRole("tooltip")).toHaveTextContent("(1)ResponseCredit +0.25");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("step 1ResponseCredit +0.25");
   fireEvent.keyDown(bar, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   fireEvent.focus(bar);

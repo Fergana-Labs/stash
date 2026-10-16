@@ -21,10 +21,12 @@ from .routers import (
     agent_chat,
     agent_credentials,
     agent_docs,
+    agent_judge,
     agents,
     aggregate,
     analytics,
     batch,
+    behaviors,
     billing,
     bulk_export,
     clips,
@@ -35,12 +37,14 @@ from .routers import (
     exports,
     files,
     files_tree,
+    intuition_mcp,
     intuitions,
     machine,
     marketing,
     mcp_servers,
     memory,
     mini_programs,
+    model_wizard,
     optimization,
     pins,
     publish,
@@ -55,7 +59,9 @@ from .routers import (
     sql,
     tables,
     tasks,
+    taste,
     telegram,
+    test_sets,
     transcripts,
     trash,
     user_knowledge,
@@ -90,7 +96,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("seed_demo failed at startup")
     try:
-        yield
+        async with intuition_mcp.mcp.session_manager.run():
+            yield
     finally:
         await close_db()
 
@@ -160,6 +167,14 @@ app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
+app.include_router(taste.router)
+app.include_router(behaviors.router)
+app.include_router(agent_judge.router)
+app.include_router(test_sets.router)
+app.include_router(model_wizard.router)
+app.include_router(model_wizard.public_router)
+# MCP over streamable HTTP at /mcp/intuitions (see routers/intuition_mcp.py).
+app.mount("/mcp", intuition_mcp.app)
 app.include_router(mcp_servers.router)
 app.include_router(publish.router)
 app.include_router(security_audit.router)

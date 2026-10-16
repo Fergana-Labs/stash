@@ -43,3 +43,6 @@ trafilatura>=2.0
 # Lightweight clients; ML libraries run on the isolated reward worker.
 boto3>=1.40
 modal==1.6.0
+
+# Taste experiment orchestration; model packages stay in Modal images.
+gepa==0.1.4

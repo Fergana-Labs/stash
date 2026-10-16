@@ -168,6 +168,22 @@ export function fieldText(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+type Turn = { role: string; content?: unknown; tool_name?: string | null; tool_input?: unknown };
+const isTurn = (v: unknown): v is Turn => !!v && typeof v === "object" && typeof (v as Turn).role === "string";
+
+/** How a field reads on screen: a conversation (role/content turns or trace steps) as one line per turn, other structures as indented JSON. */
+export function readableText(value: unknown): string {
+  if (Array.isArray(value) && value.length && value.every(isTurn)) {
+    return value.map((t) => {
+      const content = fieldText(t.content).trim();
+      if (t.tool_name) return `${t.role} → ${t.tool_name}(${fieldText(t.tool_input ?? "")})${content ? ` ${content}` : ""}`;
+      return `${t.role}: ${content}`;
+    }).join("\n");
+  }
+  if (value != null && typeof value === "object") return JSON.stringify(value, null, 2);
+  return fieldText(value);
+}
+
 /** Single-line plain text summary of an item, for search and compact rows. */
 export function itemSummary(item: Item): string {
   if (typeof item === "string") return item;

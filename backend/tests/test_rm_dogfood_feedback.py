@@ -264,7 +264,8 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
         json={"reward_model_id": str(model_id)},
     )
     assert requested.status_code == 202, requested.text
-    await jobs.run_scoring(UUID(requested.json()["id"]))
+    # Exercise the task's claim before handing the queued run to jobs.run_scoring.
+    await tasks.score_trace_async(UUID(requested.json()["id"]))
     assert (
         await pool.fetchval(
             "SELECT score FROM rm_trace_scores WHERE trace_id=$1 AND reward_model_id=$2",

@@ -3,7 +3,7 @@
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/RewardRail";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
@@ -11,21 +11,20 @@ import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
 const PRIMARY = [
-  { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") },
-  { label: "Reward models", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") || path.startsWith("/reward-models/intuitions") },
-  { label: "Monitoring", href: "/reward-models/monitoring", match: (path: string) => /^\/reward-models\/(monitoring|changes|review|optimization)/.test(path) || path.startsWith("/skills") },
+  { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") || path.startsWith("/reward-models/behaviors") },
+  { label: "Evals", href: "/reward-models/evals", match: (path: string) => path.startsWith("/reward-models/evals") || path.startsWith("/reward-models/models") || path.startsWith("/reward-models/intuitions") || path.startsWith("/reward-models/wizard") },
+  { label: "Team", href: "/reward-models/team", match: (path: string) => path.startsWith("/reward-models/team") },
+  { label: "Hill climbing", href: "/reward-models/hill-climbing", match: (path: string) => path.startsWith("/reward-models/hill-climbing") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const inSkillFolder = searchParams.get("section") === "skills";
 
   return (
     <aside className="flex w-40 shrink-0 flex-col border-r border-sidebar-border bg-rail px-2 py-3">
       <nav aria-label="Main navigation" className="flex flex-col gap-1">
         {PRIMARY.map((item) => {
-          const active = item.match(pathname) || (item.href === "/reward-models/monitoring" && inSkillFolder);
+          const active = item.match(pathname);
           return (
             <Link
               key={item.href}

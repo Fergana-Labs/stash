@@ -83,8 +83,10 @@ it("trains only the chosen source and dates when selecting only shown traces", a
   expect(screen.queryByRole("checkbox", { name: "Select Shared review" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("combobox", { name: "Filter by source" }));
   fireEvent.click(await screen.findByRole("option", { name: "Heavi" }));
+  fireEvent.click(screen.getByRole("button", { name: "Filter by imported date" }));
   fireEvent.change(screen.getByLabelText("Imported from"), { target: { value: "2026-10-08" } });
   fireEvent.change(screen.getByLabelText("Imported through"), { target: { value: "2026-10-09" } });
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(screen.getByText(/2 selected outside these filters/)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Select only shown" }));
   expect(screen.queryByText(/selected outside these filters/)).not.toBeInTheDocument();

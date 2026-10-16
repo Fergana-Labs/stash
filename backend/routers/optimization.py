@@ -43,7 +43,10 @@ class Metric(Body):
 
 class Create(Body):
     name: str = Field(min_length=1, max_length=160)
-    reward_model_id: UUID
+    # Score runs with a trained reward model, or with an eval's decision.
+    reward_model_id: UUID | None = None
+    eval_id: UUID | None = None
+    target_label: str | None = Field(default=None, max_length=64)
     agent: str = Field(min_length=1, max_length=160)
     scope: str = Field(min_length=1, max_length=2000)
     initial_prompt: str = Field(default="", max_length=12000)
@@ -53,6 +56,8 @@ class Create(Body):
 
     @model_validator(mode="after")
     def no_marker(self):
+        if (self.reward_model_id is None) == (self.eval_id is None):
+            raise ValueError("Choose a reward model or an eval to score runs")
         if "stash-optimization" in self.initial_prompt:
             raise ValueError("Initial instructions contain reserved delivery markers")
         return self
