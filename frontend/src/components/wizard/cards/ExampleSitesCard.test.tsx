@@ -43,3 +43,20 @@ it("uploads one folder of good and bad pages, labeled by subfolder", async () =>
   ]);
   expect(add.mock.calls[0][1][0].content).toBe("<html>render</html>");
 });
+
+it("adds good/ and bad/ picked one after the other", () => {
+  render(
+    <WizardProvider value={{ modelId: null, send: vi.fn(), refresh: vi.fn(), version: 0, busy: false, sessionId: "s1" }}>
+      <WebsiteEvalCard section="sources" />
+    </WizardProvider>,
+  );
+  const input = screen.getByLabelText("Choose a folder of examples");
+  fireEvent.change(input, { target: { files: [page("good/render.html"), page("good/neon.html")] } });
+  expect(screen.getByText("Now add your bad/ folder (at least two).")).toBeTruthy();
+  fireEvent.change(input, { target: { files: [page("bad/gpumode.html"), page("bad/treehacks.html")] } });
+  expect(screen.getByText("Good · 2")).toBeTruthy();
+  expect(screen.getByText("Bad · 2")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Use these 4 examples/ })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  expect(screen.queryByText("Good · 2")).toBeNull();
+});

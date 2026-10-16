@@ -58,9 +58,13 @@ export default function ExampleSites({ onDone }: { onDone: (text: string, jobId:
   const [error, setError] = useState("");
   const folder = useRef<HTMLInputElement>(null);
 
+  // Picks add up, so good/ and bad/ can be chosen one at a time. Same path = same file.
   const take = (files: TraceFile[]) => {
     const sorted = sortExamples(files);
-    setPicked(sorted.picked); setSkipped(sorted.skipped); setError("");
+    const merge = (a: TraceFile[], b: TraceFile[]) => [...a.filter((x) => !b.some((y) => y.path === x.path)), ...b].slice(0, MAX_PER_LABEL);
+    setPicked((prev) => ({ liked: merge(prev?.liked ?? [], sorted.picked.liked), disliked: merge(prev?.disliked ?? [], sorted.picked.disliked) }));
+    setSkipped((prev) => [...new Set([...prev, ...sorted.skipped])]);
+    setError("");
   };
 
   async function save() {
@@ -122,8 +126,9 @@ export default function ExampleSites({ onDone }: { onDone: (text: string, jobId:
       {picked && (
         <div className="mt-2 flex items-center gap-2">
           <span className="flex-1 text-[11.5px] text-muted-foreground">
-            {!enough ? "Need at least two good and two bad, in folders named good and bad." : skipped.length ? `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"} outside good/ and bad/.` : ""}
+            {!enough ? (good ? "Now add your bad/ folder (at least two)." : bad ? "Now add your good/ folder (at least two)." : "Need at least two good and two bad, in folders named good and bad.") : skipped.length ? `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"} outside good/ and bad/.` : ""}
           </span>
+          <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={() => { setPicked(null); setSkipped([]); }}>Clear</Button>
           <Button type="button" size="sm" disabled={saving || !enough} onClick={() => void save()}>
             {saving && <Loader2 className="animate-spin" />}Use these {good + bad} examples
           </Button>
