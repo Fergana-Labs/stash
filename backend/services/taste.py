@@ -1532,8 +1532,27 @@ async def predict_live_page(row, item, directory, ref):
     if not taste_demo.is_demo_grader(model):
         raise Conflict("Live-page grading needs the demo grader.")
     shot = directory / (uuid4().hex + ".png")
+    # The grader sees its own recent verdicts on this page, so feedback stays consistent.
+    previous = [
+        json.loads(r["output"]) if isinstance(r["output"], str) else r["output"]
+        for r in reversed(
+            await get_pool().fetch(
+                "SELECT output FROM taste_predictions WHERE workspace_id=$1 AND version=$2 "
+                "AND output->>'ref'=$3 ORDER BY created_at DESC LIMIT 4",
+                row["id"],
+                model["version"],
+                ref,
+            )
+        )
+    ]
     judged = await asyncio.to_thread(
-        taste_grader_agent.grade, model, item, item["url"], shot, judge_references(row)
+        taste_grader_agent.grade,
+        model,
+        item,
+        item["url"],
+        shot,
+        judge_references(row),
+        previous,
     )
     sha = hashlib.sha256(shot.read_bytes()).hexdigest()
     shot.replace(directory / (sha + ".png"))

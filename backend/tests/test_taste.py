@@ -910,3 +910,16 @@ def test_url_examples_refuse_private_addresses(tmp_path):
     for url in ("http://127.0.0.1:3495/health", "http://localhost/", "file:///etc/passwd"):
         with pytest.raises(ValueError, match="not a public"):
             taste.screenshot_url(url, tmp_path / "x.png")
+
+
+def test_agent_grader_blocks_only_on_major_execution_flaws_and_ignores_the_shell():
+    from backend.services.taste_grader_agent import _verdict
+
+    nit = {"issue": "1px baseline", "fix": "align", "kind": "execution", "major": False}
+    clipped = {"issue": "label clipped", "fix": "pad", "kind": "execution", "major": True}
+    shell = {"issue": "sidebar is orange", "fix": "recolor the sidebar", "kind": "style"}
+    assert _verdict({"score": 80, "summary": "", "fixes": [nit]})["approved"]
+    blocked = _verdict({"score": 80, "summary": "", "fixes": [nit, clipped]})
+    assert not blocked["approved"] and blocked["fixes"][0]["issue"] == "label clipped"
+    kept = _verdict({"score": 80, "summary": "", "fixes": [shell]}, ignore_shell=True)
+    assert kept["fixes"] == []

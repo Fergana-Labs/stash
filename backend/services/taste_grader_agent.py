@@ -20,25 +20,44 @@ from . import taste_demo
 MAX_STEPS = 10
 LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
-SYSTEM = taste_demo.JUDGE_SYSTEM.replace(
-    "You see the task, what the agent has done so far, and a screenshot of the current work.",
-    "You see the task and what the agent has done so far, and you have a browser open on the "
-    "page. Inspect it the way they would: look at the full first screen, scroll to see the "
-    "rest, try a narrower window (around 1100px), zoom in on summary rows, toolbars, chart "
-    "labels and table headers to check alignment, wrapping and clipping, and measure items "
-    "that should share a baseline. Check execution as carefully as style. Grade only what the "
-    "task says the agent built; if the task names a shared app shell (sidebar, top bar), "
-    "ignore it entirely: don't score it or ask to change it. Use a handful of tools, then "
-    "call verdict.",
-).replace(
-    "Return only JSON:",
-    "Finish by calling the verdict tool with:",
+SYSTEM = (
+    taste_demo.JUDGE_SYSTEM.replace(
+        "You see the task, what the agent has done so far, and a screenshot of the current work.",
+        "You see the task and what the agent has done so far, and you have a browser open on the "
+        "page. Inspect it the way they would: look at the full first screen, scroll to see the "
+        "rest, zoom in on summary rows, toolbars, chart labels and table headers to check "
+        "alignment, wrapping and clipping, and measure items that should share a baseline. Judge "
+        "at 1280px wide; that is the window they use. Check execution as carefully as style. "
+        "Only report what you actually saw in a look or zoom, or measured: if you are not sure, "
+        "zoom in before reporting it. Grade only what the task says the agent built; if the task "
+        "names a shared app shell (sidebar, top bar), ignore it entirely: don't score it or ask to "
+        "change it. Use a handful of tools, then call verdict.",
+    )
+    .replace(
+        "Return only JSON:",
+        "Finish by calling the verdict tool with:",
+    )
+    .replace(
+        "Visible execution flaws block approval: while any remain, score below 70 even if the "
+        "style is right.",
+        "Mark an execution flaw major only if a person would notice it at a normal glance: text "
+        "clipped or overlapping, a row, toolbar or header that wraps onto a second line at 1280px, "
+        "or items meant to line up that are off by 3px or more. Everything else is minor. Major "
+        "execution flaws block approval; minor ones only cost points.",
+    )
 )
+
+HISTORY = """Your previous checks of this page, oldest first. Be consistent with them: \
+look at whether each earlier fix was made and say so; don't flag something you told them to \
+keep unless it got worse; don't repeat a fix that was done. Raise a new issue only if it \
+matters as much as the earlier ones. If the agent fixed what you asked and nothing major \
+remains, the score should go up.
+{checks}"""
 
 TOOLS = [
     {
         "name": "look",
-        "description": "Screenshot the visible window. Optionally resize the window or scroll first.",
+        "description": "Screenshot the visible window. Optionally resize the window, or scroll the main content (in CSS pixels from the top) first.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -90,6 +109,10 @@ TOOLS = [
                                 "enum": ["execution", "style"],
                                 "description": "execution: misalignment, awkward wrapping, clipping, overlap, inconsistent spacing. style: everything else.",
                             },
+                            "major": {
+                                "type": "boolean",
+                                "description": "Execution flaws only: true if a person would notice it at a normal glance (see the rules).",
+                            },
                         },
                         "required": ["issue", "fix", "kind"],
                     },
@@ -100,6 +123,17 @@ TOOLS = [
         },
     },
 ]
+
+# Apps often scroll an inner panel rather than the window: scroll the largest
+# scrollable element (or the window when nothing else scrolls).
+SCROLL = """(y) => {
+  const panels = [...document.querySelectorAll("*")].filter((el) => {
+    const s = getComputedStyle(el);
+    return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 4;
+  });
+  panels.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
+  if (panels[0]) panels[0].scrollTop = y; else window.scrollTo(0, y);
+}"""
 
 MEASURE = """(texts) => texts.map((needle) => {
   const all = [...document.querySelectorAll("body *")].filter((el) => {
@@ -142,7 +176,16 @@ def _check_url(url: str) -> None:
         )
 
 
-def grade(model: dict, item: dict, url: str, shot_path: Path, refs=()) -> dict:
+def _history(previous: list[dict]) -> str:
+    lines = []
+    for i, check in enumerate(previous, 1):
+        lines.append(f"Check {i}: score {round(check['score'] * 100)}. {check.get('summary', '')}")
+        lines += [f"  fix: {f['issue']} -> {f['fix']}" for f in check.get("fixes", [])]
+        lines += [f"  keep: {k}" for k in check.get("keep", [])]
+    return HISTORY.format(checks="\n".join(lines))
+
+
+def grade(model: dict, item: dict, url: str, shot_path: Path, refs=(), previous=()) -> dict:
     """Run the grader agent on a live page. Saves its first full look to shot_path."""
     from anthropic import Anthropic
     from playwright.sync_api import sync_playwright
@@ -188,7 +231,9 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=()) -> dict:
                 {
                     "type": "text",
                     "text": f"Now the work to grade, open in your browser at 1280x800. Task: {item['brief']}"
-                    f"\n\nAgent trace so far:\n{steps}\n\nThe first screen:",
+                    f"\n\nAgent trace so far:\n{steps}\n\n"
+                    + (_history(list(previous)) + "\n\n" if previous else "")
+                    + "The first screen:",
                 },
                 _image(first),
             ]
@@ -209,13 +254,16 @@ def grade(model: dict, item: dict, url: str, shot_path: Path, refs=()) -> dict:
                 for use in (b for b in reply.content if b.type == "tool_use"):
                     args = use.input
                     if use.name == "verdict":
-                        return {**_verdict(args), "inspected": inspected}
+                        return {
+                            **_verdict(args, ignore_shell="shared shell" in item["brief"]),
+                            "inspected": inspected,
+                        }
                     inspected.append(_describe(use.name, args))
                     try:
                         if use.name == "look":
                             if args.get("width"):
                                 page.set_viewport_size({"width": args["width"], "height": 800})
-                            page.evaluate("y => window.scrollTo(0, y)", args.get("scroll_y", 0))
+                            page.evaluate(SCROLL, args.get("scroll_y", 0))
                             page.wait_for_timeout(300)
                             out = [_image(page.screenshot(type="png", animations="disabled"))]
                         elif use.name == "zoom":
@@ -256,9 +304,29 @@ def _describe(name: str, args: dict) -> str:
 EXECUTION_CAP = 65
 
 
-def _verdict(args: dict) -> dict:
+SHELL_WORDS = (
+    "sidebar",
+    "side bar",
+    "top bar",
+    "topbar",
+    "app shell",
+    "navigation rail",
+    "page background",
+)
+
+
+def _verdict(args: dict, ignore_shell: bool = False) -> dict:
     raw = max(0, min(100, int(args.get("score", 0))))
-    flawed = any(f.get("kind") == "execution" for f in args.get("fixes", []))
+    fixes = args.get("fixes", [])
+    if ignore_shell:
+        # The agent can't change the shared shell; drop requests about it.
+        fixes = [
+            f
+            for f in fixes
+            if not any(w in (f.get("issue", "") + f.get("fix", "")).lower() for w in SHELL_WORDS)
+        ]
+    args = {**args, "fixes": fixes}
+    flawed = any(f.get("kind") == "execution" and f.get("major") for f in fixes)
     score = (min(raw, EXECUTION_CAP) if flawed else raw) / 100
     return {
         "label": "liked" if score >= 0.5 else "disliked",
@@ -270,9 +338,12 @@ def _verdict(args: dict) -> dict:
                 "issue": str(f.get("issue", ""))[:300],
                 "fix": str(f.get("fix", ""))[:400],
                 "kind": "execution" if f.get("kind") == "execution" else "style",
+                "major": bool(f.get("kind") == "execution" and f.get("major")),
             }
             # Execution fixes first: they are what blocks approval.
-            for f in sorted(args.get("fixes", []), key=lambda f: f.get("kind") != "execution")[:5]
+            for f in sorted(
+                args["fixes"], key=lambda f: not (f.get("kind") == "execution" and f.get("major"))
+            )[:5]
         ],
         "keep": [str(k)[:200] for k in args.get("keep", [])[:3]],
         "note": "Graded by your taste grader, which inspected the live page.",
