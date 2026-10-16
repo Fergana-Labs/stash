@@ -488,12 +488,24 @@ async def _run_job(job_id):
 
             directory = hillclimb_file(row, job_id).parent
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            model = grader(row)
+
+            async def record(output):
+                await pool.execute(
+                    "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,$3,$4)",
+                    row["id"],
+                    model["version"],
+                    {"brief": output["brief"], "screenshot_sha256": output["screenshot_sha256"]},
+                    {**output, "version": model["version"], "optimization_ready": True},
+                )
+
             result = await taste_hillclimb.run(
                 hillclimb_file(row, job_id),
                 work_root(row) / "runtime",
                 job["input"]["brief"],
-                grader(row),
+                model,
                 judge_references(row),
+                record,
             )
         elif op in ("discover", "collect"):
             result = await collect_history(
@@ -701,6 +713,7 @@ async def add_examples(owner, session_id, files):
         dataset["examples"].append(packet)
         known.add(packet["id"])
         added[label] += 1
+    job_id = None
     if sum(added.values()):
         write(directory / "evidence.json", dataset)
         await get_pool().execute(
@@ -708,7 +721,13 @@ async def add_examples(owner, session_id, files):
             row["id"],
             {"dataset": str(directory)},
         )
-    return {**binding, "added": added}
+        # Enough examples: build the grader now rather than waiting on the wizard agent.
+        if not label_summary(await workspace(owner))["build_gaps"]:
+            try:
+                job_id = str((await enqueue(owner, "build", {"automatic": True}))["job_id"])
+            except Conflict:
+                pass  # A build is already running.
+    return {**binding, "added": added, "job_id": job_id}
 
 
 async def learn_uploaded_traces(row, paths):

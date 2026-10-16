@@ -214,7 +214,7 @@ export const tasteAddExamples = (
   sessionId: string,
   files: { name: string; label: "liked" | "disliked"; content: string; url?: string }[],
 ) =>
-  apiFetch<{ model_id: string; added: { liked: number; disliked: number } }>(
+  apiFetch<{ model_id: string; added: { liked: number; disliked: number }; job_id: string | null }>(
     `${base}/examples`,
     { method: "POST", body: JSON.stringify({ session_id: sessionId, files }) },
   );

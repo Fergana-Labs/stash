@@ -17,7 +17,6 @@ import ModelPanel from "./ModelPanel";
 import { useWizardDraft } from "./useWizardDraft";
 import { useDictation } from "./useDictation";
 import { takeWizardMessage } from "./wizard-navigation";
-import { uploadWebsiteTraces } from "./website-traces";
 import WebsiteEvalCard from "./cards/WebsiteEvalCard";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
@@ -238,16 +237,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   }, [inject, pending, entries, send]);
 
   async function attach(files: FileList) {
-    if (Array.from(files).every(f => /\.jsonl$/i.test(f.name))) {
-      setAttaching("Reading your traces…");
-      try {
-        const uploaded = await uploadWebsiteTraces(sessionId, Array.from(files).map((file) => ({ file, path: file.name })));
-        setModelId(uploaded.modelId);
-        send(uploaded.event, "event");
-      } catch (e) { setError(errorMessage(e)); } finally { setAttaching(""); }
-      return;
-    }
-    if (!modelId) { setError("Attach your exported JSONL traces, or describe what you want to judge first."); return; }
+    if (!modelId) { setError("Describe what you want to judge first."); return; }
     const rows: NewExample[] = [];
     try {
       for (const [i, file] of Array.from(files).entries()) {

@@ -7,7 +7,7 @@ import JudgeWorkspace from "./JudgeWorkspace";
 import WebsiteEvalCard from "@/components/wizard/cards/WebsiteEvalCard";
 import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
-import { CheckinsSection, ImproveSection, LearnedSection } from "@/components/taste/TasteSections";
+import { CheckinsSection, LearnedSection } from "@/components/taste/TasteSections";
 import HillClimbSection from "@/components/taste/HillClimbSection";
 export default function EvalDestination({ id }: { id: string }) {
   const router = useRouter();
@@ -61,7 +61,6 @@ export default function EvalDestination({ id }: { id: string }) {
         <div className="mt-6 space-y-6">
           <LearnedSection data={website} />
           <CheckinsSection data={website} />
-          {website.demo && website.endpoint.ready && <ImproveSection data={website} />}
         </div>
       </div>
     </EvalPageFrame>

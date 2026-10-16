@@ -22,7 +22,7 @@ async function encode(file: File): Promise<string> {
 }
 
 /** Contrastive examples: websites the user likes and ones they don't, as screenshots or HTML. */
-export default function ExampleSites({ onDone }: { onDone: (text: string) => void }) {
+export default function ExampleSites({ onDone }: { onDone: (text: string, jobId: string | null) => void }) {
   const { sessionId, send, adoptModel } = useWizard();
   const [picked, setPicked] = useState<Record<Label, File[]>>({ liked: [], disliked: [] });
   const [urls, setUrls] = useState<Record<Label, string>>({ liked: "", disliked: "" });
@@ -48,7 +48,7 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
       const result = await tasteAddExamples(sessionId, [...files, ...pages]);
       adoptModel?.(result.model_id);
       const text = `Added ${result.added.liked} site${result.added.liked === 1 ? "" : "s"} I like and ${result.added.disliked} I don’t.`;
-      onDone(text);
+      onDone(text, result.job_id);
       send(text, "event");
     } catch (e) {
       setError(errorMessage(e));

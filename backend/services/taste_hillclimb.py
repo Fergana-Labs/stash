@@ -104,7 +104,9 @@ class Run:
         tmp.write_text(json.dumps(self.state))
         tmp.replace(self.state_file)
 
-    async def arm(self, name: str, model: dict, references, finished: asyncio.Event, rounds_used):
+    async def arm(
+        self, name: str, model: dict, references, finished: asyncio.Event, rounds_used, record
+    ):
         arm = self.state["arms"][name]
         messages = [{"role": "user", "content": self.state["brief"]}]
         try:
@@ -127,6 +129,17 @@ class Run:
                 shutil.copyfile(png, self.runtime / f"{sha}.png")
                 arm["rounds"].append({"round": n, "screenshot_sha256": sha, **result})
                 self.save()
+                if name == "grader":
+                    # The graded agent checked in with the grader; show it in the timeline.
+                    await record(
+                        {
+                            **result,
+                            "screenshot_sha256": sha,
+                            "brief": self.state["brief"][:500],
+                            "ref": f"hill-climb round {n}",
+                            "coverage": {"complete": result["approved"], "supplied_steps": len(messages)},
+                        }
+                    )
                 messages.append({"role": "assistant", "content": html})
                 if name == "grader":
                     rounds_used[0] = n
@@ -146,12 +159,12 @@ class Run:
             self.save()
 
 
-async def run(state_file: Path, runtime: Path, brief: str, model: dict, references) -> dict:
+async def run(state_file: Path, runtime: Path, brief: str, model: dict, references, record) -> dict:
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
     job = Run(state_file, runtime, brief)
     finished, rounds_used = asyncio.Event(), [MAX_ROUNDS]
     await asyncio.gather(
-        *(job.arm(name, model, references, finished, rounds_used) for name in ARMS)
+        *(job.arm(name, model, references, finished, rounds_used, record) for name in ARMS)
     )
     job.state["status"] = (
         "done" if any(a["status"] == "done" for a in job.state["arms"].values()) else "failed"
