@@ -21,7 +21,7 @@ from ..config import settings
 MAX_REFERENCE_IMAGES = 6
 # References shown to the judge on every check: screens the user liked and disliked.
 JUDGE_REFERENCES_PER_LABEL = 2
-APPROVE = 0.8
+APPROVE = 0.7
 
 
 def enabled() -> bool:

@@ -13,6 +13,7 @@ Progress is written to a JSON file after every round so the UI can poll it.
 import asyncio
 import hashlib
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -20,13 +21,13 @@ from pathlib import Path
 from ..config import settings
 from . import taste_demo
 
-MAX_ROUNDS = 5
+MAX_ROUNDS = 6
 ARMS = ("grader", "alone")
 
 GENERATOR = """You are a coding agent building a web page for a user. Write one complete, \
 self-contained HTML document: inline CSS only, no JavaScript, no external fonts, images or \
-links. It is viewed at 1440x960. Use plausible, specific content. Return only the HTML, \
-starting with <!doctype html> and ending with </html>."""
+links. It is viewed at 1440x960. Use plausible, specific content. Keep the document compact \
+(under ~400 lines). Return only the HTML, starting with <!doctype html> and ending with </html>."""
 
 ALONE_FEEDBACK = "Review your page and make it look better. Return the full revised HTML."
 
@@ -47,16 +48,33 @@ def _feedback(result: dict) -> str:
 async def _generate(messages: list[dict]) -> str:
     from anthropic import AsyncAnthropic
 
-    from scripts.website_taste.runtime import html_only
-
-    reply = await AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY).messages.create(
-        model=settings.ANTHROPIC_FAST_MODEL,
-        max_tokens=12000,
-        system=GENERATOR,
-        messages=messages,
-    )
-    text = "".join(c.text for c in reply.content if c.type == "text")
-    return html_only(text)
+    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    for attempt in range(2):
+        reply = await client.messages.create(
+            # The agent being hill-climbed; both arms always use the same model.
+            model=os.environ.get("TASTE_DEMO_AGENT_MODEL") or settings.ANTHROPIC_FAST_MODEL,
+            max_tokens=16000,
+            system=GENERATOR,
+            messages=messages,
+        )
+        text = "".join(c.text for c in reply.content if c.type == "text")
+        # Models sometimes wrap the page in prose or a code fence; keep only the document.
+        match = re.search(r"<!doctype html.*?</html>", text, re.I | re.S) or re.search(
+            r"<html[\s>].*?</html>", text, re.I | re.S
+        )
+        if match:
+            return match.group(0)
+        if attempt == 0:
+            messages = [
+                *messages,
+                {"role": "assistant", "content": text[:2000] or "(empty)"},
+                {
+                    "role": "user",
+                    "content": "That was not a complete HTML document. Return only the full HTML, "
+                    "from <!doctype html> to </html>, and keep it compact.",
+                },
+            ]
+    raise ValueError("The agent did not return a complete HTML page.")
 
 
 def _render(html: str, directory: Path) -> Path:
