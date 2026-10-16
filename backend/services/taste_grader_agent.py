@@ -133,6 +133,10 @@ TOOLS = [
                                 "type": "boolean",
                                 "description": "Execution flaws only: true if a person would notice it at a normal glance (see the rules).",
                             },
+                            "breaks_direct_rule": {
+                                "type": "boolean",
+                                "description": "True if this breaks a preference marked [they said this directly]. Check those rules by measuring.",
+                            },
                         },
                         "required": ["issue", "fix", "kind"],
                     },
@@ -280,7 +284,11 @@ def grade(
     _check_url(url)
     rules = "\n".join(
         f"- {'AVOID' if p['kind'] == 'avoid' else 'PREFER'}: {p['rule']}"
-        + (" [they said this directly; weigh it heavily]" if p.get("source") == "feedback" else "")
+        + (
+            " [they said this directly; breaking it blocks approval]"
+            if p.get("source") == "feedback"
+            else ""
+        )
         for p in model["preferences"]
     )
 
@@ -465,7 +473,12 @@ def _verdict(args: dict, ignore_shell: bool = False) -> dict:
             if not any(w in (f.get("issue", "") + f.get("fix", "")).lower() for w in SHELL_WORDS)
         ]
     args = {**args, "fixes": fixes}
-    flawed = any(f.get("kind") == "execution" and f.get("major") for f in fixes)
+    # Major execution flaws and anything breaking a rule the user stated directly
+    # are dealbreakers: they can never be approved.
+    flawed = any(
+        (f.get("kind") == "execution" and f.get("major")) or f.get("breaks_direct_rule")
+        for f in fixes
+    )
     score = (min(raw, EXECUTION_CAP) if flawed else raw) / 100
     return {
         "label": "liked" if score >= 0.5 else "disliked",
@@ -477,7 +490,9 @@ def _verdict(args: dict, ignore_shell: bool = False) -> dict:
                 "issue": str(f.get("issue", ""))[:300],
                 "fix": str(f.get("fix", ""))[:400],
                 "kind": "execution" if f.get("kind") == "execution" else "style",
-                "major": bool(f.get("kind") == "execution" and f.get("major")),
+                "major": bool(
+                    (f.get("kind") == "execution" and f.get("major")) or f.get("breaks_direct_rule")
+                ),
             }
             # Execution fixes first: they are what blocks approval.
             for f in sorted(
