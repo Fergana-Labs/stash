@@ -1,5 +1,11 @@
 # Run the website-taste experiment
 
+The intended learned-grader path is now the separate
+[frozen-model activation probe](website-taste-activation-probe.md). Its first
+cloud run completed, but failed quality checks and a confirmed human
+counterexample. Optimization remains blocked. The older classifier and Claude
+investigator below remain available for comparison and audits.
+
 This operator harness prepares a real, private history dataset and runs the
 [four-arm experiment](website-taste-experiment.md). It is separate from the
 synthetic website-design fixture. It does not import all traces into Stash,

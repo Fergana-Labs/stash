@@ -51,6 +51,11 @@ def main():
             )
         if name in ("optimize", "sample-dpo", "train-dpo", "evaluate"):
             command.add_argument(
+                "--probe-output",
+                type=Path,
+                help="Use a released, versioned frozen-model activation probe instead of the legacy classifier",
+            )
+            command.add_argument(
                 "--allow-cloud",
                 action="store_true",
                 help="Only after Henry approves the bounded cloud job",
@@ -161,13 +166,27 @@ def main():
             raise ValueError(
                 "This reward was invalidated by human feedback. Fit and validate a new classifier before launching more GPU work."
             )
-        scorer = json.loads((output / "classifier.json").read_text())
-        if not scorer["pilot_gate_passed"] or scorer["experiment"] != frozen["sha256"]:
-            raise ValueError("The frozen taste classifier has not passed the pilot gate")
-        if not classifier.development_gate(
-            json.loads((output / "classifier-training.json").read_text())
-        ):
-            raise ValueError("The frozen taste classifier failed the development checks")
+        probe_output = args.probe_output or (
+            output if (output / "activation-probe.json").exists() else None
+        )
+        if probe_output:
+            from .probe_pipeline import ProbeScorer
+
+            reward = ProbeScorer(probe_output)
+            # Frozen evidence and generation split identities must agree.
+            from .probe_pipeline import dataset_at
+
+            if dataset_at(probe_output)["source_experiment"] != frozen["sha256"]:
+                raise ValueError("Activation probe belongs to a different generation experiment")
+        else:
+            scorer = json.loads((output / "classifier.json").read_text())
+            if not scorer["pilot_gate_passed"] or scorer["experiment"] != frozen["sha256"]:
+                raise ValueError("The frozen taste classifier has not passed the pilot gate")
+            if not classifier.development_gate(
+                json.loads((output / "classifier-training.json").read_text())
+            ):
+                raise ValueError("The frozen taste classifier failed the development checks")
+            reward = FrozenScorer(environment_stash(), scorer["model_id"], scorer["version_id"])
         # Importing the cloud module may create private Modal volumes; do this only
         # after the explicit operator gate, never during plan/discover/review commands.
         from .cloud import RemoteGenerator
@@ -176,7 +195,7 @@ def main():
             output,
             frozen,
             RemoteGenerator(frozen["model"]),
-            FrozenScorer(environment_stash(), scorer["model_id"], scorer["version_id"]),
+            reward,
             call_limit=frozen["max_generation_calls"],
         )
         if args.command == "optimize":
@@ -192,14 +211,16 @@ def main():
             import modal
 
             pairs = [json.loads(s) for s in (output / "dpo-pairs.jsonl").read_text().splitlines()]
-            run_id = frozen["sha256"][:24]
+            config, run_id = experiment.training_identity(
+                frozen, pairs, getattr(reward, "identity", None)
+            )
             file = output / "posttraining.json"
             if file.exists():
                 raise ValueError(
                     "A training receipt already exists; inspect it before launching another GPU run"
                 )
             result = modal.Function.from_name("stash-website-taste", "train").remote(
-                frozen["model"], pairs, protocol.cloud_training_config(frozen), run_id
+                frozen["model"], pairs, config, run_id
             )
             file.write_text(json.dumps(result, indent=2))
             print(

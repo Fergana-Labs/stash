@@ -1,5 +1,10 @@
 # Learn Henry's website taste from agent history
 
+The [activation-probe implementation](website-taste-activation-probe.md) keeps the
+frozen-model linear readout as the grader and agents as evidence curators/auditors.
+It has executed a first cloud pilot; that grader failed validation. This does not
+establish the method ranking described below.
+
 This is the target demo Henry described on October 15, 2026. The existing
 [website-design fixture](website-design.md) illustrates part of the interaction;
 it is not evidence that this experiment has succeeded.

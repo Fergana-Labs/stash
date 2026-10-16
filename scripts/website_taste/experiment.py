@@ -198,6 +198,7 @@ def dpo_pairs(output: Path, runner: Runner):
                 "reward_gap": chosen["score"] - rejected["score"],
                 "label_source": "frozen_classifier",
                 "human_labeled": False,
+                "reward": getattr(runner.score, "identity", None),
             }
         )
     (output / "dpo-pairs.jsonl").write_text("".join(json.dumps(p) + "\n" for p in pairs))
@@ -206,6 +207,15 @@ def dpo_pairs(output: Path, runner: Runner):
             "Fewer than four reward-separated training tasks; do not launch post-training"
         )
     return pairs
+
+
+def training_identity(experiment, pairs, reward):
+    """A new reward or preference-pair set must never reuse an old adapter."""
+    if any(pair.get("reward") != reward or pair.get("partition") != "train" for pair in pairs):
+        raise ValueError("Training pairs use a different reward or held-out data")
+    config = {key: experiment[key] for key in ("sha256", "seed", "dpo_steps", "dpo_beta")}
+    config.update(reward=reward, pairs_sha256=digest(json.dumps(pairs, sort_keys=True)))
+    return config, digest(json.dumps(config, sort_keys=True))[:24]
 
 
 def evaluate(output: Path, runner: Runner, *, adapter: str | None = None):

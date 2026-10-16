@@ -317,13 +317,19 @@ def snapshot(root: Path, pid=None):
     return result
 
 
-def handler(root: Path, pid=None):
+def handler(root: Path, pid=None, probe_root=None):
     page = (
         Path(__file__)
         .with_name("gallery.html")
         .read_text()
-        .replace("</head>", '<link rel="stylesheet" href="/inspector.css"></head>')
-        .replace("</body>", '<script src="/inspector.js"></script></body>')
+        .replace(
+            "</head>",
+            '<link rel="stylesheet" href="/inspector.css"><link rel="stylesheet" href="/probe.css"></head>',
+        )
+        .replace(
+            "</body>",
+            '<script src="/inspector.js"></script><script src="/probe.js"></script></body>',
+        )
         .encode()
     )
 
@@ -352,7 +358,7 @@ def handler(root: Path, pid=None):
             path = urlsplit(self.path).path
             if path in ("/", "/index.html"):
                 self.send(200, page, "text/html; charset=utf-8")
-            elif path in ("/inspector.js", "/inspector.css"):
+            elif path in ("/inspector.js", "/inspector.css", "/probe.js", "/probe.css"):
                 asset = Path(__file__).with_name("gallery-" + path[1:])
                 self.send(
                     200,
@@ -363,6 +369,17 @@ def handler(root: Path, pid=None):
                 self.send(200, json.dumps(snapshot(root, pid)).encode(), "application/json")
             elif path == "/api/judge":
                 self.send(200, json.dumps(judge_summary(root)).encode(), "application/json")
+            elif path == "/api/probe":
+                from .probe_pipeline import summary
+
+                self.send(200, json.dumps(summary(probe_root)).encode(), "application/json")
+            elif path == "/api/probe/head" and probe_root:
+                from .probe_pipeline import load_probe
+
+                try:
+                    self.send(200, json.dumps(load_probe(probe_root)).encode(), "application/json")
+                except ValueError:
+                    self.send(404, b"Probe has not been fitted", "text/plain")
             elif match := re.fullmatch(r"/api/design/([a-f0-9]{64})/instructions", path):
                 data = instructions_for(root, match[1])
                 self.send(
@@ -377,6 +394,39 @@ def handler(root: Path, pid=None):
                     json.dumps(data or {"error": "No agent investigation recorded yet"}).encode(),
                     "application/json",
                 )
+            elif match := re.fullmatch(r"/api/design/([a-f0-9]{64})/probe", path):
+                file = (
+                    probe_root / "probe-predictions" / (match[1] + ".json") if probe_root else None
+                )
+                data = (
+                    read_json(file)
+                    if file
+                    and not file.is_symlink()
+                    and file.resolve().is_relative_to(probe_root)
+                    and instructions_for(root, match[1])
+                    else {}
+                )
+                self.send(
+                    200 if data else 404,
+                    json.dumps(data or {"error": "No probe score saved"}).encode(),
+                    "application/json",
+                )
+            elif match := re.fullmatch(r"/probe-images/([a-f0-9]{64})\.png", path):
+                from .probe_pipeline import dataset_at
+
+                values = dataset_at(probe_root)["examples"] if probe_root else []
+                row = next((r for r in values if r["id"] == match[1]), None)
+                file = Path(row["image_file"]) if row else None
+                if (
+                    file
+                    and file.is_file()
+                    and not file.is_symlink()
+                    and hashlib.sha256(file.read_bytes()).hexdigest()
+                    == row["input"]["render"]["sha256"]
+                ):
+                    self.send(200, file.read_bytes(), "image/png", cache="private, max-age=3600")
+                else:
+                    self.send(404, b"Unknown evidence image", "text/plain")
             elif match := re.fullmatch(r"/images/([a-f0-9]{64})\.png", path):
                 file = root / "artifacts" / match[1] / "website.png"
                 if (
@@ -401,11 +451,15 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--port", type=int, default=3458)
     parser.add_argument("--worker-pid", type=int)
+    parser.add_argument("--probe-output", type=Path)
     args = parser.parse_args()
     root = args.output.resolve()
     if not root.is_dir():
         parser.error("The experiment output directory must exist")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(root, args.worker_pid))
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", args.port),
+        handler(root, args.worker_pid, args.probe_output.resolve() if args.probe_output else None),
+    )
     print(f"Design journal: http://localhost:{args.port}", flush=True)
     try:
         server.serve_forever()

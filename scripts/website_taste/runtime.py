@@ -150,9 +150,14 @@ class Runner:
             file, png = directory / "website.html", directory / "website.png"
             file.write_text(html)
             self.render(file, png)
-            # Only the brief and rendered pixels are graded, never the candidate skill.
-            prediction = self.score(task["brief"], png)
-            score = prediction["probabilities"]["liked"]
+            # Activation scorers inspect the recorded response and artifacts.
+            # The legacy scorer still accepts the brief/render interface.
+            if hasattr(self.score, "score_run"):
+                prediction = self.score.score_run(task, messages, generation, file, png)
+                score = prediction["score"]
+            else:
+                prediction = self.score(task["brief"], png)
+                score = prediction["probabilities"]["liked"]
             if (
                 not isinstance(score, (int, float))
                 or not math.isfinite(score)

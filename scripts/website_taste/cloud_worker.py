@@ -85,6 +85,12 @@ def generate(model_spec, messages, seed, adapter=None):
 
 def train_dpo(model_spec, pairs, config, run_id):
     require_cloud()
+    from .corpus import digest
+
+    if config.get("pairs_sha256") != digest(json.dumps(pairs, sort_keys=True)) or any(
+        pair.get("reward") != config.get("reward") for pair in pairs
+    ):
+        raise ValueError("Training pair contents or frozen reward identity changed")
     if not 1 <= config["dpo_steps"] <= 40:
         raise ValueError("This pilot permits at most 40 training steps")
     if not run_id or len(run_id) > 64 or any(c not in "0123456789abcdef-" for c in run_id):
@@ -93,7 +99,12 @@ def train_dpo(model_spec, pairs, config, run_id):
     previous = directory / "training.json"
     if previous.exists():
         record = json.loads(previous.read_text())
-        if record["experiment"] != config["sha256"] or record["model"] != model_spec:
+        if (
+            record["experiment"] != config["sha256"]
+            or record["model"] != model_spec
+            or record.get("reward") != config.get("reward")
+            or record.get("pairs_sha256") != config["pairs_sha256"]
+        ):
             raise ValueError("Checkpoint belongs to a different experiment")
         return record
     import torch
@@ -206,6 +217,8 @@ def train_dpo(model_spec, pairs, config, run_id):
         "human_labeled": False,
         "partition": "train",
         "experiment": config["sha256"],
+        "reward": config.get("reward"),
+        "pairs_sha256": config["pairs_sha256"],
     }
     (directory / "training.json").write_text(json.dumps(record, indent=2))
     return record

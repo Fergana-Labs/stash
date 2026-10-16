@@ -156,6 +156,9 @@ def sync_reviews(output: Path, stash: Stash):
                 **example,
                 "label": current["label"],
                 "needs_review": current["needs_review"],
+                "human_reviewed": not current["needs_review"]
+                if record.get("label_policy") != "automatic_exploratory"
+                else example.get("human_reviewed", False),
                 "review_note": current["note"],
                 "preference": example["preference"]
                 if current["label"] == example["label"]
