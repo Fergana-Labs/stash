@@ -159,6 +159,31 @@ Evaluation without an adapter explicitly reports only three arms.
 
 ## Judge the outcome
 
+### Watch the run locally
+
+```sh
+python -m scripts.website_taste.gallery --output /private/tmp/website-taste-auto --port 3458 --worker-pid YOUR_OPERATOR_PROCESS_ID
+```
+
+Open `http://localhost:3458`. The design journal reads the live output folder,
+refreshes automatically, and shows previews while they are being scored. It
+includes chronological and score sorting, brief/method filters, keyboard image
+navigation, and a two-design comparison. The worker PID is optional; without it,
+the site watches outputs without claiming the underlying compute is active.
+
+The server binds to loopback only and serves a summary API plus known PNG
+screenshots. It does not expose raw history, model instructions, credentials,
+source HTML, or arbitrary files. Completed designs that used unchanged seed
+instructions are marked as the skill baseline even during GEPA search. DPO
+sampling is distinct from post-trained inference. Invalid HTML is displayed as
+invalid output, not as an aesthetic dislike. Retries of one request share one
+saved-output card. The journal is a separate local site; it does not replace the
+Stash app on port 3457 or deploy a public copy of private experiment outputs.
+
+Method names and scores are visible in this journal. It is an unblinded progress
+view; viewing final candidates here can compromise a later blinded preference
+comparison. Use the separate blind gallery first when measuring blind choices.
+
 `blind-gallery.html` shows pixels and task briefs without method names, scores,
 or generated JavaScript. `reveal-key.json` stores the identities separately.
 Have Henry record preferred candidates, ties, or neither before opening the
