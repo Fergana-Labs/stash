@@ -71,6 +71,8 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
   );
 
   const total = picked.liked.length + picked.disliked.length;
+  // The grader needs both kinds and at least four examples in all.
+  const enough = picked.liked.length >= 2 && picked.disliked.length >= 2;
   return (
     <div className="mt-3 border-t border-border pt-3">
       <p className="m-0 mb-2 text-[12px] text-muted-foreground">Or show it example sites: screenshots or HTML of designs you like, and ones you don’t.</p>
@@ -80,8 +82,8 @@ export default function ExampleSites({ onDone }: { onDone: (text: string) => voi
       </div>
       {total > 0 && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="flex-1 text-[11.5px] text-muted-foreground">{picked.liked.length && picked.disliked.length ? "" : "Add at least one of each."}</span>
-          <Button type="button" size="sm" disabled={saving || !picked.liked.length || !picked.disliked.length} onClick={() => void save()}>
+          <span className="flex-1 text-[11.5px] text-muted-foreground">{enough ? "" : "Add at least two of each."}</span>
+          <Button type="button" size="sm" disabled={saving || !enough} onClick={() => void save()}>
             {saving && <Loader2 className="animate-spin" />}Use these {total} examples
           </Button>
         </div>
