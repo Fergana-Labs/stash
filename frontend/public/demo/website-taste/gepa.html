@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relay — Recent sessions</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f6; color: #18181b; font-size: 14px; }
+  header { display: flex; align-items: center; gap: 40px; height: 72px; padding: 0 40px; background: #3730a3; color: #fff; box-shadow: 0 2px 8px rgba(30, 27, 75, .25); }
+  .logo { font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  header nav { display: flex; gap: 28px; color: #c7d2fe; font-weight: 600; font-size: 15px; }
+  header nav .active { color: #fff; font-weight: 700; }
+  header .right { margin-left: auto; display: flex; gap: 14px; align-items: center; }
+  .btn { padding: 10px 20px; border-radius: 8px; background: #fff; color: #3730a3; font-weight: 700; }
+  .av { width: 34px; height: 34px; border-radius: 50%; background: #6366f1; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  main { max-width: 1240px; margin: 0 auto; padding: 36px 40px; }
+  h1 { font-size: 30px; font-weight: 800; margin: 0 0 6px; letter-spacing: -.02em; }
+  .sub { color: #71717a; margin: 0 0 22px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; }
+  .search { flex: 1; max-width: 420px; padding: 11px 14px; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; color: #a1a1aa; }
+  .toolbar label { font-weight: 700; color: #3f3f46; margin-left: 8px; }
+  .select { padding: 10px 34px 10px 12px; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; position: relative; color: #27272a; }
+  .select::after { content: "▾"; position: absolute; right: 12px; color: #71717a; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+  thead th { text-align: left; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #3f3f46; background: #e4e4e7; padding: 15px 22px; border-bottom: 2px solid #d4d4d8; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+  .stat { background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 6px rgba(0,0,0,.06); }
+  .stat label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #52525b; }
+  .stat b { font-size: 26px; font-weight: 800; color: #18181b; }
+  .stat.run b { color: #4338ca; } .stat.fail b { color: #b91c1c; }
+  td { padding: 20px 22px; border-bottom: 1px solid #ececef; color: #52525b; }
+  tr.group td { background: #f4f4f5; font-weight: 800; color: #27272a; font-size: 13px; padding: 12px 22px; text-transform: uppercase; letter-spacing: .04em; }
+  td.time { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #71717a; font-size: 13px; width: 90px; }
+  td.title { color: #18181b; font-weight: 700; }
+  td.model { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  td.arrow { color: #6366f1; text-align: right; width: 40px; font-size: 18px; font-weight: 700; }
+  .st { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .st.run { background: #e0e7ff; color: #3730a3; }
+  .st.ok { background: #dcfce7; color: #166534; }
+  .st.fail { background: #fee2e2; color: #991b1b; }
+  .st.rev { background: #fef3c7; color: #92400e; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Relay</div>
+  <nav><span>Overview</span><span class="active">Sessions</span><span>Projects</span><span>Settings</span></nav>
+  <div class="right"><span class="btn">New session</span><span class="av">JD</span></div>
+</header>
+<main>
+  <h1>Recent sessions</h1><p class="sub">17 sessions across 5 projects</p>
+  <div class="stats"><div class="stat"><label>Total sessions</label><b>17</b></div><div class="stat"><label>Completed</label><b>11</b></div><div class="stat fail"><label>Failed</label><b>4</b></div><div class="stat run"><label>Running</label><b>1</b></div></div>
+  <div class="toolbar">
+    <div class="search">Search sessions…</div>
+    <label>Status:</label><span class="select">All statuses</span>
+    <label>Agent:</label><span class="select">All agents</span>
+    <label>Project:</label><span class="select">All projects</span>
+  </div>
+  <table>
+    <thead><tr><th>Time</th><th>Session</th><th>Project</th><th>Agent</th><th>Model</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="7">Today</td></tr>
+      <tr><td class="time">09:41</td><td class="title">Fix flaky auth test</td><td>relay-web</td><td>Claude Code</td><td class="model">claude-opus-4.1</td><td><span class="st run">Running</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">09:12</td><td class="title">Migrate billing to Stripe v3</td><td>billing-svc</td><td>Codex</td><td class="model">gpt-5-codex</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">08:47</td><td class="title">Add rate limiting to /ingest</td><td>relay-api</td><td>Claude Code</td><td class="model">claude-sonnet-4.5</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">08:03</td><td class="title">Investigate memory leak in indexer</td><td>relay-indexer</td><td>Codex</td><td class="model">gpt-5-codex</td><td><span class="st fail">Failed</span></td><td class="arrow">→</td></tr>
+      <tr class="group"><td colspan="7">Yesterday</td></tr>
+      <tr><td class="time">18:22</td><td class="title">Refactor session search to use FTS</td><td>relay-api</td><td>Claude Code</td><td class="model">claude-opus-4.1</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">16:05</td><td class="title">Upgrade Next.js to 15</td><td>relay-web</td><td>Codex</td><td class="model">o4-mini</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">14:30</td><td class="title">Write migration for org_members table</td><td>relay-api</td><td>Claude Code</td><td class="model">claude-sonnet-4.5</td><td><span class="st rev">Needs review</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">11:58</td><td class="title">Debug Stripe webhook retries</td><td>billing-svc</td><td>Claude Code</td><td class="model">claude-opus-4.1</td><td><span class="st fail">Failed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">10:14</td><td class="title">Dark mode for settings page</td><td>relay-web</td><td>Codex</td><td class="model">gpt-5-codex</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr class="group"><td colspan="7">Mon Oct 12</td></tr>
+      <tr><td class="time">17:40</td><td class="title">Backfill invoice PDFs</td><td>billing-svc</td><td>Codex</td><td class="model">gpt-5-codex</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">15:22</td><td class="title">Add OpenTelemetry tracing</td><td>relay-indexer</td><td>Claude Code</td><td class="model">claude-sonnet-4.5</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">13:09</td><td class="title">Fix timezone bug in digest emails</td><td>relay-api</td><td>Codex</td><td class="model">o4-mini</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">10:51</td><td class="title">Draft README for relay CLI</td><td>relay-cli</td><td>Claude Code</td><td class="model">claude-sonnet-4.5</td><td><span class="st fail">Failed</span></td><td class="arrow">→</td></tr>
+      <tr class="group"><td colspan="7">Sun Oct 11</td></tr>
+      <tr><td class="time">19:02</td><td class="title">Move ESLint config to flat format</td><td>relay-web</td><td>Codex</td><td class="model">o4-mini</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">16:47</td><td class="title">Add retries to S3 uploader</td><td>relay-indexer</td><td>Claude Code</td><td class="model">claude-sonnet-4.5</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">14:15</td><td class="title">Spike pgvector for semantic search</td><td>relay-api</td><td>Claude Code</td><td class="model">claude-opus-4.1</td><td><span class="st ok">Completed</span></td><td class="arrow">→</td></tr>
+      <tr><td class="time">11:20</td><td class="title">Remove legacy v1 billing endpoints</td><td>billing-svc</td><td>Codex</td><td class="model">gpt-5-codex</td><td><span class="st fail">Failed</span></td><td class="arrow">→</td></tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

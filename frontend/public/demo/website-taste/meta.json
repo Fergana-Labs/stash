@@ -1,0 +1,98 @@
+[
+  {
+    "arm": "base",
+    "label": "Qwen 8B",
+    "sub": "No help",
+    "score": 0.08,
+    "summary": "This breaks nearly every rule they care about: card-per-item layout, explanatory hero text, multi-line tall rows, bold/colored mixed typography, emoji decorations everywhere, and a large hero banner consuming vertical space before the actual content.",
+    "fixes": [
+      {
+        "issue": "Card-per-item layout with bordered boxes for each session, multi-line tall rows",
+        "fix": "Replace the 3-column card grid with a flat pseudo-table: one row per session, single-line height, columns for title/project/agent/model/timestamp/status, no borders per item, just alternating row backgrounds or a simple divider line."
+      },
+      {
+        "issue": "Large decorative hero banner with explanatory prose ('Every coding-agent session, beautifully organized and instantly searchable!')",
+        "fix": "Remove the hero section entirely. Start the page with the filter bar and table immediately. Move search inline with the filters."
+      },
+      {
+        "issue": "Mixed bold labels inline with values ('Project: relay-web', 'Agent: Claude Code') and emoji decorations throughout",
+        "fix": "Remove all emoji icons and bold label prefixes. In the table layout, each column header labels the data; cell values are plain uniform-weight text."
+      },
+      {
+        "issue": "Stat cards with large colored numbers and emoji icons above the session list add decorative chrome and vertical waste",
+        "fix": "Remove the stat cards or collapse them into a single compact status-count line (e.g. '17 sessions \u00b7 11 completed \u00b7 4 failed \u00b7 1 running') above the filter row."
+      }
+    ]
+  },
+  {
+    "arm": "skill",
+    "label": "Qwen 8B + skill",
+    "sub": "Skill written from your traces",
+    "score": 0.28,
+    "summary": "Cards with borders around each row, multi-line row height, explanatory subtitle text, and mixed label weights/colors all violate their core rules.",
+    "fixes": [
+      {
+        "issue": "Each session is a tall bordered card with two lines of content \u2014 violates both the card-UI rule and the compact single-line row rule",
+        "fix": "Replace cards with a flat table layout: one row per session, columns for status, title, project, agent, model, timestamp, action \u2014 all on a single line with ~32px row height and a bottom border only (no box per row)"
+      },
+      {
+        "issue": "'Browse and search the history of your coding-agent sessions.' is explanatory prose text under the heading",
+        "fix": "Remove the subtitle entirely; the page heading 'Recent Sessions' is sufficient"
+      },
+      {
+        "issue": "Row metadata uses mixed ALL-CAPS label spans (PROJECT, AGENT, MODEL, STARTED) inline with values, creating visual noise and exposing internal structure",
+        "fix": "Remove the label prefixes; rely on column headers in the table layout to identify each field"
+      },
+      {
+        "issue": "Filter bar is a large bordered box with excessive padding, adding vertical bulk",
+        "fix": "Render filters as a compact inline row of small pill/tab controls flush with the table header, no surrounding box"
+      }
+    ]
+  },
+  {
+    "arm": "gepa",
+    "label": "Qwen 8B + GEPA",
+    "sub": "Prompt optimized against your grader",
+    "score": 0.38,
+    "summary": "The table layout and compact rows are on the right track, but the stat cards, bold session titles mixed with plain text, color-coded status badges, chevron arrows on every row, and the descriptive subtitle all violate their explicit avoid rules.",
+    "fixes": [
+      {
+        "issue": "Four bordered stat cards (TOTAL SESSIONS, COMPLETED, FAILED, RUNNING) are card/box UI for summary data \u2014 they add decorative chrome and expose internal sub-scores",
+        "fix": "Remove the stat cards entirely; the count info is redundant with the table itself"
+      },
+      {
+        "issue": "Session title column uses bold weight while all other columns use normal weight \u2014 mixed typography within the same content region",
+        "fix": "Set all row cells to the same font-weight (normal/400); rely on column position, not bold, to distinguish the title"
+      },
+      {
+        "issue": "Arrow chevrons (\u2192) on every row are decorative navigational chrome explicitly called out as unwanted",
+        "fix": "Remove the \u2192 icons; make the entire row clickable with a subtle hover highlight instead"
+      },
+      {
+        "issue": "Descriptive subtitle '17 sessions across 5 projects' under the page heading is explanatory prose",
+        "fix": "Delete the subtitle line entirely"
+      }
+    ]
+  },
+  {
+    "arm": "posttrained",
+    "label": "Post-trained Qwen 8B",
+    "sub": "Weights updated with your grader as reward",
+    "score": 0.82,
+    "summary": "Clean, compact flat-table layout with good column structure \u2014 a few small violations around the status dot+color mixing and the footer prose line hold it back.",
+    "fixes": [
+      {
+        "issue": "Footer 'Showing all 17 sessions from the last 7 days' is explanatory prose text in the UI",
+        "fix": "Remove the footer sentence entirely; the count '17 this week' in the header already conveys this"
+      },
+      {
+        "issue": "Status column mixes colored dots and colored text labels (blue 'Running', red 'Failed', amber 'Needs review') \u2014 non-uniform typography with color-coded inline text",
+        "fix": "Use a single muted dot indicator only, no colored text; keep status label text in uniform gray weight matching other columns"
+      },
+      {
+        "issue": "Model column uses monospace styling that may jut out from surrounding text",
+        "fix": "Render model names in the same sans-serif as other columns at the same size and weight, no code formatting"
+      }
+    ]
+  }
+]

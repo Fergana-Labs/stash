@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -96,9 +97,11 @@ can manage later changes through MCP. Traffic and corrections remain available i
 The user experience has THREE steps only: supply traces (uploads or connected history),
 answer a clarification IF genuinely needed, receive a working grading API endpoint.
 Call website_eval prepare first. On a new eval it shows a card where the user uploads past
-traces or chooses their connected history. Then stop with one short sentence and wait for
-their choice; do not search history in that turn. After an upload, wait for the upload job
-and call finish. If they choose connected history, search/read real history yourself,
+traces or chooses their connected history; the turn ends there. When the user reports an
+upload, call website_eval wait, then finish once the job is done. When an event says
+background work finished, that the user answered open questions, or that they added
+example sites, call website_eval finish;
+if the work failed, explain the cause plainly. If they choose connected history, search/read real history yourself,
 website_eval learn to collect relevant source evidence, then website_eval finish. After a job completes, call finish
 again; it either continues building or returns the endpoint and completes setup.
 Do not offer a menu of actions. Never mention GEPA, weight refinement, skills, experiment
@@ -1057,10 +1060,17 @@ async def stream_turn(
         )
     try:
         client = llm._get_client()
-        for _ in range(MAX_TURNS):
+        # A new website-design eval always starts by asking for traces, not by searching.
+        force_website = kind == "message" and not session["model_id"] and _website_intent(text)
+        for turn in range(MAX_TURNS):
             state = await status(owner_id, session["model_id"], session["brief"])
             system = (
                 SYSTEM + "\n\nCURRENT STATE (authoritative):\n" + json.dumps(state, default=str)
+            )
+            extra = (
+                {"tool_choice": {"type": "tool", "name": "website_eval"}}
+                if force_website and turn == 0
+                else {}
             )
             async with client.messages.stream(
                 model=settings.ANTHROPIC_MODEL,
@@ -1068,6 +1078,7 @@ async def stream_turn(
                 system=system,
                 tools=await setup_tools(owner_id, session),
                 messages=session["messages"],
+                **extra,
             ) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -1132,10 +1143,14 @@ async def stream_turn(
                             "model_id": session["model_id"],
                             "title": session["title"],
                         }
-                    background_work = background_work or (
-                        use.name == "website_eval"
-                        and isinstance(result, dict)
-                        and result.get("status") == "working"
+                    background_work = (
+                        background_work
+                        or (
+                            use.name == "website_eval"
+                            and isinstance(result, dict)
+                            and result.get("status") == "working"
+                        )
+                        or _awaits_user(card, result)
                     )
                     content, is_error = json.dumps(result, default=str)[:MAX_RESULT_CHARS], False
                 except (
@@ -1197,8 +1212,8 @@ async def stream_turn(
                     return
             session["messages"].append({"role": "user", "content": results})
             if background_work:
-                # A durable job owns the next step; do not spend more turns
-                # polling it or repeat progress cards in the conversation.
+                # A durable job or the user owns the next step; do not spend more
+                # turns polling it or repeat progress cards in the conversation.
                 yield {"type": "done", "model_id": session["model_id"]}
                 return
         yield {"type": "done", "model_id": session["model_id"]}
@@ -1214,6 +1229,22 @@ async def stream_turn(
         with CancelScope(shield=True):
             _repair_dangling(session["messages"])
             await _save(session)
+
+
+def _website_intent(text: str) -> bool:
+    return bool(re.search(r"\b(website|web ?site|web page|landing page|UI|design)\b", text, re.I))
+
+
+def _awaits_user(card, result) -> bool:
+    """A website card that needs the user's input ends the turn; the card speaks for itself."""
+    if not card or card.get("kind") != "website_eval":
+        return False
+    section = card.get("props", {}).get("section")
+    return section == "sources" or (
+        section == "preferences"
+        and isinstance(result, dict)
+        and result.get("needs_your_call", 0) > 0
+    )
 
 
 def _repair_dangling(messages: list[dict]) -> None:

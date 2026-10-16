@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 from scripts.website_taste.preferences import source_label, usable_label
 
 from ..database import get_pool
+from . import taste_demo
 from .intuition import history, history_bridge
 from .intuition.service import Conflict, NotFound
 
@@ -34,6 +35,11 @@ def write(path, data):
     tmp.write_text(json.dumps(data, indent=2))
     tmp.chmod(0o600)
     tmp.replace(path)
+
+
+def cloud_enabled():
+    # Demo mode only calls Claude; it never launches Modal work.
+    return os.environ.get("TASTE_CLOUD_ENABLED") == "1" or taste_demo.enabled()
 
 
 def location(row, key):
@@ -61,6 +67,13 @@ def work_root(row):
         root = root / "runs" / str(UUID(row["config"]["run_id"]))
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     return root
+
+
+def extraction_cache(row):
+    # Shared across demo resets: entries are keyed by the full extraction request
+    # (prompt, model, pixels), so re-reading the same sessions reuses the answers.
+    root = Path(os.environ.get("TASTE_WORKSPACE_ROOT", "/tmp/stash-taste-workspaces"))
+    return root / str(row["id"]) / "extraction-cache"
 
 
 def data(row):
@@ -264,17 +277,20 @@ async def detail(owner):
             "released": bool(model) and not reasons,
             "parameters": len(model.get("head", {}).get("weights", [])) + bool(model),
             "limitations": model.get("limitations", []),
+            "preferences": model.get("preferences", []),
+            "examples": model.get("examples"),
         },
         "trials": trials(row),
         "jobs": [dict(j) for j in jobs],
         "predictions": [dict(p) for p in predictions],
-        "skill": skill,
+        "skill": skill or model.get("skill", ""),
         "history": await history_bridge.status(owner),
         "sources": row["config"].get("sources", []),
         "search_coverage": row["config"].get("search_coverage", {}),
         "collection_progress": row["config"].get("collection_progress", {}),
         "related_eval_ids": row["config"].get("related_eval_ids", []),
-        "cloud_enabled": os.environ.get("TASTE_CLOUD_ENABLED") == "1",
+        "cloud_enabled": cloud_enabled(),
+        "demo": taste_demo.enabled(),
     }
 
 
@@ -302,6 +318,8 @@ def image_path(row, kind, identity):
         if not match:
             raise NotFound("Image not found")
         path = Path(match["image_file"])
+    elif kind == "check":
+        path = work_root(row) / "runtime" / (identity + ".png")
     else:
         if identity not in {t["id"] for t in trials(row)}:
             raise NotFound("Design not found")
@@ -367,8 +385,9 @@ async def _enqueue(owner, operation, payload):
             "collect_all",
             "extract_labels",
             "upload_traces",
+            "hillclimb",
         )
-        and os.environ.get("TASTE_CLOUD_ENABLED") != "1"
+        and not cloud_enabled()
     ):
         raise Conflict(
             "Cloud execution is disabled for this deployment. Existing results remain available."
@@ -429,7 +448,7 @@ async def _run_job(job_id):
     )
     try:
         op = job["operation"]
-        if op != "discover" and os.environ.get("TASTE_CLOUD_ENABLED") != "1":
+        if op != "discover" and not cloud_enabled():
             raise ValueError("Cloud execution is disabled for this deployment.")
         if op in ("gepa", "weights", "evaluate") and blockers(row):
             raise ValueError(" ".join(blockers(row)))
@@ -464,6 +483,18 @@ async def _run_job(job_id):
                 job_id,
             )
             result = await extract_existing_labels(row)
+        elif op == "hillclimb":
+            from . import taste_hillclimb
+
+            directory = hillclimb_file(row, job_id).parent
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            result = await taste_hillclimb.run(
+                hillclimb_file(row, job_id),
+                work_root(row) / "runtime",
+                job["input"]["brief"],
+                grader(row),
+                judge_references(row),
+            )
         elif op in ("discover", "collect"):
             result = await collect_history(
                 row, job["input"], job_id, discover_only=op == "discover"
@@ -480,7 +511,10 @@ async def _run_job(job_id):
                     "evaluate": "Generating the same briefs across available arms",
                 }[op],
             )
-            result = await asyncio.to_thread(execute, row, op)
+            if op == "build" and taste_demo.enabled():
+                result = await demo_build(row)
+            else:
+                result = await asyncio.to_thread(execute, row, op)
             if op == "build":
                 await pool.execute(
                     "UPDATE taste_workspaces SET config=config || $2::jsonb,fitted_revision=$3 WHERE id=$1",
@@ -547,6 +581,73 @@ async def upload_traces(owner, session_id, files):
     return {**binding, "job_id": str(queued["job_id"]), "files_received": len(files)}
 
 
+async def add_examples(owner, session_id, files):
+    """Add example websites the user likes or wants changed, as confirmed training examples.
+
+    Each file is a screenshot (PNG/JPEG/WebP) or a self-contained HTML page, which
+    is rendered with JavaScript and network disabled.
+    """
+    from scripts.website_taste import evidence
+    from scripts.website_taste.runtime import render
+
+    from .intuition import wizard
+
+    session = await wizard.get_session(owner, session_id)
+    binding = await bind_wizard(owner, session)
+    row = await workspace(owner)
+    directory = work_root(row) / "collected"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    dataset = copy.deepcopy(data(row))
+    dataset.pop("sha256", None)
+    dataset.setdefault("heldout_status", "not_yet_reserved")
+    known = {e["id"] for e in dataset["examples"]}
+    added = {"liked": 0, "disliked": 0}
+    for file in files:
+        if file["name"].lower().endswith((".html", ".htm")):
+            source = directory / (hashlib.sha256(file["content"].encode()).hexdigest() + ".html")
+            source.write_text(file["content"])
+            image = source.with_suffix(".png")
+            await asyncio.to_thread(render, source, image)
+            pixels = image.read_bytes()
+        else:
+            pixels = base64.b64decode(file["content"], validate=True)
+        if not pixels.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"RIFF")):
+            raise ValueError(f"{file['name']} is not a PNG, JPEG, WebP or HTML file.")
+        path = directory / (hashlib.sha256(pixels).hexdigest() + ".png")
+        path.write_bytes(pixels)
+        trace = {
+            "steps": [],
+            "coverage": {"complete": False, "reason": "Example uploaded directly"},
+        }
+        packet = evidence.packet(
+            "Assess this website or product interface's visual design.", trace, path
+        )
+        if packet["id"] in known:
+            continue
+        label = file["label"]
+        packet["supervision"] = {
+            "label": label,
+            "quote": f"Example you {'liked' if label == 'liked' else 'wanted changed'}: {file['name']}",
+            "scope": "overall",
+            "human_reviewed": True,
+            "label_source": "human_example",
+            "partition": "train",
+            "group": "uploaded-example-" + packet["id"][:12],
+            "provenance": {"reference_image": label == "liked", "uploaded_name": file["name"]},
+        }
+        dataset["examples"].append(packet)
+        known.add(packet["id"])
+        added[label] += 1
+    if sum(added.values()):
+        write(directory / "evidence.json", dataset)
+        await get_pool().execute(
+            "UPDATE taste_workspaces SET config=config || $2::jsonb,revision=revision+1 WHERE id=$1",
+            row["id"],
+            {"dataset": str(directory)},
+        )
+    return {**binding, "added": added}
+
+
 async def learn_uploaded_traces(row, paths):
     from scripts.website_taste import evidence
     from scripts.website_taste.corpus import public_events
@@ -554,7 +655,8 @@ async def learn_uploaded_traces(row, paths):
     assets, count, screenshots = [], 0, 0
     for raw_path in paths:
         path = Path(raw_path).resolve()
-        if path.is_symlink() or not path.is_relative_to(work_root(row)):
+        # Compare resolved paths: /tmp is a symlink to /private/tmp on macOS.
+        if path.is_symlink() or not path.is_relative_to(work_root(row).resolve()):
             raise ValueError("Trace upload is outside this account's private storage")
         session_id = hashlib.sha256(path.read_bytes()).hexdigest()
         for event in public_events(path):
@@ -697,7 +799,7 @@ async def propose_assets(row, assets, page):
             "next_asset_offset": assets.get("next_offset"),
             "has_more": assets.get("has_more"),
         }
-    proposals = await extract_feedback(batch, directory / "extractions")
+    proposals = await extract_feedback(batch, extraction_cache(row))
     initial_count = len(dataset["examples"])
     for proposal in proposals:
         # Purely functional/unrelated screenshots are not a preference labeling queue.
@@ -745,7 +847,7 @@ async def extract_feedback(batch, cache):
     # One selected output per request prevents a comparison message from being
     # expanded into contradictory labels for the same screenshot. Only API
     # requests run concurrently; no models are loaded on this machine.
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(6)
 
     async def one(row):
         async with semaphore:
@@ -932,6 +1034,45 @@ async def extract_existing_labels(row):
         "labels": label_summary(await workspace(row["owner_user_id"])),
         "message": "Clear feedback is usable automatically. Uncertain cases and model guesses remain excluded. Frozen grader unchanged.",
     }
+
+
+def example_images(row):
+    return {
+        e["id"]: Path(e["image_file"])
+        for e in data(row).get("examples", [])
+        if e.get("image_file") and Path(e["image_file"]).is_file()
+    }
+
+
+def judge_references(row):
+    return taste_demo.references(effective_examples(row), example_images(row))
+
+
+def hillclimb_file(row, job_id):
+    return work_root(row) / "hillclimb" / (str(UUID(str(job_id))) + ".json")
+
+
+async def start_hillclimb(owner, brief):
+    row = await workspace(owner)
+    if not taste_demo.is_demo_grader(grader(row)):
+        raise Conflict("Build your grader first.")
+    return await enqueue(owner, "hillclimb", {"brief": brief})
+
+
+async def hillclimb_state(owner, job_id):
+    path = hillclimb_file(await workspace(owner), job_id)
+    if not path.is_file():
+        raise NotFound("Hill-climb not found")
+    return read(path)
+
+
+async def demo_build(row):
+    if label_summary(row)["build_gaps"]:
+        raise ValueError(" ".join(label_summary(row)["build_gaps"]))
+    model = await taste_demo.build(row, effective_examples(row), example_images(row))
+    directory = work_root(row) / ("demo-grader-" + str(row["revision"]))
+    write(directory / "activation-probe.json", model)
+    return {"probe": str(directory)}
 
 
 def execute(row, operation):
@@ -1122,6 +1263,31 @@ async def predict(owner, item, *, ref=None):
     image = directory / (hashlib.sha256(raw).hexdigest() + ".png")
     image.write_bytes(raw)
     steps = [{**s, "text": evidence.clean(s["text"])} for s in item["trace"]]
+    model = grader(row)
+    if taste_demo.is_demo_grader(model):
+        judged = await taste_demo.judge(
+            model, {**item, "trace": steps}, image, judge_references(row)
+        )
+        output = {
+            **judged,
+            "version": model["version"],
+            "ref": ref,
+            "optimization_ready": True,
+            "screenshot_sha256": image.stem,
+            "brief": item["brief"][:500],
+            "coverage": {
+                "complete": bool(item.get("trace_complete")),
+                "supplied_steps": len(steps),
+            },
+        }
+        receipt = await get_pool().fetchval(
+            "INSERT INTO taste_predictions(workspace_id,version,input,output) VALUES($1,$2,$3,$4) RETURNING id",
+            row["id"],
+            model["version"],
+            {"brief": item["brief"], "trace": steps[-40:], "screenshot_sha256": image.stem},
+            output,
+        )
+        return {**output, "prediction_id": str(receipt)}
     total = len(steps)
     while sum(len(s["text"]) for s in steps) > evidence.MAX_TRACE_CHARS:
         steps.pop(1 if len(steps) > 2 else 0)
@@ -1135,7 +1301,6 @@ async def predict(owner, item, *, ref=None):
         },
     }
     packet = evidence.packet(item["brief"], trace, image, source=item.get("html", ""))
-    model = grader(row)
     require_compute_or_cache(row, packet)
     score = await asyncio.to_thread(
         ProbeScorer(

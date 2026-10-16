@@ -32,7 +32,7 @@ class Reset(Body):
 
 class TraceFile(Body):
     name: str = Field(max_length=200)
-    content: str = Field(min_length=1, max_length=8_000_000)
+    content: str = Field(min_length=1, max_length=40_000_000)
 
 
 MAX_UPLOAD_CHARS = 80_000_000
@@ -134,7 +134,7 @@ async def traces(req: TraceUpload, user: User):
 
 
 @router.get("/images/{kind}/{identity}")
-async def image(kind: Literal["example", "design"], identity: str, user: User):
+async def image(kind: Literal["example", "design", "check"], identity: str, user: User):
     import base64
 
     row = await checked(taste.workspace(user["id"]))
@@ -161,6 +161,39 @@ async def start(req: Job, user: User):
     return await checked(
         taste.enqueue(user["id"], req.operation, req.model_dump(mode="json", exclude_none=True))
     )
+
+
+class ExampleFile(Body):
+    name: str = Field(max_length=200)
+    label: Literal["liked", "disliked"]
+    # Base64 image bytes, or HTML text for .html files.
+    content: str = Field(min_length=1, max_length=12_000_000)
+
+
+class ExampleUpload(Body):
+    session_id: UUID
+    files: list[ExampleFile] = Field(min_length=1, max_length=40)
+
+
+@router.post("/examples")
+async def examples(req: ExampleUpload, user: User):
+    return await checked(
+        taste.add_examples(user["id"], req.session_id, [f.model_dump() for f in req.files])
+    )
+
+
+class HillClimb(Body):
+    brief: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/hillclimb")
+async def hillclimb(req: HillClimb, user: User):
+    return await checked(taste.start_hillclimb(user["id"], req.brief))
+
+
+@router.get("/hillclimb/{job_id}")
+async def hillclimb_state(job_id: UUID, user: User):
+    return await checked(taste.hillclimb_state(user["id"], job_id))
 
 
 @router.post("/predict")

@@ -72,7 +72,7 @@ export default function PreferencesCard() {
       const next = await tasteGet();
       setData(next);
       if (next && !next.examples.some((e) => !e.usable && e.needs_clarification)) {
-        send(`Answered ${answered.current} open question${answered.current === 1 ? "" : "s"} in the preferences card. Call website_eval finish.`, "event");
+        send(`Answered ${answered.current} open question${answered.current === 1 ? "" : "s"}.`, "event");
       }
     } catch (e) { setError(errorMessage(e)); }
   }

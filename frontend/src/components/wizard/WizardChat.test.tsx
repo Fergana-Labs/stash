@@ -154,9 +154,10 @@ it("accepts an exported trace before an eval exists and continues automatically"
   await screen.findByRole("heading", {name:"New eval"});
   const input = container.querySelector('input[type="file"]')!;
   expect(input.getAttribute("accept")).toContain(".jsonl");
-  const file = new File(['{"type":"response_item"}'], "history.jsonl", {type:"application/jsonl"});
-  Object.defineProperty(file,"text",{value:async()=>'{"type":"response_item"}'});
+  const line = '{"type":"response_item","payload":{"type":"message","role":"user","content":[]}}';
+  const file = new File([line], "history.jsonl", {type:"application/jsonl"});
+  Object.defineProperty(file,"text",{value:async()=>line});
   fireEvent.change(input,{target:{files:[file]}});
-  await waitFor(()=>expect(api.upload).toHaveBeenCalledWith("session",[{name:"history.jsonl",content:'{"type":"response_item"}'}]));
-  await waitFor(()=>expect(api.stream).toHaveBeenCalledWith("session",expect.stringContaining("upload-job"),"event",expect.any(Function)));
+  await waitFor(()=>expect(api.upload).toHaveBeenCalledWith("session",[{name:"history.jsonl",content:line}]));
+  await waitFor(()=>expect(api.stream).toHaveBeenCalledWith("session","Uploaded 1 past session.","event",expect.any(Function)));
 });

@@ -849,3 +849,58 @@ async def test_new_website_eval_asks_for_traces_before_searching(
     )
     assert response.status_code == 200, response.text
     assert response.json()["files_received"] == 11
+
+
+def test_wizard_turn_ends_when_a_website_card_needs_the_user():
+    from backend.services.intuition.wizard import _awaits_user
+
+    card = lambda section: {"kind": "website_eval", "props": {"section": section}}  # noqa: E731
+    assert _awaits_user(card("sources"), {})
+    assert _awaits_user(card("preferences"), {"needs_your_call": 2})
+    assert not _awaits_user(card("preferences"), {"needs_your_call": 0})
+    assert not _awaits_user(card("progress"), {})
+    assert not _awaits_user(None, {})
+
+
+def test_website_design_requests_start_with_the_website_eval():
+    from backend.services.intuition.wizard import _website_intent
+
+    assert _website_intent("Learn my website design preferences from my past sessions")
+    assert _website_intent("grade my landing page")
+    assert not _website_intent("Grade my AI assistant's answers as good or bad")
+
+
+async def test_example_sites_become_confirmed_training_examples(
+    client, pool, tmp_path, monkeypatch
+):
+    from backend.services.intuition import wizard
+
+    monkeypatch.setenv("TASTE_WORKSPACE_ROOT", str(tmp_path))
+    owner, headers = await user(client, pool)
+    session = await wizard.create_session(owner)
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"liked").decode()
+    other = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"disliked").decode()
+    files = [
+        {"name": "good.png", "label": "liked", "content": png},
+        {"name": "bad.png", "label": "disliked", "content": other},
+        {"name": "bad-again.png", "label": "disliked", "content": other},
+    ]
+    response = await client.post(
+        "/api/v1/taste/examples",
+        headers=headers,
+        json={"session_id": session["id"], "files": files},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["added"] == {"liked": 1, "disliked": 1}
+    examples = taste.effective_examples(await taste.workspace(owner))
+    assert {(e["label"], e["usable"], e["reviewed"]) for e in examples} == {
+        ("liked", True, True),
+        ("disliked", True, True),
+    }
+    bad = {**files[0], "content": base64.b64encode(b"not an image").decode()}
+    response = await client.post(
+        "/api/v1/taste/examples",
+        headers=headers,
+        json={"session_id": session["id"], "files": [bad]},
+    )
+    assert response.status_code == 422

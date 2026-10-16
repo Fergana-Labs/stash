@@ -8,6 +8,7 @@ import { readTraceEntries, type TraceFile } from "@/components/reward-models/tra
 import { cn } from "@/lib/utils";
 import { CardShell, useWizard } from "../wizard-ui";
 import { uploadWebsiteTraces } from "../website-traces";
+import ExampleSites from "./ExampleSites";
 
 const asTraceFiles = (list: FileList) =>
   Array.from(list).map((file) => ({ file, path: file.webkitRelativePath || file.name }));
@@ -28,8 +29,7 @@ export default function TraceSourcesCard() {
     setError(""); setStatus("Reading your sessions…");
     try {
       const picked = await read();
-      setStatus(`Uploading…`);
-      const result = await uploadWebsiteTraces(sessionId, picked);
+      const result = await uploadWebsiteTraces(sessionId, picked, setStatus);
       adoptModel?.(result.modelId);
       setDone(`Uploaded ${result.uploaded} session${result.uploaded === 1 ? "" : "s"}${result.skipped ? ` · skipped ${result.skipped} other file${result.skipped === 1 ? "" : "s"}` : ""}.`);
       send(result.event, "event");
@@ -65,7 +65,7 @@ export default function TraceSourcesCard() {
         {working ? <Loader2 className="size-5 animate-spin text-muted-foreground" /> : <FileUp className="size-5 text-muted-foreground" />}
         <p className="m-0 text-[12.5px]">{working ? status : <>Drop session files or a whole folder here, or <span className="underline">browse</span></>}</p>
         <p className="m-0 text-[11px] text-muted-foreground">
-          Claude Code: <code>~/.claude/projects</code> · Codex: <code>~/.codex/sessions</code> · press ⌘⇧. in the file picker to show hidden folders
+          Codex sessions live in <code>~/.codex/sessions</code> · press ⌘⇧. in the file picker to show hidden folders
         </p>
       </div>
       <input ref={files} type="file" multiple accept=".jsonl" hidden onChange={(e) => { const list = e.target.files; if (list?.length) void upload(async () => asTraceFiles(list)); e.target.value = ""; }} />
@@ -77,6 +77,7 @@ export default function TraceSourcesCard() {
         <Button type="button" size="sm" variant="ghost" disabled={working || busy} onClick={() => send("Search my connected history instead of uploading.")}><History />Search my connected history instead</Button>
       </div>
       {error && <p role="alert" className="m-0 mt-2 text-[11.5px] text-destructive">{error}</p>}
+      {!working && <ExampleSites onDone={setDone} />}
     </CardShell>
   );
 }

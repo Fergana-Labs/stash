@@ -74,7 +74,7 @@ function EvalProgress({
     notified.current = true;
     sessionStorage.setItem(key, "seen");
     send(
-      `The background work ${job.status}. Call website_eval finish to continue automatically and return my API endpoint. Ask only for essential missing information.`,
+      job.status === "succeeded" ? "Finished reading your sessions." : "Reading your sessions failed.",
       "event",
     );
   }, [data, jobId, readOnly, send]);
@@ -96,7 +96,8 @@ function EvalProgress({
       {ready ? (
         <div className="space-y-3">
           <p className="text-sm">
-            Use this endpoint to grade your agent’s work.
+            Give this to your agent so it can check its work while it builds.
+            Over MCP, it’s the <code>check_website_taste</code> tool.
           </p>
           <CopyText text={endpoint} />
           <CopyText

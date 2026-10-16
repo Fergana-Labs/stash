@@ -23,12 +23,13 @@ it("uploads past sessions from the first website-eval card and tells the wizard 
   const { send, adoptModel } = setup();
   expect(screen.getByText("Add your past sessions")).toBeTruthy();
   const input = document.querySelector('input[type="file"][accept=".jsonl"]') as HTMLInputElement;
-  const session = new File(['{"type":"user"}'], "session.jsonl");
+  const line = '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"too boxy"}]}}';
+  const session = new File([line + '\n{"type":"compacted","payload":{}}'], "session.jsonl");
   fireEvent.change(input, { target: { files: [session, new File(["x"], "notes.md")] } });
   await waitFor(() => expect(send).toHaveBeenCalled());
-  expect(upload).toHaveBeenCalledWith("s1", [{ name: "session.jsonl", content: '{"type":"user"}' }]);
+  expect(upload).toHaveBeenCalledWith("s1", [{ name: "session.jsonl", content: line }]);
   expect(adoptModel).toHaveBeenCalledWith("eval-1");
-  expect(send.mock.calls[0][0]).toContain("job-1");
+  expect(send.mock.calls[0][0]).toBe("Uploaded 1 past session.");
   expect(send.mock.calls[0][1]).toBe("event");
   expect(screen.getByText(/Uploaded 1 session · skipped 1 other file/)).toBeTruthy();
 });

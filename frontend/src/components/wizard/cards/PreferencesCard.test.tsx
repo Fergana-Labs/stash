@@ -32,7 +32,7 @@ it("shows learned preferences and asks about unclear examples with buttons, not 
   expect(screen.getByText("Needs your call · 1")).toBeTruthy();
   expect(screen.getByText("check out this codex ui. that's goals")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Change this" }));
-  await waitFor(() => expect(send).toHaveBeenCalledWith(expect.stringContaining("website_eval finish"), "event"));
+  await waitFor(() => expect(send).toHaveBeenCalledWith("Answered 1 open question.", "event"));
   expect(api.review).toHaveBeenCalledWith("u1", "disliked", "");
   expect(screen.queryByText(/Needs your call/)).toBeNull();
 });
