@@ -41,7 +41,12 @@ def screenshot_local_app(url: str, out: Path) -> str:
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 960}, device_scale_factor=1)
             page.goto(f"{origin}/local-preview?next={quote(path)}", timeout=60000)
-            page.wait_for_url(lambda u: urlparse(u).path == parsed.path, timeout=60000)
+            page.wait_for_url(lambda u: urlparse(u).path != "/local-preview", timeout=60000)
+            if urlparse(page.url).path != parsed.path:
+                sys.exit(
+                    f"{parsed.path} redirected to {urlparse(page.url).path}. "
+                    "Does the route exist, and does the page load without errors?"
+                )
             try:
                 page.wait_for_load_state("networkidle", timeout=20000)
             except Exception:  # noqa: BLE001 -- polling pages never go idle
