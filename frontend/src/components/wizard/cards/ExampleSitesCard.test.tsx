@@ -1,32 +1,45 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WizardProvider } from "../wizard-ui";
+import { labelFor } from "./ExampleSites";
 import WebsiteEvalCard from "./WebsiteEvalCard";
 
 const add = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/taste-api", () => ({ tasteGet: vi.fn(), tasteAddExamples: add }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
-it("starts a website eval by asking for example sites it likes and doesn't, not past sessions", async () => {
-  add.mockResolvedValue({ model_id: "eval-1", added: { liked: 2, disliked: 2 } });
+const page = (path: string, body = "<html></html>") => {
+  const file = new File([body], path.split("/").pop()!, { type: "text/html" });
+  Object.defineProperty(file, "webkitRelativePath", { value: path });
+  return file;
+};
+
+describe("labelFor", () => {
+  it("labels files by the nearest good or bad folder", () => {
+    expect(labelFor("examples/good/render.html")).toBe("liked");
+    expect(labelFor("examples/bad/old/gpumode.html")).toBe("disliked");
+    expect(labelFor("examples/Dislike/x.png")).toBe("disliked");
+    expect(labelFor("examples/notes.html")).toBeNull();
+  });
+});
+
+it("uploads one folder of good and bad pages, labeled by subfolder", async () => {
+  add.mockResolvedValue({ model_id: "eval-1", added: { liked: 2, disliked: 2 }, job_id: null });
   const send = vi.fn();
-  const adoptModel = vi.fn();
   render(
-    <WizardProvider value={{ modelId: null, send, refresh: vi.fn(), version: 0, busy: false, sessionId: "s1", adoptModel }}>
+    <WizardProvider value={{ modelId: null, send, refresh: vi.fn(), version: 0, busy: false, sessionId: "s1", adoptModel: vi.fn() }}>
       <WebsiteEvalCard section="sources" />
     </WizardProvider>,
   );
   expect(screen.getByText("Show it example sites")).toBeTruthy();
-  expect(screen.queryByText(/session/i)).toBeNull();
-  const use = () => screen.getByRole("button", { name: /Use these 4 examples/ });
-  fireEvent.change(screen.getByLabelText("Sites I like: paste URLs"), { target: { value: "https://linear.app\nhttps://vercel.com" } });
-  fireEvent.change(screen.getByLabelText("Sites I don’t like: paste URLs"), { target: { value: "https://a.example\nnot a url\nhttps://b.example" } });
-  fireEvent.click(use());
-  await waitFor(() => expect(send).toHaveBeenCalledWith("Added 2 sites I like and 2 I don’t.", "event"));
-  expect(add.mock.calls[0][0]).toBe("s1");
-  expect(add.mock.calls[0][1].map((f: { url: string; label: string }) => [f.label, f.url])).toEqual([
-    ["liked", "https://linear.app"], ["liked", "https://vercel.com"], ["disliked", "https://a.example"], ["disliked", "https://b.example"],
+  const files = [page("ex/good/render.html", "<html>render</html>"), page("ex/good/neon.html"), page("ex/bad/gpumode.html"), page("ex/bad/treehacks.html"), page("ex/README.md")];
+  fireEvent.change(screen.getByLabelText("Choose a folder of examples"), { target: { files } });
+  expect(screen.getByText("Good · 2")).toBeTruthy();
+  expect(screen.getByText("Skipped 1 file outside good/ and bad/.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Use these 4 examples/ }));
+  await waitFor(() => expect(send).toHaveBeenCalledWith("Added 2 good examples and 2 bad.", "event"));
+  expect(add.mock.calls[0][1].map((f: { name: string; label: string }) => [f.label, f.name])).toEqual([
+    ["liked", "render.html"], ["liked", "neon.html"], ["disliked", "gpumode.html"], ["disliked", "treehacks.html"],
   ]);
-  expect(adoptModel).toHaveBeenCalledWith("eval-1");
-  expect(screen.getByText("Your example sites")).toBeTruthy();
+  expect(add.mock.calls[0][1][0].content).toBe("<html>render</html>");
 });

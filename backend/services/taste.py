@@ -595,6 +595,24 @@ async def upload_traces(owner, session_id, files):
 
 def screenshot_url(url: str, out: Path) -> None:
     """Screenshot the first 1440x960 of a public web page. Private addresses are refused."""
+    screenshot_page(out, url=url)
+
+
+def saved_from(html: str) -> str | None:
+    """The page's original address, from Chrome's "saved from url" comment or a <base> tag."""
+    match = re.search(r"<!--\s*saved from url=\(\d+\)(\S+?)\s*-->", html, re.I) or re.search(
+        r"<base\s[^>]*href=[\"']([^\"']+)", html, re.I
+    )
+    return match.group(1) if match and match.group(1).startswith(("http://", "https://")) else None
+
+
+def screenshot_page(out: Path, *, url: str | None = None, html: str | None = None) -> None:
+    """Screenshot the first 1440x960 of a public URL, or of uploaded HTML.
+
+    Uploaded HTML runs with JavaScript off. Its stylesheets, fonts and images may load,
+    resolved against the page's original address when the file records one. Every
+    request, including redirects and subresources, must go to a public host.
+    """
     import ipaddress
     import socket
     from urllib.parse import urlparse
@@ -620,14 +638,17 @@ def screenshot_url(url: str, out: Path) -> None:
             return True
         return parsed.scheme in ("http", "https") and public_host(parsed.hostname or "")
 
-    if urlparse(url).scheme not in ("http", "https") or not allowed(url):
+    if url is not None and (urlparse(url).scheme not in ("http", "https") or not allowed(url)):
         raise ValueError(f"{url} is not a public http(s) address.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
-            page = browser.new_page(viewport={"width": 1440, "height": 960}, device_scale_factor=1)
+            page = browser.new_page(
+                viewport={"width": 1440, "height": 960},
+                device_scale_factor=1,
+                java_script_enabled=html is None,
+            )
 
-            # Every request, including redirects and subresources, must stay on public hosts.
             def guard(route):
                 try:
                     if allowed(route.request.url):
@@ -639,7 +660,24 @@ def screenshot_url(url: str, out: Path) -> None:
 
             page.route("**/*", guard)
             try:
-                page.goto(url, wait_until="networkidle", timeout=25000)
+                if html is not None:
+                    base = saved_from(html)
+                    if base and not re.search(r"<base\s", html, re.I):
+                        tag = f'<base href="{base}">'
+                        html = (
+                            re.sub(
+                                r"<head[^>]*>",
+                                lambda m: m.group(0) + tag,
+                                html,
+                                count=1,
+                                flags=re.I,
+                            )
+                            if re.search(r"<head[^>]*>", html, re.I)
+                            else tag + html
+                        )
+                    page.set_content(html, wait_until="networkidle", timeout=25000)
+                else:
+                    page.goto(url, wait_until="networkidle", timeout=25000)
             except Exception:  # noqa: BLE001 -- busy pages never go idle; shoot what loaded
                 page.wait_for_timeout(1500)
             page.screenshot(path=str(out), type="png", animations="disabled")
@@ -654,7 +692,6 @@ async def add_examples(owner, session_id, files):
     with JavaScript and network disabled), or a public URL (screenshotted live).
     """
     from scripts.website_taste import evidence
-    from scripts.website_taste.runtime import render
 
     from .intuition import wizard
 
@@ -668,22 +705,30 @@ async def add_examples(owner, session_id, files):
     dataset.setdefault("heldout_status", "not_yet_reserved")
     known = {e["id"] for e in dataset["examples"]}
     added = {"liked": 0, "disliked": 0}
-    # Open pasted pages in parallel; each takes a few seconds to load.
-    shots = {
-        f["url"]: directory / (hashlib.sha256(f["url"].encode()).hexdigest() + ".url.png")
-        for f in files
-        if f.get("url")
-    }
-    await asyncio.gather(*(asyncio.to_thread(screenshot_url, u, out) for u, out in shots.items()))
-    for file in files:
-        if file.get("url"):
-            pixels = shots[file["url"]].read_bytes()
-        elif file["name"].lower().endswith((".html", ".htm")):
-            source = directory / (hashlib.sha256(file["content"].encode()).hexdigest() + ".html")
-            source.write_text(file["content"])
-            image = source.with_suffix(".png")
-            await asyncio.to_thread(render, source, image)
-            pixels = image.read_bytes()
+
+    # Render pasted pages and uploaded HTML in parallel; each takes a few seconds to load.
+    def key(f):
+        is_html = f["name"].lower().endswith((".html", ".htm"))
+        if not (f.get("url") or is_html):
+            return None
+        source = f["url"] if f.get("url") else f["content"]
+        return directory / (hashlib.sha256(source.encode()).hexdigest() + ".page.png")
+
+    shots = {i: key(f) for i, f in enumerate(files) if key(f)}
+    await asyncio.gather(
+        *(
+            asyncio.to_thread(
+                screenshot_page,
+                out,
+                url=files[i].get("url"),
+                html=None if files[i].get("url") else files[i]["content"],
+            )
+            for i, out in shots.items()
+        )
+    )
+    for i, file in enumerate(files):
+        if i in shots:
+            pixels = shots[i].read_bytes()
         else:
             pixels = base64.b64decode(file["content"], validate=True)
         if not pixels.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"RIFF")):
