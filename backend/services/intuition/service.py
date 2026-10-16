@@ -1027,7 +1027,7 @@ async def predict(
         if log
         else None
     )
-    return {"prediction_id": prediction_id, **output}
+    return {"prediction_id": prediction_id, "version_id": str(version["id"]), **output}
 
 
 async def compare_items(

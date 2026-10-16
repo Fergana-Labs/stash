@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/lib/intuition-api";
 import { readableText } from "./im-helpers";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const LONG = 240;
 /** Field pairs that read as a conversation: who asked, then who answered. */
@@ -51,6 +52,7 @@ function Bubble({ who, side, children }: { who: string; side: "in" | "out"; chil
 /** An uploaded file: the image itself (or the file name), with what the judge reads one click away. */
 function FileItem({ item }: { item: Record<string, unknown> }) {
   const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
   const name = typeof item.name === "string" ? item.name : item.kind === "image" ? "Image" : "Document";
   const image = typeof item.data_url === "string" && IMAGE.test(item.data_url) ? item.data_url : null;
   const content = typeof item.content === "string" ? item.content : "";
@@ -58,7 +60,7 @@ function FileItem({ item }: { item: Record<string, unknown> }) {
     <div className="min-w-0 space-y-1.5">
       {/* Inline data previews belong to the saved input. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {image ? <img src={image} alt={name} className="max-h-64 max-w-full rounded-md border border-border object-contain" /> : (
+      {image ? <><button type="button" className="block cursor-zoom-in text-left" aria-label={`Enlarge ${name}`} onClick={() => setPreview(true)}><img src={image} alt={name} className="max-h-64 max-w-full rounded-md border border-border object-contain" /></button><Dialog open={preview} onOpenChange={setPreview}><DialogContent className="max-h-[94vh] w-[95vw] overflow-auto sm:max-w-[95vw]"><DialogTitle className="sr-only">{name}</DialogTitle><img src={image} alt={name} className="mx-auto max-h-[84vh] max-w-full object-contain" /></DialogContent></Dialog></> : (
         <div className="flex items-center gap-2 text-[12.5px]"><FileText className="size-4 text-muted-foreground" />{name}</div>
       )}
       {content && (
@@ -89,6 +91,12 @@ export default function ItemView({ item: raw, clamp = true, className }: { item:
   }
   if ((item.kind === "image" || item.kind === "document") && Object.keys(item).every((k) => FILE_KEYS.has(k))) {
     return <div className={className}><FileItem item={item} /></div>;
+  }
+  if (item.kind === "website" && typeof item.brief === "string" && item.render && typeof item.render === "object" && !Array.isArray(item.render)) {
+    return <div className={cn("min-w-0 space-y-3", className)}>
+      <div><p className="mb-1 text-[11px] font-medium text-muted-foreground">Website brief</p><Clamp text={item.brief} clamp={clamp} /></div>
+      <ItemView item={item.render as Item} clamp={clamp} />
+    </div>;
   }
   if (item.kind === "history" && item.source && typeof item.source === "object" && Array.isArray(item.events)) {
     const source = item.source as Record<string, unknown>;

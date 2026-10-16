@@ -206,6 +206,21 @@ async def test_choice_lifecycle(client: AsyncClient, fake_jev):
     detail = resp.json()
     assert detail["active"]["number"] == 2 and detail["active"]["gate"]["forced"] is True
     v1 = next(v for v in detail["versions"] if v["number"] == 1)
+    # A frozen optimization reward must keep serving v1 after v2 is published.
+    pinned = await client.post(
+        f"/api/v1/intuitions/{model_id}/predict",
+        headers=auth,
+        json={"item": "please 0 thanks", "version_id": v1["id"]},
+    )
+    assert pinned.status_code == 200, pinned.text
+    assert pinned.json()["version_id"] == v1["id"] and pinned.json()["version"] == 1
+    other_model = await _choice_model(client, auth)
+    foreign = await client.post(
+        f"/api/v1/intuitions/{other_model}/predict",
+        headers=auth,
+        json={"item": "x", "version_id": v1["id"]},
+    )
+    assert foreign.status_code == 404
     resp = await client.post(
         f"/api/v1/intuitions/{model_id}/versions/{v1['id']}/restore", headers=auth
     )

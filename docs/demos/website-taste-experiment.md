@@ -4,6 +4,11 @@ This is the target demo Henry described on October 15, 2026. The existing
 [website-design fixture](website-design.md) illustrates part of the interaction;
 it is not evidence that this experiment has succeeded.
 
+The [operator runbook](website-taste-running.md) describes the implemented
+history preparation, calibration, frozen-classifier scoring, Qwen/GEPA adapter,
+cloud DPO job, and blinded gallery. Preparing these stages does not mean their
+data gates, cloud training, or final comparisons have completed.
+
 The user supplies access to past traces once. Stash finds website-building work
 and corrections, learns an evaluator for that user's taste, and uses it to
 improve the website-generating agent. The final demonstration compares actual
@@ -132,12 +137,12 @@ failure case to inspect.
 
 | Piece | Verified implementation | Remaining work for this experiment |
 | --- | --- | --- |
-| History access | Wizard search/read and source-backed example proposals; recorded and local Codex sources | Corpus coverage, correction extraction, visual artifact recovery, reviewed taste dataset |
-| Classifier | Existing eval builder and calibrated head; tiny synthetic website fixture | Confirm NSP method; fit and validate on real taste evidence with grouped splits |
-| Skill | Existing skill-generation primitives | Strong trace-derived baseline with frozen training evidence and budget |
-| GEPA | Legacy worker optimizes skills using a stored reward model | Adapter using Qwen + website renderer + the frozen visual taste classifier; independent task partitions |
-| Post-training | Existing worker trains reward models | Separate Qwen generator post-training implementation and cloud job |
-| Comparison | Current viewer preserves generated HTML, PNGs, and prediction receipts | Four-arm, multi-task, blinded evaluation and cost/results report |
+| History access | Wizard search/read; operator scan, embedded screenshot recovery, source-grounded proposals, native calibration queue | Review taste labels; resolve missing history/artifacts as needed |
+| Classifier | Calibrated-head fit command, grouped splits, held-out gates, pinned prediction API | Confirm any newer NSP method; fit and validate the real reviewed dataset |
+| Skill | Training-only draft, critique, and revision using feedback and visual descriptions | Run on the frozen reviewed evidence |
+| GEPA | Qwen/render/frozen-classifier adapter tested with the actual GEPA library and fake generation | Approve and run real cloud inference; measure development and final performance |
+| Post-training | Separate cloud-only Qwen LoRA DPO worker and reward-pair preparation | Approve and validate the GPU job and checkpoint; CPU checks do not establish training success |
+| Comparison | PNG-only blind gallery and separate identity key generated from actual trial receipts | Populate with the real four arms; collect blinded human choices and costs |
 
 The current website fixture has synthetic preferences and real Claude-generated
 revisions. Its small held-out result does not measure Henry's taste, Qwen, GEPA,

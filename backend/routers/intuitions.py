@@ -117,6 +117,7 @@ class Generate(Body):
 class Predict(Body):
     item: Item
     version: Which = "active"
+    version_id: UUID | None = None
     caller: str = Field(default="api", max_length=100)
     # Your own id for this call (ticket, message, run step); feedback can use it later.
     ref: str | None = Field(default=None, min_length=1, max_length=200)
@@ -401,6 +402,7 @@ async def predict(model_id: UUID, req: Predict, user: User):
             model_id,
             req.item,
             which=req.version,
+            version_id=req.version_id,
             caller=req.caller,
             ref=req.ref,
             metadata=req.metadata,
