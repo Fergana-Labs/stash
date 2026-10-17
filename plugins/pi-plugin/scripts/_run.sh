@@ -20,9 +20,10 @@ set -euo pipefail
 SCRIPT="$1"
 shift
 
-if [ "$SCRIPT" = "on_session_start" ]; then
-  command -v uv >/dev/null 2>&1 && uv tool install --quiet stashai@latest >/dev/null 2>&1 &
-fi
+# This runner never upgrades the package. `spawn_self_upgrade()` in
+# stashai/plugin/session_upload.py is the one background upgrade path, and
+# pi's session_start handler calls it like every other agent does — an `uv tool
+# install` here would run a second copy against the venv it is about to exec.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/$SCRIPT.py"
