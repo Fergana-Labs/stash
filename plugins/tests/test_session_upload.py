@@ -182,13 +182,15 @@ def test_skills_sync_targets_per_agent_dir(monkeypatch):
     from stashai.plugin.session_upload import spawn_skills_sync
 
     # Codex/Gemini/OpenCode share the cross-agent ~/.agents/skills standard;
-    # Claude and OpenClaw have their own dirs.
+    # Claude, OpenClaw and Pi have their own dirs (Pi reads ~/.agents/skills too,
+    # so syncing there would only ever touch files the user left by hand).
     cases = {
         "claude_code": "~/.claude/skills",
         "codex_cli": "~/.agents/skills",
         "gemini_cli": "~/.agents/skills",
         "opencode": "~/.agents/skills",
         "openclaw": "~/.openclaw/skills",
+        "pi": "~/.pi/agent/skills",
     }
     for client, expected_dir in cases.items():
         calls = _capture_spawn(monkeypatch)
