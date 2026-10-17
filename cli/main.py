@@ -233,7 +233,7 @@ def _browser_auth_flow(
 # Install — wire up hook plugins for every coding agent on PATH
 # ===========================================================================
 
-_SUPPORTED_AGENTS = ("claude", "cursor", "codex", "opencode", "gemini", "openclaw", "hermes")
+_SUPPORTED_AGENTS = ("claude", "cursor", "codex", "opencode", "gemini", "openclaw", "hermes", "pi")
 
 _AGENT_BINARY = {
     "claude": "claude",
@@ -243,6 +243,7 @@ _AGENT_BINARY = {
     "gemini": "gemini",
     "openclaw": "openclaw",
     "hermes": "hermes",
+    "pi": "pi",
 }
 
 _CODEX_HOME_MARKERS = (
@@ -335,6 +336,8 @@ def _agent_present(agent: str) -> bool:
         return (Path.home() / ".gemini").is_dir()
     if agent == "hermes":
         return (Path.home() / ".hermes").is_dir()
+    if agent == "pi":
+        return (Path.home() / ".pi").is_dir()
     # Openclaw needs its binary for `openclaw plugins install`, so a config
     # dir alone doesn't count as present.
     return False
@@ -799,6 +802,55 @@ def _install_openclaw(force: bool) -> tuple[str, str]:
     )
 
 
+def _copy_pi_runtime(scripts_src: Path, dest: Path, force: bool) -> bool:
+    """Copy the pi hook runtime from the shipped assets into ~/.pi/.
+
+    Each hook wrapper execs "$SCRIPT_DIR/../_run.sh" and _run.sh resolves its
+    handler via "TARGET=$SCRIPT_DIR/$SCRIPT.py", so the whole scripts/ tree maps
+    1:1 onto ~/.pi/: scripts/_run.sh -> ~/.pi/_run.sh, scripts/hooks/* ->
+    ~/.pi/hooks/*, and scripts/on_*.py|config.py|adapt.py -> ~/.pi/. We copy
+    bytes (never symlink) so the install stays self-contained even if the
+    checkout or pipx env moves. Returns True if anything was written.
+    """
+    changed = False
+    for src in sorted(scripts_src.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(scripts_src)
+        dst = dest / rel
+        # A pre-existing symlink (e.g. from an older symlink installer) still
+        # points at the repo — replace it with a real copy so the install stays
+        # self-contained and carries no absolute shipped-assets path.
+        if dst.is_symlink():
+            dst.unlink()
+        if dst.exists() and dst.read_bytes() == src.read_bytes() and not force:
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        shutil.copymode(src, dst)  # keep hooks / _run.sh executable
+        changed = True
+    return changed
+
+
+def _install_pi(force: bool) -> tuple[str, str]:
+    """Land pi's hooks as native executables under ~/.pi/.
+
+    pi has no plugin manifest and no hook dispatcher: it runs the executable
+    files it finds in ~/.pi/hooks/ directly, so the shipped tree is copied
+    rather than registered anywhere.
+    """
+    root = _assets_dir("pi")
+    dest = Path.home() / ".pi"
+    agents_dest = dest / "AGENTS.md"
+
+    changed = _copy_pi_runtime(root / "scripts", dest, force)
+    _upsert_agents_md(agents_dest, (root / "AGENTS.md").read_text())
+
+    if not changed and not force:
+        return ("skipped", f"{dest} already up to date + {agents_dest}")
+    return ("installed", f"copied pi runtime → {dest} + {agents_dest}")
+
+
 _INSTALLERS = {
     "claude": _install_claude,
     "cursor": _install_cursor,
@@ -807,6 +859,7 @@ _INSTALLERS = {
     "gemini": _install_gemini,
     "openclaw": _install_openclaw,
     "hermes": _install_hermes,
+    "pi": _install_pi,
 }
 
 
@@ -919,6 +972,12 @@ def _plugin_installed(agent: str) -> bool:
             return "stashai/plugin/assets/hermes" in cfg_path.read_text()
         except OSError:
             return False
+    if agent == "pi":
+        # The self-contained marker _install_pi leaves behind: the native hook
+        # dir plus the _run.sh interpreter-resolution runtime both exist.
+        return (Path.home() / ".pi" / "hooks").is_dir() and (
+            Path.home() / ".pi" / "_run.sh"
+        ).exists()
     return False
 
 
@@ -4659,6 +4718,7 @@ _AGENT_LABEL = {
     "gemini": "Gemini CLI",
     "openclaw": "Openclaw",
     "hermes": "Hermes",
+    "pi": "Pi",
 }
 
 
@@ -5746,6 +5806,7 @@ PLUGIN_DATA_DIRS = {
     "opencode": Path.home() / ".stash/plugins/opencode",
     "openclaw": Path.home() / ".stash/plugins/openclaw",
     "hermes": Path.home() / ".stash/plugins/hermes",
+    "pi": Path.home() / ".stash/plugins/pi",
 }
 
 
