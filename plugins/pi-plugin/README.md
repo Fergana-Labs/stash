@@ -5,36 +5,42 @@ Streams Pi coding sessions to Stash using Pi's native `~/.pi/hooks/` system.
 ## Prerequisites
 
 - `stash` CLI installed and logged in
-- `.stash` manifest present in repo (or ancestor)
-- Python 3.10+ and `httpx`
 - Pi installed with hook directory support (`~/.pi/hooks/`)
+
+Streaming is gated globally: it is on whenever you are signed in and have not
+stopped recording (`stash stop`). There is no per-repo manifest — the handlers
+call into the installed `stashai` package, so the interpreter they need comes
+with the CLI rather than being something you install beside it.
 
 ## Install
 
 The recommended way to install the Pi hooks is through the `stash` CLI, which
 supersedes the manual instructions below: `stash settings` (or the interactive
 `stash connect` flow) detects Pi on your machine and copies the self-contained
-hook runtime into `~/.pi/` (`_run.sh`, `scripts/hooks/*`, and the `on_*.py`
-handlers) from the shipped assets under `stashai/plugin/assets/pi/`. No
+hook runtime from the shipped assets under `stashai/plugin/assets/pi/` into
+`~/.pi/` — `_run.sh` and the `on_*.py` handlers at the top level, the five event
+wrappers under `~/.pi/hooks/`, and the Stash block in `~/.pi/AGENTS.md`. No
 symlinks are created, so the install keeps working even if the stash checkout
 or pipx env moves, and it never depends on this repo's location.
 
-Manual install (fallback, when you cannot run the CLI installer):
+Manual install (fallback, when you cannot run the CLI installer) — copy the
+runtime, do not symlink the wrappers alone: each wrapper execs
+`"$SCRIPT_DIR/../_run.sh"`, so `_run.sh` and the `on_*.py` handlers have to sit
+in `~/.pi/` beside `hooks/`. A hooks-only install makes every event exit
+non-zero, and Pi drops a failing hook without saying so.
 
 ```bash
 cd path/to/stash/plugins/pi-plugin
-export PLUGIN_ROOT=$(pwd)
 mkdir -p ~/.pi/hooks
 
-# Symlink each hook wrapper (symlinks auto-update when you pull the repo)
-ln -sf "$PLUGIN_ROOT/scripts/hooks/"* ~/.pi/hooks/
+# Runtime beside the hooks directory — the layout _run.sh resolves against
+cp scripts/_run.sh scripts/*.py ~/.pi/
+cp scripts/hooks/* ~/.pi/hooks/
+chmod +x ~/.pi/_run.sh ~/.pi/hooks/*
 
 # Agent context — tells Pi it has the stash CLI available
 cat AGENTS.md >> ~/.pi/AGENTS.md
 ```
-
-Note that the manual symlink path points at this checkout, so it breaks if the
-repo moves; prefer the CLI installer which copies the runtime into `~/.pi/`.
 
 ## How Pi hooks work
 
