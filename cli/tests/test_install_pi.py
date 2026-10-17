@@ -259,11 +259,23 @@ def test_shipped_wrappers_exec_handlers_that_resolve(scripts_dir: Path) -> None:
     a permanently dead install that the fixture-driven tests above cannot see.
     This guard reads both payload trees independently so a wrapper edit to the
     event name turns CI red instead of shipping it.
+
+    The same test pins the exec bits, because pi runs the files it finds under
+    ``~/.pi/hooks/`` and ``_install_pi`` preserves whatever mode the installed
+    package carries: a mode lost while packaging is a hook pi silently drops,
+    so not even the failure guard would run.
     """
     assert 'TARGET="$SCRIPT_DIR/$SCRIPT.py"' in (scripts_dir / "_run.sh").read_text()
 
     hooks_dir = scripts_dir / "hooks"
     assert sorted(p.name for p in hooks_dir.iterdir()) == sorted(HOOK_EVENTS)
+
+    for path in [scripts_dir / "_run.sh", *[hooks_dir / event for event in HOOK_EVENTS]]:
+        mode = path.stat().st_mode
+        assert mode & 0o111 == 0o111, (
+            f"{path.relative_to(REPO_ROOT)} ships mode {mode & 0o777:o}; pi only "
+            "executes its hook files, so _run.sh and every wrapper must be executable"
+        )
 
     for event, handler in HOOK_EVENTS.items():
         body = (hooks_dir / event).read_text()
