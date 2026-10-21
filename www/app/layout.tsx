@@ -22,9 +22,9 @@ const instrumentSerif = Instrument_Serif({
   style: ["normal", "italic"],
 });
 
-const title = "Stash · Agents that learn from the real world";
+const title = "Stash · Verifiers for the Next Era of AI Scaling";
 const description =
-  "Stash is an applied AI lab building continual learning. Search, share, and learn from agent traces, and improve your agents automatically. Open source, MIT licensed, self-hostable.";
+  "Stash is a platform enabling verifiers for non-deterministic domains and long horizon agents.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.joinstash.ai"),
