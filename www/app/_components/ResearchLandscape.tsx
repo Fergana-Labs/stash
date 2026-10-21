@@ -46,7 +46,6 @@ export default function ResearchLandscape() {
         <button type="button" onClick={() => setRun((value) => value + 1)} className={styles.button}>
           Follow the gradient <span aria-hidden="true">↘</span>
         </button>
-        <a href="https://ferganalabs.com" className={styles.credit}>Fergana Labs · San Francisco</a>
       </div>
       <span className="sr-only" role="status">{run > 0 ? `Gradient descent ${run}: a point follows the slope into the valley.` : ""}</span>
     </div>

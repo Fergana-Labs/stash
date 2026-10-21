@@ -50,9 +50,7 @@
 .button:hover { background: #f7f4ee; transform: translateY(-2px); }
 .button span { transition: transform 180ms; }
 .button:hover span { transform: translate(2px, 2px); }
-.credit { text-decoration: none; }
-.credit:hover { text-decoration: underline; text-underline-offset: 4px; }
-.button:focus-visible, .credit:focus-visible { outline: 2px solid #c4421f; outline-offset: 4px; }
+.button:focus-visible { outline: 2px solid #c4421f; outline-offset: 4px; }
 
 .point {
   offset-path: path("M420 126C446 141 475 155 498 174S548 190 567 207 600 228 622 234");
