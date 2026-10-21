@@ -4,9 +4,9 @@ import { useState } from "react";
 import styles from "./ResearchLandscape.module.css";
 
 const HILLS = [
-  { name: "Hill 1", x: 200, y: 142, shape: "M-80 320 200 142 480 320Z", route: "M370 310Q322 269 295 239T242 184L200 142" },
-  { name: "Hill 2", x: 500, y: 72, shape: "M220 320 500 72 780 320Z", route: "M630 310Q612 248 577 211T532 133L500 72" },
-  { name: "Hill 3", x: 800, y: 120, shape: "M520 320 800 120 1080 320Z", route: "M940 310Q902 257 880 235T837 171L800 120" },
+  { name: "Left hill", x: 200, y: 142, shape: "M-80 320 200 142 480 320Z", route: "M370 310Q322 269 295 239T242 184L200 142" },
+  { name: "Middle hill", x: 500, y: 72, shape: "M220 320 500 72 780 320Z", route: "M630 310Q612 248 577 211T532 133L500 72" },
+  { name: "Right hill", x: 800, y: 120, shape: "M520 320 800 120 1080 320Z", route: "M940 310Q902 257 880 235T837 171L800 120" },
 ];
 
 export default function ResearchLandscape() {
@@ -37,13 +37,11 @@ export default function ResearchLandscape() {
             key={hill.name}
             type="button"
             className={styles.choice}
-            style={{ left: `${hill.x / 10}%`, top: `${(hill.y + 38) / 3.2}%` }}
+            style={{ left: `${hill.x / 10}%`, top: `${hill.y / 3.2}%` }}
             aria-label={`Climb ${hill.name.toLowerCase()}`}
             aria-pressed={selected === index}
             onClick={() => setSelected(index)}
-          >
-            {hill.name}
-          </button>
+          />
         ))}
       </div>
       <span className="sr-only" role="status">{selected !== null ? `${HILLS[selected].name} selected. The route climbs to its summit. Choose another hill to change direction.` : ""}</span>
