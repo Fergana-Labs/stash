@@ -1,73 +1,57 @@
 .scene {
-  --drift: 0px;
   position: relative;
-  height: 280px;
+  flex-shrink: 0;
+  height: 330px;
   overflow: hidden;
   margin-top: auto;
 }
 
+.invitation {
+  position: relative;
+  z-index: 1;
+  margin: 12px 0 0;
+  text-align: center;
+  color: #52614a;
+  font-size: 14px;
+}
+
+.valley {
+  position: absolute;
+  inset: 40px 0 0;
+}
+
 .landscape {
   position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.far, .near {
-  transition: transform 600ms ease-out;
-}
+.hill { transition: fill 250ms; }
 
-.far { transform: translateX(calc(var(--drift) * -0.4)); }
-.near { transform: translateX(var(--drift)); }
-
-.controls {
+.choice {
   position: absolute;
-  inset: auto 0 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 680px;
-  margin: auto;
-  padding: 0 24px;
-  font-size: 12px;
-  color: #36442f;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 16px;
+  transform: translateX(-50%);
+  min-width: 70px;
   min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid #718667;
-  border-radius: 999px;
-  background: #f7f4eedb;
+  padding: 8px;
+  color: #24351e;
+  font-size: 13px;
   cursor: pointer;
-  transition: background 180ms, transform 180ms;
+  text-underline-offset: 5px;
 }
 
-.button:hover { background: #f7f4ee; transform: translateY(-2px); }
-.button span { transition: transform 180ms; }
-.button:hover span { transform: translate(2px, 2px); }
-.button:focus-visible { outline: 2px solid #c4421f; outline-offset: 4px; }
-
-.point {
-  offset-path: path("M420 126C446 141 475 155 498 174S548 190 567 207 600 228 622 234");
-  offset-distance: 100%;
-  animation: descend 2400ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.trail { opacity: 0.5; animation: reveal 2400ms ease-out both; }
-@keyframes descend { from { offset-distance: 0%; } to { offset-distance: 100%; } }
-@keyframes reveal { from { opacity: 0; } to { opacity: 0.5; } }
+.choice:hover, .choice[aria-pressed="true"] { text-decoration: underline; }
+.choice:focus-visible { outline: 2px solid #3f5438; outline-offset: 2px; }
+.route { stroke-dasharray: 1; stroke-dashoffset: 0; animation: climb 1600ms ease-out both; }
+.flag { animation: arrive 1600ms ease-out both; }
+@keyframes climb { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes arrive { 0%, 80% { opacity: 0; } 100% { opacity: 1; } }
 
 @media (max-width: 540px) {
-  .scene { height: 240px; }
-  .controls { flex-direction: column; gap: 12px; bottom: 14px; }
+  .scene { height: 280px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .far, .near { transform: none; transition: none; }
-  .button, .button span, .button:hover, .button:hover span { transition: none; transform: none; }
-  .point, .trail { animation: none; }
+  .hill { transition: none; }
+  .route, .flag { animation: none; }
 }
