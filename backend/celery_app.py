@@ -43,6 +43,7 @@ celery = Celery(
         "backend.tasks.reward_models",
         "backend.tasks.workbench",
         "backend.tasks.optimization",
+        "backend.tasks.eval_updates",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
         "backend.exports.pptx",
@@ -60,6 +61,7 @@ celery.conf.update(
         Queue("reward", exchange=Exchange("reward"), routing_key="reward"),
     ),
     task_routes={
+        "backend.tasks.eval_updates.update_eval": {"queue": "heavy"},
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
         "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
@@ -96,6 +98,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "eval-updates-reconcile": {
+            "task": "backend.tasks.eval_updates.reconcile",
+            "schedule": 10.0,
+        },
         "prompt-optimization-reconcile": {
             "task": "backend.tasks.optimization.reconcile",
             "schedule": 30.0,

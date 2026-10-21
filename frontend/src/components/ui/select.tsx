@@ -24,6 +24,7 @@ export function Select({
   id,
   "aria-label": ariaLabel,
   className,
+  contentClassName,
   portal = true,
 }: {
   value: string;
@@ -33,6 +34,7 @@ export function Select({
   id?: string;
   "aria-label"?: string;
   className?: string;
+  contentClassName?: string;
   // Render the options in place instead of portaling to <body>. Required
   // inside containers that close on document-level outside clicks (e.g. the
   // share popover), where a portaled option click reads as "outside".
@@ -63,7 +65,7 @@ export function Select({
         <SelectPrimitive.Content
           position="popper"
           sideOffset={4}
-          className="z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          className={cn("z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95", contentClassName)}
         >
           <SelectPrimitive.Viewport>
             {options.map((option) => (
