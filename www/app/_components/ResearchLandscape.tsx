@@ -4,9 +4,9 @@ import { useState } from "react";
 import styles from "./ResearchLandscape.module.css";
 
 const HILLS = [
-  { name: "Hill 1", x: 200, y: 142, shape: "M-80 320 200 142 480 320Z", route: "M370 310Q322 269 295 239T242 184L200 142" },
-  { name: "Hill 2", x: 500, y: 72, shape: "M220 320 500 72 780 320Z", route: "M630 310Q612 248 577 211T532 133L500 72" },
-  { name: "Hill 3", x: 800, y: 120, shape: "M520 320 800 120 1080 320Z", route: "M940 310Q902 257 880 235T837 171L800 120" },
+  { name: "Left hill", x: 200, y: 142, shape: "M-80 320 200 142 480 320Z", route: "M370 310Q322 269 295 239T242 184L200 142" },
+  { name: "Middle hill", x: 500, y: 72, shape: "M220 320 500 72 780 320Z", route: "M630 310Q612 248 577 211T532 133L500 72" },
+  { name: "Right hill", x: 800, y: 120, shape: "M520 320 800 120 1080 320Z", route: "M940 310Q902 257 880 235T837 171L800 120" },
 ];
 
 export default function ResearchLandscape() {
@@ -25,6 +25,19 @@ export default function ResearchLandscape() {
           <path fill="#c4cba8" d="M-20 315Q220 297 410 312T760 309T1020 306V340H-20Z" />
           {selected !== null && (
             <g key={selected}>
+              <line
+                className={styles.projection}
+                x1="0"
+                x2="1000"
+                y1={HILLS[selected].y}
+                y2={HILLS[selected].y}
+                style={{ transformOrigin: `${HILLS[selected].x}px ${HILLS[selected].y}px` }}
+                stroke="#3f5438"
+                strokeWidth="1.5"
+                strokeDasharray="1 6"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
               <path className={styles.route} d={HILLS[selected].route} fill="none" stroke="#3f5438" strokeWidth="2" pathLength="1" />
               <g className={styles.flag} transform={`translate(${HILLS[selected].x}, ${HILLS[selected].y})`}>
                 <path d="M0 0V-23L15-18 0-13" fill="none" stroke="#3f5438" strokeWidth="2" strokeLinejoin="round" />
@@ -37,13 +50,11 @@ export default function ResearchLandscape() {
             key={hill.name}
             type="button"
             className={styles.choice}
-            style={{ left: `${hill.x / 10}%`, top: `${(hill.y + 38) / 3.2}%` }}
+            style={{ left: `${hill.x / 10}%`, top: `${hill.y / 3.2}%` }}
             aria-label={`Climb ${hill.name.toLowerCase()}`}
             aria-pressed={selected === index}
             onClick={() => setSelected(index)}
-          >
-            {hill.name}
-          </button>
+          />
         ))}
       </div>
       <span className="sr-only" role="status">{selected !== null ? `${HILLS[selected].name} selected. The route climbs to its summit. Choose another hill to change direction.` : ""}</span>

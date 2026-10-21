@@ -31,19 +31,17 @@
 .choice {
   position: absolute;
   transform: translateX(-50%);
-  min-width: 70px;
+  width: 26%;
+  bottom: 0;
   min-height: 44px;
-  padding: 8px;
-  color: #24351e;
-  font-size: 13px;
   cursor: pointer;
-  text-underline-offset: 5px;
 }
 
-.choice:hover, .choice[aria-pressed="true"] { text-decoration: underline; }
 .choice:focus-visible { outline: 2px solid #3f5438; outline-offset: 2px; }
 .route { stroke-dasharray: 1; stroke-dashoffset: 0; animation: climb 1600ms ease-out both; }
+.projection { opacity: 0.55; animation: project 600ms ease-out 1600ms both; }
 .flag { animation: arrive 1600ms ease-out both; }
+@keyframes project { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 0.55; } }
 @keyframes climb { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes arrive { 0%, 80% { opacity: 0; } 100% { opacity: 1; } }
 
@@ -53,5 +51,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hill { transition: none; }
-  .route, .flag { animation: none; }
+  .route, .projection { opacity: 0.55; animation: project 600ms ease-out 1600ms both; }
+.flag { animation: none; }
 }
