@@ -30,7 +30,6 @@ export default function Image() {
             fontWeight: 600,
           }}
         >
-          <div style={{ width: 26, height: 26, borderRadius: 13, background: "#FF5A36" }} />
           Stash
         </div>
 
