@@ -9,8 +9,7 @@ export default function HomePage() {
     <main className="flex min-h-screen flex-col bg-background text-foreground">
       <AppRedirectForSignedInUsers appUrl={APP_URL} />
       <div className="mx-auto w-full max-w-[680px] px-6 pb-8 pt-12 sm:pt-20">
-        <header className="mb-10 flex items-center gap-3">
-          <span aria-hidden="true" className="h-3 w-3 rounded-full bg-brand" />
+        <header className="mb-10">
           <h1 className="font-display text-[40px] font-medium tracking-[-0.04em] text-ink">Stash</h1>
         </header>
         <div className="space-y-5 text-[17px] leading-[1.75]">
