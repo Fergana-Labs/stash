@@ -66,7 +66,8 @@ async def schedule() -> None:
                     """INSERT INTO rm_scoring_runs(owner_user_id,trace_id,reward_model_id,automatic,trace_updated_at,batch_id,model_finished_at)
                     SELECT $1,t.id,$3,true,t.updated_at,$4,m.finished_at FROM rm_traces t
                     JOIN rm_reward_models m ON m.id=$3 WHERE t.id=$2 AND t.owner_user_id=$1
-                    ON CONFLICT(trace_id,reward_model_id) WHERE status IN ('queued','running') DO NOTHING RETURNING id""",
+                    ON CONFLICT(trace_id,reward_model_id)
+                    WHERE status IN ('queued','running') DO NOTHING RETURNING id""",
                     trace["owner_user_id"],
                     trace["trace_id"],
                     trace["model_id"],

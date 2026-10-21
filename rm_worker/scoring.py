@@ -35,9 +35,16 @@ def load_tokenizer(
     max_length: int | None = None,
     input_version: int | None = None,
     rubric: list[str] | None = None,
+    *,
+    revision: str | None = None,
+    local_files_only: bool = False,
 ):
     # The end of a conversation is the part being judged, so long texts lose their beginning.
     kwargs = {"truncation_side": "left"}
+    if revision is not None:
+        kwargs["revision"] = revision
+    if local_files_only:
+        kwargs["local_files_only"] = True
     if max_length is not None:
         # Saved into tokenizer_config.json, so scoring truncates exactly like training did.
         kwargs["model_max_length"] = max_length
@@ -96,6 +103,17 @@ class RewardModel:
     """A saved reward model directory (as written by train.py), ready to score texts."""
 
     def __init__(self, model_dir: str | Path, batch_size: int = 4):
+        self.basis = None
+        if (Path(model_dir) / "basis_manifest.json").exists():
+            from rm_worker.basis import BasisRewardModel
+
+            self.basis = BasisRewardModel(model_dir, batch_size)
+            self.device = self.basis.device
+            self.batch_size = batch_size
+            self.tokenizer = self.basis.tokenizer
+            self.input_version = self.basis.input_version
+            self.rubric = self.basis.rubric
+            return
         self.device = pick_device()
         self.batch_size = batch_size
         self.tokenizer = load_tokenizer(model_dir)
@@ -104,8 +122,21 @@ class RewardModel:
         self.model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(self.device)
 
     def score(
-        self, texts: list[str], *, on_progress: Callable[[int], None] | None = None
+        self,
+        texts: list[str],
+        *,
+        on_progress: Callable[[int], None] | None = None,
+        head: dict | None = None,
     ) -> list[float]:
+        if self.basis is not None:
+            return self.basis.score(texts, on_progress=on_progress, head=head)
+        if head is not None:
+            raise ValueError("Customer heads require a shared learned reward basis")
         return score_texts(
             self.model, self.tokenizer, texts, self.device, self.batch_size, on_progress
         )
+
+    def features(self, texts: list[str]) -> list[list[float]]:
+        if self.basis is None:
+            raise ValueError("This checkpoint does not contain a shared learned reward basis")
+        return self.basis.features(texts)

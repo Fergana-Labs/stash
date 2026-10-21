@@ -12,7 +12,7 @@ from . import jobs
 
 async def model_for_owner(owner: UUID, model_id: UUID):
     model = await get_pool().fetchrow(
-        "SELECT * FROM rm_reward_models WHERE id = $1 AND owner_user_id = $2",
+        "SELECT * FROM rm_reward_models WHERE id = $1 AND owner_user_id = $2 AND scope = 'personal'",
         model_id,
         owner,
     )

@@ -5,8 +5,12 @@ Each model judges an assistant action in its task context, including tool choice
 arguments. Users do not need to train a personal model or write comments to get scores.
 Personal models remain available under Advanced in the trace viewer.
 
-This implements the learning and release infrastructure. It does **not** include a
-pretrained shared checkpoint or establish that a model generalizes to arbitrary traces.
+This implements the learning and release infrastructure. Model weights are not
+bundled in this Git repository; released checkpoints are private storage artifacts.
+The [shared-basis experiment](SHARED-BASIS-IMPLEMENTATION.md) adds cloud-trained
+development artifacts, private customer heads and measured validation tools.
+Those artifacts have not been promoted to the default or validated on representative
+customer tasks. Neither path establishes generalization to arbitrary traces.
 An operator must supply a reviewed benchmark, train remotely, inspect the results,
 and release the first model. Until then, the UI explicitly says it is waiting for
 the first release; imported traces remain queued.

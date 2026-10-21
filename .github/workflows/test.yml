@@ -53,6 +53,9 @@ jobs:
         working-directory: www
       - run: npm test
         working-directory: www
+      - name: Build marketing site after dependency updates
+        run: npm run build
+        working-directory: www
 
   frontend-lint:
     needs: changes
@@ -124,8 +127,8 @@ jobs:
       # Pinned to requirements-dev.txt so CI and local runs format identically —
       # an unpinned formatter drifts style across releases and re-reds every PR.
       - run: pip install "$(grep '^ruff==' backend/requirements-dev.txt)"
-      - run: ruff check backend/ cli/
-      - run: ruff format --check backend/ cli/
+      - run: ruff check backend/ cli/ rm_worker/
+      - run: ruff format --check backend/ cli/ rm_worker/
 
   migration-graph:
     name: Migration graph (single head)
@@ -195,6 +198,27 @@ jobs:
       - name: Run CLI tests
         run: python -m pytest cli/tests --no-cov
 
+  reward-worker-test:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    name: Reward worker contracts (tiny CPU fixtures)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: rm_worker/requirements.txt
+      - name: Install CPU worker test dependencies
+        run: |
+          pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r rm_worker/requirements.txt pytest pytest-asyncio pytest-cov
+      - name: Run tiny model and mocked cloud contracts
+        env:
+          HF_HUB_OFFLINE: "1"
+        run: python -m pytest rm_worker/tests --no-cov -q
+
   backend-test:
     needs: changes
     if: needs.changes.outputs.python == 'true'
@@ -226,7 +250,8 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install backend dependencies
-        run: pip install -r backend/requirements-dev.txt
+        # Backend contract tests exercise MCP tools from the installed CLI too.
+        run: pip install -r backend/requirements-dev.txt -e .
 
       - name: Run Alembic migrations
         env:
