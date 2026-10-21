@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 
 import HomePage from "./_components/HomePage";
 
-const title = "Stash · Agents That Learn From the Real World";
+const title = "Stash · Verifiers for the Next Era of AI Scaling";
 const description =
-  "Stash is an applied AI lab building continual learning. We refine raw agent logs into context any agent can read, and use the same logs to train models that improve with every run.";
+  "Stash is a platform enabling verifiers for non-deterministic domains and long horizon agents.";
 
 export const metadata: Metadata = {
   title,
@@ -40,9 +40,9 @@ const jsonLd = {
       ],
       contactPoint: {
         "@type": "ContactPoint",
-        contactType: "sales",
+        contactType: "general inquiries",
         email: "sam@joinstash.ai",
-        url: `${SITE}/contact-sales`,
+        url: SITE,
       },
     },
     {
@@ -61,22 +61,8 @@ const jsonLd = {
       name: title,
       description,
       isPartOf: { "@id": `${SITE}#website` },
-      about: { "@id": `${SITE}#software` },
+      about: { "@id": `${SITE}#organization` },
       primaryImageOfPage: { "@type": "ImageObject", url: `${SITE}/opengraph-image` },
-    },
-    {
-      "@type": "SoftwareApplication",
-      "@id": `${SITE}#software`,
-      name: "Stash",
-      alternateName: ["Stash AI", "Stash Memory"],
-      applicationCategory: "DeveloperApplication",
-      applicationSubCategory: "AI agent memory",
-      operatingSystem: "Web, macOS, Linux, Windows",
-      url: SITE,
-      description,
-      softwareHelp: { "@type": "WebPage", url: `${SITE}/docs` },
-      license: "https://opensource.org/licenses/MIT",
-      publisher: { "@id": `${SITE}#organization` },
     },
   ],
 };
