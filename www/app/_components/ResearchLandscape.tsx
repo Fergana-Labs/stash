@@ -25,6 +25,19 @@ export default function ResearchLandscape() {
           <path fill="#c4cba8" d="M-20 315Q220 297 410 312T760 309T1020 306V340H-20Z" />
           {selected !== null && (
             <g key={selected}>
+              <line
+                className={styles.projection}
+                x1="0"
+                x2="1000"
+                y1={HILLS[selected].y}
+                y2={HILLS[selected].y}
+                style={{ transformOrigin: `${HILLS[selected].x}px ${HILLS[selected].y}px` }}
+                stroke="#3f5438"
+                strokeWidth="1.5"
+                strokeDasharray="1 6"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
               <path className={styles.route} d={HILLS[selected].route} fill="none" stroke="#3f5438" strokeWidth="2" pathLength="1" />
               <g className={styles.flag} transform={`translate(${HILLS[selected].x}, ${HILLS[selected].y})`}>
                 <path d="M0 0V-23L15-18 0-13" fill="none" stroke="#3f5438" strokeWidth="2" strokeLinejoin="round" />
