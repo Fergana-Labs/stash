@@ -46,7 +46,8 @@ export default function EvalDetail({ id }: { id: string }) {
     try { await action(); await load(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(""); }
   }
   const upload = (label: EvalLabel, files: File[]) => run(`Uploading ${files.length}…`, async () => {
-    for (let i = 0; i < files.length; i += 10) await evalUploadExamples(id, label, files.slice(i, i + 10));
+    const batches = Array.from({ length: Math.ceil(files.length / 4) }, (_, i) => files.slice(i * 4, i * 4 + 4));
+    await Promise.all(batches.map((batch) => evalUploadExamples(id, label, batch)));
   });
 
   if (!data) return <EvalPageFrame title="Eval"><p role={error ? "alert" : "status"} className="text-sm text-muted-foreground">{error || "Loading…"}</p></EvalPageFrame>;
@@ -132,10 +133,11 @@ function ItemPreview({ item, path }: { item: EvalItem; path: (index: number) => 
 }
 
 function Calls({ id, calls, onLabel }: { id: string; calls: EvalCall[]; onLabel: (callId: string, label: EvalLabel | null, note: string) => void }) {
+  // Shown once an agent has called the eval; a new eval has nothing to show here.
+  if (calls.length === 0) return null;
   return <section>
     <h2 className="m-0 mb-3 text-[15px] font-semibold">Agent calls</h2>
-    {calls.length === 0 ? <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">When an agent scores its work, it shows up here with the score and the fixes it was given.</p>
-      : <div className="divide-y divide-border rounded-md border border-border">{calls.map((c) => <CallRow key={c.id} id={id} call={c} onLabel={onLabel} />)}</div>}
+    <div className="divide-y divide-border rounded-md border border-border">{calls.map((c) => <CallRow key={c.id} id={id} call={c} onLabel={onLabel} />)}</div>
   </section>;
 }
 

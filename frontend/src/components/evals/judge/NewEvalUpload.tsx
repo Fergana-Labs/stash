@@ -6,8 +6,8 @@ import { errorMessage } from "@/components/reward-models/rm-text";
 import UploadBox from "./UploadBox";
 import { evalBuild, evalCreate, evalUploadExamples } from "@/lib/evals-api";
 
-const BATCH = 10;
-const PARALLEL = 3;
+const BATCH = 4;
+const PARALLEL = 6;
 
 /** New eval: drop examples of good work, and it creates the eval, uploads them, starts
  * the build and opens the eval, where the build shows its progress. */

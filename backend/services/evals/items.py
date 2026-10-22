@@ -9,6 +9,7 @@ Any part may be empty. Images are shown to the judge as pixels, PDFs as document
 text files inline; nothing is replaced by a description of it.
 """
 
+import asyncio
 import base64
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -83,15 +84,8 @@ async def validate_file(name: str, data: bytes, content_type: str) -> tuple[str,
     kind = _kind(name, content_type)
     if kind == "image":
         data, name, content_type = await maybe_transcode_heic(data, name, content_type)
-        try:
-            with Image.open(BytesIO(data)) as image:
-                fmt = IMAGE_TYPES.get(image.format or "")
-                if not fmt or image.width * image.height > MAX_PIXELS:
-                    raise Unreadable(f"{name} must be a PNG, JPEG, GIF or WEBP under 60 megapixels")
-                image.verify()
-        except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
-            raise Unreadable(f"{name} is not a readable image") from exc
-        return name, data, fmt
+        # Decoding is CPU work; off the event loop so other requests and uploads keep going.
+        return name, data, await asyncio.to_thread(_image_format, name, data)
     if kind == "pdf":
         if not data.startswith(b"%PDF"):
             raise Unreadable(f"{name} is not a readable PDF")
@@ -103,6 +97,18 @@ async def validate_file(name: str, data: bytes, content_type: str) -> tuple[str,
             raise Unreadable(f"{name} is not UTF-8 text") from exc
         return name, data, content_type if content_type.startswith("text/") else "text/plain"
     raise Unreadable(f"{name}: use images, PDFs or text files")
+
+
+def _image_format(name: str, data: bytes) -> str:
+    try:
+        with Image.open(BytesIO(data)) as image:
+            fmt = IMAGE_TYPES.get(image.format or "")
+            if not fmt or image.width * image.height > MAX_PIXELS:
+                raise Unreadable(f"{name} must be a PNG, JPEG, GIF or WEBP under 60 megapixels")
+            image.verify()
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+        raise Unreadable(f"{name} is not a readable image") from exc
+    return fmt
 
 
 def clean_trace(trace) -> list[dict]:
@@ -133,11 +139,14 @@ async def store(
     owner: UUID, name: str, files: list[tuple[str, bytes, str]], text: str = "", trace=None
 ) -> dict:
     """Validate and store an item's files; returns the item JSON."""
-    checked = [await validate_file(n, d, c) for n, d, c in files]
-    stored = []
-    for n, d, c in checked:
-        key = await storage_service.upload_file(str(owner), n or "file", d, c)
-        stored.append({"key": key, "name": n[:300], "content_type": c})
+    checked = await asyncio.gather(*(validate_file(n, d, c) for n, d, c in files))
+    keys = await asyncio.gather(
+        *(storage_service.upload_file(str(owner), n or "file", d, c) for n, d, c in checked)
+    )
+    stored = [
+        {"key": key, "name": n[:300], "content_type": c}
+        for key, (n, _, c) in zip(keys, checked, strict=True)
+    ]
     item = {
         "name": (name or "")[:300],
         "trace": clean_trace(trace),
