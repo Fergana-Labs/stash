@@ -35,8 +35,9 @@ from .spec import (
     Question,
     VersionSpec,
     classes,
+    compose_description,
     feature_names,
-    valid_example_labels,
+    normalize_label,
 )
 
 DEFAULT_L2 = 0.005
@@ -126,7 +127,9 @@ def _validate(output_type: str, description: str, labels: list, rubric: list) ->
     spec = VersionSpec.model_validate(
         {"output_type": output_type, "description": description, "labels": labels, "rubric": rubric}
     )
-    return spec.model_dump(mode="json")
+    # exclude_none keeps stored questions (and so judge cache keys) unchanged for
+    # every question type that has no eval fields.
+    return spec.model_dump(mode="json", exclude_none=True)
 
 
 async def list_models(owner_id: UUID) -> list[dict]:
@@ -157,6 +160,9 @@ async def create_model(
     labels: list,
     rubric: list,
 ) -> dict:
+    from . import composition
+
+    rubric = await composition.resolve(owner_id, None, rubric)
     spec = _validate(output_type, description, labels, rubric)
     provider, model_name = "jev", settings.JEV_MODEL
     async with get_pool().acquire() as conn, conn.transaction():
@@ -210,7 +216,11 @@ async def get_detail(owner_id: UUID, model_id: UUID) -> dict:
                   count(*) FILTER (WHERE needs_review) AS needs_review,
                   count(*) FILTER (WHERE split = 'eval') AS eval,
                   (SELECT count(*) FROM intuition_predictions p
-                    WHERE p.model_id = $1 AND p.status = 'unreviewed') AS inbox
+                    WHERE p.model_id = $1 AND p.status = 'unreviewed') AS inbox,
+                  (SELECT count(*) FROM intuition_predictions p
+                    WHERE p.model_id = $1 AND p.status = 'escalated') AS escalated,
+                  count(*) FILTER (WHERE pinned) AS pinned,
+                  count(*) FILTER (WHERE calibration) AS calibration
              FROM intuition_examples WHERE model_id = $1""",
         model_id,
     )
@@ -220,6 +230,7 @@ async def get_detail(owner_id: UUID, model_id: UUID) -> dict:
     # before fitting. `ungraded_total` also counts active-version answers the gate needs.
     primary = await _pending_jobs(model, [draft or active] if (draft or active) else [])
     total = await _pending_jobs(model, [v for v in (draft, active) if v])
+    model.pop("topics", None)
     return {
         "model": model,
         "active": active,
@@ -265,12 +276,29 @@ async def ensure_draft(owner_id: UUID, model_id: UUID) -> dict:
 
 
 async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
-    """Edit any of description, labels, rubric, seed_example_ids on the draft."""
+    """Edit any of description, labels, rubric, seed_example_ids, provider on the draft.
+
+    Switching the judge (jev <-> agent_judge) invalidates the head: its features
+    came from the other judge's answers."""
     model = await _model(owner_id, model_id)
     draft = await ensure_draft(owner_id, model_id)
     merged = {k: changes.get(k, draft[k]) for k in ("description", "labels", "rubric")}
+    # The judge always reads the brief: it is re-attached under any edited instructions.
+    merged["description"] = compose_description(merged["description"], model.get("brief") or {})
+    if "rubric" in changes:
+        from . import composition
+
+        merged["rubric"] = await composition.resolve(owner_id, model_id, merged["rubric"])
     spec = _validate(
         model["output_type"], merged["description"], merged["labels"], merged["rubric"]
+    )
+    provider = changes.get("provider") or draft["provider"]
+    if provider not in providers.PROVIDERS:
+        raise ValueError(f"Judge must be one of {', '.join(providers.PROVIDERS)}")
+    provider_model = (
+        providers.provider_model(provider)
+        if provider != draft["provider"]
+        else draft["provider_model"]
     )
     seeds = changes.get("seed_example_ids", draft["seed_example_ids"])
     if len(seeds) > MAX_SEEDS or len(set(seeds)) != len(seeds):
@@ -281,13 +309,15 @@ async def update_draft(owner_id: UUID, model_id: UUID, changes: dict) -> dict:
     await get_pool().execute(
         """UPDATE intuition_versions
               SET description = $2, labels = $3, rubric = $4, seed_example_ids = $5::uuid[],
-                  metrics = NULL, gate = NULL
+                  provider = $6, provider_model = $7, head = NULL, metrics = NULL, gate = NULL
             WHERE id = $1""",
         draft["id"],
         spec["description"],
         spec["labels"],
         spec["rubric"],
         [UUID(s) for s in seeds],
+        provider,
+        provider_model,
     )
     await _touch(model_id)
     return await get_detail(owner_id, model_id)
@@ -322,14 +352,13 @@ def _split_for(item, item_b) -> str:
 
 def _check_label(
     model: dict, labels: list[dict], kind: str, label: str | None, needs_review: bool
-) -> None:
-    allowed = valid_example_labels(model["output_type"], kind, labels)
+) -> str | None:
+    """The label in canonical form (multi-issue labels are sorted), or ValueError."""
     if label is None:
         if not needs_review:
             raise ValueError("Unlabeled examples must be marked needs_review")
-        return
-    if label not in allowed:
-        raise ValueError(f"Label must be one of {', '.join(allowed)}")
+        return None
+    return normalize_label(model["output_type"], kind, labels, label)
 
 
 async def _current_labels(model: dict) -> list[dict]:
@@ -346,26 +375,27 @@ async def add_examples(
     for e in examples:
         kind = "pair" if e.get("item_b") is not None else "item"
         needs_review = bool(e.get("needs_review", False))
-        _check_label(model, labels, kind, e.get("label"), needs_review)
+        label = _check_label(model, labels, kind, e.get("label"), needs_review)
         rows.append(
             (
                 model_id,
                 kind,
                 e["item"],
                 e.get("item_b"),
-                e.get("label"),
+                label,
                 e.get("source", source),
                 e.get("split") or _split_for(e["item"], e.get("item_b")),
                 needs_review,
                 e.get("note", ""),
+                bool(e.get("pinned", False)),
             )
         )
     async with get_pool().acquire() as conn, conn.transaction():
         created = [
             await conn.fetchrow(
                 """INSERT INTO intuition_examples
-                     (model_id, kind, item, item_b, label, source, split, needs_review, note)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *""",
+                     (model_id, kind, item, item_b, label, source, split, needs_review, note, pinned)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *""",
                 *row,
             )
             for row in rows
@@ -388,11 +418,12 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
     if row is None:
         raise NotFound("Example not found")
     merged = {**dict(row), **changes}
-    _check_label(
+    merged["label"] = _check_label(
         model, await _current_labels(model), merged["kind"], merged["label"], merged["needs_review"]
     )
     updated = await get_pool().fetchrow(
-        """UPDATE intuition_examples SET label = $3, split = $4, needs_review = $5, note = $6
+        """UPDATE intuition_examples SET label = $3, split = $4, needs_review = $5, note = $6,
+                  pinned = $7, calibration = $8
             WHERE id = $1 AND model_id = $2 RETURNING *""",
         example_id,
         model_id,
@@ -400,6 +431,8 @@ async def update_example(owner_id: UUID, model_id: UUID, example_id: UUID, chang
         merged["split"],
         merged["needs_review"],
         merged["note"],
+        merged["pinned"],
+        merged["calibration"],
     )
     await _invalidate_draft(model_id, example_id)
     await _touch(model_id)
@@ -464,7 +497,12 @@ async def _pending_jobs(
 ) -> list[tuple]:
     """(version, missing questions, seeds, item) for every item lacking an answer."""
     if items is None:
-        items = [i for e in await _examples(model["id"]) for i in _items_of(e)]
+        items = [
+            i
+            for e in await _examples(model["id"])
+            if not (e["label"] is None and e["note"] == "Reference material")
+            for i in _items_of(e)
+        ]
     jobs, seen = [], set()
     for version in versions:
         contexts = await _contexts(version)
@@ -590,6 +628,7 @@ async def _rows(model: dict, version: dict) -> tuple[list[dict], int]:
                 "split": e["split"],
                 "source": e["source"],
                 "seed": e["id"] in seeds,
+                "pinned": e["pinned"],
             }
         )
     return rows, missing
@@ -631,6 +670,24 @@ def _oof_temperature(output_type, names, cls, train, l2) -> float:
     return round(math.exp(result.x), 4)
 
 
+async def _by_difficulty(evaluated: dict) -> list[dict]:
+    """Held-out accuracy by input size decile: whether the judge holds up on the long tail."""
+    rows = evaluated.get("rows") or []
+    if len(rows) < 10:
+        return []
+    sizes = {
+        str(r["id"]): r["size"]
+        for r in await get_pool().fetch(
+            "SELECT id, length(item::text) + coalesce(length(item_b::text), 0) AS size FROM intuition_examples WHERE id = ANY($1::uuid[])",
+            [UUID(str(r["example_id"])) for r in rows],
+        )
+    }
+    scored = [
+        (float(sizes.get(str(r["example_id"]), 0)), r["predicted"] == r["label"]) for r in rows
+    ]
+    return heads.by_difficulty([c for _, c in scored], [d for d, _ in scored])
+
+
 async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | None) -> dict:
     rows, missing = await _rows(model, draft)
     held = _held_out(rows)
@@ -642,21 +699,32 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
         "ungraded_examples": missing,
         "fit_options": fit_options,
     }
+    metrics["eval"]["by_difficulty"] = await _by_difficulty(metrics["eval"])
+    pinned_rows = [r for r in rows if r["pinned"]]
+    pinned = heads.evaluate(head, model["output_type"], pinned_rows)
     active = await _load_version(model["active_version_id"])
-    incumbent = None
+    incumbent, flips, fixes = None, None, None
     if active and not active["head_stale"]:
         active_rows, _ = await _rows(model, active)
         held_ids = {r["example_id"] for r in held}
         shared = [r for r in active_rows if r["example_id"] in held_ids]
         incumbent = heads.evaluate(active["head"], model["output_type"], shared)
         incumbent["missing"] = len(held_ids) - len(shared)
-    gate = heads.gate(metrics["eval"], incumbent)
+        flips = _flips(model["output_type"], head, active["head"], held + pinned_rows, active_rows)
+        fixes = _flips(
+            model["output_type"], head, active["head"], held + pinned_rows, active_rows, fixed=True
+        )
+    gate = heads.gate(metrics["eval"], incumbent, flips=flips, pinned=pinned)
+    gate["flips"] = flips or []
+    gate["fixes"] = fixes or []
+    gate["pinned"] = {k: pinned[k] for k in ("n", "accuracy", "rows")}
     if fit_options and fit_options.get("train_on") == "all":
         gate["passed"] = False
         gate["checks"].append(
             {
                 "name": "held_out_independent",
                 "passed": False,
+                "blocking": True,
                 "detail": "This head was fitted on all examples, including evaluation data.",
             }
         )
@@ -665,6 +733,7 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
             {
                 "name": "incumbent_graded",
                 "passed": False,
+                "blocking": True,
                 "detail": f"{incumbent['missing']} held-out examples are not graded under the active version",
             }
         )
@@ -684,6 +753,37 @@ async def _refresh(model: dict, draft: dict, head: dict, fit_options: dict | Non
     )
     await _touch(model["id"])
     return {"head": head, "metrics": metrics, "gate": gate}
+
+
+def _flips(output_type, head, active_head, rows, active_rows, fixed: bool = False) -> list[dict]:
+    """Held-out or pinned examples the active version got right and the candidate gets wrong.
+
+    With `fixed`, the opposite: ones the active version got wrong and the candidate gets right.
+    """
+    active_by_id = {r["example_id"]: r for r in active_rows}
+    flips, seen = [], set()
+    for row in rows:
+        old = active_by_id.get(row["example_id"])
+        if old is None or row["example_id"] in seen:
+            continue
+        seen.add(row["example_id"])
+        _, was = heads.row_probability(active_head, output_type, old)
+        _, now = heads.row_probability(head, output_type, row)
+        if (
+            (was != row["label"] and now == row["label"])
+            if fixed
+            else (was == row["label"] and now != row["label"])
+        ):
+            flips.append(
+                {
+                    "example_id": row["example_id"],
+                    "label": row["label"],
+                    "active": was,
+                    "candidate": now,
+                    "pinned": row["pinned"],
+                }
+            )
+    return flips
 
 
 async def fit(
@@ -824,7 +924,16 @@ async def version_detail(owner_id: UUID, model_id: UUID, version_id: UUID) -> di
 # ── Serving ──────────────────────────────────────────────────────────────
 
 
-async def _serving_version(model: dict, which: str) -> dict:
+async def _serving_version(model: dict, which: str, version_id: UUID | None = None) -> dict:
+    if version_id is not None:
+        # A pinned version (eval dependencies, optimization rewards) serves even
+        # after it is retired, so its consumers never change judge mid-flight.
+        version = await _load_version(version_id)
+        if version is None or version["model_id"] != model["id"]:
+            raise NotFound("Version not found")
+        if version["head_stale"]:
+            raise Conflict(f"Version {version['number']} has no fitted head")
+        return version
     version_id = model["draft_version_id"] if which == "draft" else model["active_version_id"]
     version = await _load_version(version_id)
     if version is None:
@@ -837,20 +946,37 @@ async def _serving_version(model: dict, which: str) -> dict:
     return version
 
 
-async def _log(model_id, version, kind, payload, output, caller) -> str:
+async def _log(
+    model_id, version, kind, payload, output, caller, ref=None, metadata=None, run=None
+) -> str:
+    run_id, step = run if run else (None, None)
     return str(
         await get_pool().fetchval(
-            """INSERT INTO intuition_predictions (model_id, version_id, kind, input, output, confidence, caller)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
+            """INSERT INTO intuition_predictions
+                 (model_id, version_id, kind, input, output, confidence, caller, ref, metadata,
+                  run_id, step)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id""",
             model_id,
             version["id"],
             kind,
             payload,
             output,
-            output["confidence"],
+            output.get("confidence"),
             caller,
+            ref,
+            metadata or {},
+            run_id,
+            step,
         )
     )
+
+
+async def _run_link(owner_id: UUID, run: str | None, step: int | None):
+    if run is None:
+        return None
+    from . import runs
+
+    return await runs.ensure(owner_id, run), step
 
 
 async def predict(
@@ -861,20 +987,60 @@ async def predict(
     which: str = "active",
     caller: str = "api",
     log: bool = True,
+    ref: str | None = None,
+    metadata: dict | None = None,
+    version_id: UUID | None = None,
+    run: str | None = None,
+    step: int | None = None,
 ) -> dict:
+    from .. import taste
+
+    if await taste.mapped_model(owner_id, model_id):
+        if version_id:
+            raise Conflict(
+                "This eval uses a versioned activation probe; call its checkpoint API with the current probe version."
+            )
+        from ...routers.taste import Prediction
+
+        request = Prediction.model_validate(item)
+        return await taste.predict(
+            owner_id, request.model_dump(mode="json", exclude={"ref"}), ref=ref
+        )
     model = await _model(owner_id, model_id)
-    version = await _serving_version(model, which)
-    (features,) = await _features(model_id, version, [item], grade_missing=True)
-    if model["output_type"] == "choice":
+    version = await _serving_version(model, which, version_id)
+    run_link = await _run_link(owner_id, run, step) if log else None
+    try:
+        (features,) = await _features(model_id, version, [item], grade_missing=True)
+    except providers.ProviderError as exc:
+        if log:
+            await _log(
+                model_id,
+                version,
+                "predict",
+                {"item": item},
+                {"error": str(exc), "version": version["number"]},
+                caller,
+                ref,
+                metadata,
+                run_link,
+            )
+        raise
+    if model["output_type"] == "multi":
+        output = heads.predict_multi(version["head"], features)
+    elif model["output_type"] == "choice":
         output = heads.predict_choice(version["head"], features)
     else:
         output = heads.predict_preference_item(version["head"], features)
     output["rubric"] = await _answers(model_id, version, item)
     output["version"] = version["number"]
     prediction_id = (
-        await _log(model_id, version, "predict", {"item": item}, output, caller) if log else None
+        await _log(
+            model_id, version, "predict", {"item": item}, output, caller, ref, metadata, run_link
+        )
+        if log
+        else None
     )
-    return {"prediction_id": prediction_id, **output}
+    return {"prediction_id": prediction_id, "version_id": str(version["id"]), **output}
 
 
 async def compare_items(
@@ -886,18 +1052,48 @@ async def compare_items(
     which: str = "active",
     caller: str = "api",
     log: bool = True,
+    ref: str | None = None,
+    metadata: dict | None = None,
+    run: str | None = None,
+    step: int | None = None,
 ) -> dict:
     model = await _model(owner_id, model_id)
     if model["output_type"] != "preference":
         raise Conflict("Pairwise comparison is only available for preference models")
     version = await _serving_version(model, which)
-    f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
+    run_link = await _run_link(owner_id, run, step) if log else None
+    try:
+        f_a, f_b = await _features(model_id, version, [item_a, item_b], grade_missing=True)
+    except providers.ProviderError as exc:
+        if log:
+            await _log(
+                model_id,
+                version,
+                "compare",
+                {"item": item_a, "item_b": item_b},
+                {"error": str(exc), "version": version["number"]},
+                caller,
+                ref,
+                metadata,
+                run_link,
+            )
+        raise
     output = heads.compare(version["head"], f_a, f_b)
     output["rubric_a"] = await _answers(model_id, version, item_a)
     output["rubric_b"] = await _answers(model_id, version, item_b)
     output["version"] = version["number"]
     prediction_id = (
-        await _log(model_id, version, "compare", {"item": item_a, "item_b": item_b}, output, caller)
+        await _log(
+            model_id,
+            version,
+            "compare",
+            {"item": item_a, "item_b": item_b},
+            output,
+            caller,
+            ref,
+            metadata,
+            run_link,
+        )
         if log
         else None
     )
@@ -908,22 +1104,26 @@ async def compare_items(
 
 
 async def list_predictions(
-    owner_id: UUID, model_id: UUID, status: str = "unreviewed", limit: int = 100
+    owner_id: UUID, model_id: UUID, status: str = "unreviewed", limit: int = 100, offset: int = 0
 ) -> list[dict]:
     await _model(owner_id, model_id)
     rows = await get_pool().fetch(
         """SELECT p.id, p.kind, p.input, p.output, p.confidence, p.caller, p.status, p.example_id,
-                  p.created_at, v.number AS version
+                  p.ref, p.metadata, p.created_at, v.number AS version
              FROM intuition_predictions p JOIN intuition_versions v ON v.id = p.version_id
             WHERE p.model_id = $1 AND ($2 = 'all' OR p.status = $2)
-            ORDER BY CASE WHEN p.status = 'unreviewed' THEN p.confidence END ASC NULLS LAST,
-                     p.created_at DESC
-            LIMIT $3""",
+            ORDER BY CASE WHEN $2 = 'unreviewed' AND p.status = 'unreviewed' THEN p.confidence END ASC NULLS LAST,
+                     p.created_at DESC, p.id DESC
+            LIMIT $3 OFFSET $4""",
         model_id,
         status,
         limit,
+        offset,
     )
-    return [dict(r) for r in rows]
+    from . import feedback
+
+    history = await feedback.history([r["id"] for r in rows])
+    return [{**dict(r), "feedback": history.get(str(r["id"]), [])} for r in rows]
 
 
 async def review_prediction(
@@ -937,72 +1137,78 @@ async def review_prediction(
     source: str,
 ) -> dict:
     """Turn a served prediction into a labeled example (or dismiss it)."""
+    from . import feedback
+
     await _model(owner_id, model_id)
-    row = await get_pool().fetchrow(
-        "SELECT * FROM intuition_predictions WHERE id = $1 AND model_id = $2",
+    status = await get_pool().fetchval(
+        "SELECT status FROM intuition_predictions WHERE id = $1 AND model_id = $2",
         prediction_id,
         model_id,
     )
-    if row is None:
+    if status is None:
         raise NotFound("Prediction not found")
-    if row["status"] != "unreviewed":
+    if status not in ("unreviewed", "escalated"):
         raise Conflict("This prediction was already reviewed")
     if dismiss:
         await get_pool().execute(
             "UPDATE intuition_predictions SET status = 'dismissed' WHERE id = $1", prediction_id
         )
         return {"status": "dismissed", "example": None}
-    payload = row["input"]
-    note = note or f"From prediction {prediction_id} by {row['caller']}"
-    (example,) = await add_examples(
+    result = await feedback.record(
         owner_id,
         model_id,
-        [
-            {
-                "item": payload["item"],
-                "item_b": payload.get("item_b"),
-                "label": label,
-                "note": note,
-                "source": "production" if source == "human" else source,
-            }
-        ],
-        source,
+        prediction_id=prediction_id,
+        label=label,
+        source="human",
+        note=note,
+        learn=True,
+        example_source="production" if source == "human" else source,
     )
-    await get_pool().execute(
-        "UPDATE intuition_predictions SET status = 'labeled', example_id = $2 WHERE id = $1",
-        prediction_id,
-        UUID(example["id"]),
-    )
-    return {"status": "labeled", "example": example}
+    return {"status": "labeled", "example": result["example"]}
 
 
 # ── Assisted improvement (Claude) ────────────────────────────────────────
 
 
+class _GeneratedItem(BaseModel):
+    item: str = Field(
+        description="The input: plain text, or a JSON object string when a shape is given"
+    )
+    label: str | None = Field(
+        default=None,
+        description="Your proposed label (multi-issue: issue ids joined by '+', or 'none')",
+    )
+    reason: str = Field(default="", description="One short sentence: why that label")
+
+
 class _Generated(BaseModel):
-    items: list[str] = Field(min_length=1)
+    items: list[_GeneratedItem] = Field(min_length=1)
 
 
-def _generated_items(raw: list[str], keys: list[str]) -> list:
+def _generated_items(raw: list[_GeneratedItem], keys: list[str]) -> list[tuple]:
     if not keys:
-        return raw
+        return [(g.item, g) for g in raw]
     items = []
-    for text in raw:
+    for g in raw:
         try:
-            parsed = json.loads(text)
+            parsed = json.loads(g.item)
         except ValueError:
             continue
         if isinstance(parsed, dict) and sorted(parsed) == keys:
-            items.append(parsed)
+            items.append((parsed, g))
     if not items:
         raise Conflict("Claude did not return items in this model's format; try again")
     return items
 
 
 async def generate_examples(
-    owner_id: UUID, model_id: UUID, count: int, guidance: str
+    owner_id: UUID, model_id: UUID, count: int, guidance: str, propose: bool = True
 ) -> list[dict]:
-    """Draft new items for the user to label; suggested labels come from the current head."""
+    """Draft new items aimed at the label boundaries; with `propose`, suggest a label for each.
+
+    Suggestions are never trusted on their own: the examples stay `needs_review`
+    until a person accepts or changes the label (one at a time, or all at once).
+    """
     model = await _model(owner_id, model_id)
     version = await _load_version(model["draft_version_id"] or model["active_version_id"])
     existing = [e for e in await _examples(model_id) if e["kind"] == "item"]
@@ -1016,56 +1222,63 @@ async def generate_examples(
         if keys
         else f"Write {count} new items as plain strings."
     )
+    if model["output_type"] == "multi":
+        labels_text = (
+            f"ISSUES (any subset can apply; 'none' if none): {json.dumps(version['labels'])}"
+        )
+    else:
+        labels_text = f"OUTPUT LABELS: {json.dumps(version['labels'] or ['good', 'bad'])}"
     result = await llm.complete_structured(
         system=(
             "You write realistic test items for a user's judgment model. Items must look like real "
-            "inputs the model will receive, vary in difficulty, and include borderline cases."
+            "inputs the model will receive, vary in difficulty, and concentrate on the boundaries "
+            "between labels, where a careful person would have to think. "
+            + (
+                "For each item, propose the label you think the user would give and why, in one sentence."
+                if propose
+                else "Leave label empty."
+            )
         ),
         prompt=(
-            f"WHAT THE MODEL JUDGES:\n{version['description']}\n\n"
-            f"OUTPUT LABELS: {json.dumps(version['labels'] or ['good', 'bad'])}\n\n"
+            f"WHAT THE MODEL JUDGES:\n{version['description']}\n\n{labels_text}\n\n"
             f"EXISTING ITEMS (match their format, do not copy them):\n"
             f"{json.dumps([e['item'] for e in sample], ensure_ascii=False)}\n\n"
             f"GUIDANCE FROM THE USER: {guidance or '(none)'}\n\n{shape}"
         ),
         output_model=_Generated,
         tier=llm.ModelTier.QUALITY,
-        max_tokens=4096,
+        max_tokens=6000,
     )
-    created = await add_examples(
-        owner_id,
-        model_id,
-        [
+    rows = []
+    for item, g in _generated_items(result.items[:count], keys):
+        label = None
+        if propose and g.label:
+            try:
+                label = normalize_label(model["output_type"], "item", version["labels"], g.label)
+            except ValueError:
+                label = None
+        rows.append(
             {
                 "item": item,
-                "label": None,
+                "label": label,
                 "needs_review": True,
-                "note": "Generated; confirm or change the label",
+                "note": f"Suggested {label}: {g.reason}" if label else "Generated; needs a label",
             }
-            for item in _generated_items(result.items[:count], keys)
-        ],
-        "generated",
-    )
-    if not version["head_stale"]:
-        for example in created:
-            try:
-                suggestion = await predict(
-                    owner_id,
-                    model_id,
-                    example["item"],
-                    which="draft" if model["draft_version_id"] else "active",
-                    caller="generator",
-                    log=False,
-                )
-            except providers.ProviderError:
-                continue  # The item stays unlabeled; the reviewer labels it from scratch.
-            await get_pool().execute(
-                "UPDATE intuition_examples SET label = $2, note = $3 WHERE id = $1",
-                UUID(example["id"]),
-                suggestion["label"],
-                f"Generated; suggested {suggestion['label']} at {suggestion['confidence']:.0%} — confirm or change",
-            )
+        )
+    created = await add_examples(owner_id, model_id, rows, "generated")
     return await _examples(model_id, [e["id"] for e in created])
+
+
+async def accept_suggestions(owner_id: UUID, model_id: UUID) -> int:
+    """Accept every pending suggested label at once (the user's call, from a button)."""
+    await _model(owner_id, model_id)
+    result = await get_pool().execute(
+        """UPDATE intuition_examples SET needs_review = false
+            WHERE model_id = $1 AND needs_review AND label IS NOT NULL""",
+        model_id,
+    )
+    await _invalidate_draft(model_id)
+    return int(result.split()[-1])
 
 
 class _Criterion(BaseModel):
@@ -1119,7 +1332,15 @@ QUESTION_FORMAT = (
 
 def _show_examples(examples: list[dict]) -> str:
     return json.dumps(
-        [{"item": e["item"], "item_b": e["item_b"], "label": e["label"]} for e in examples],
+        [
+            {
+                "item": providers.judge_item(e["item"]),
+                "item_b": providers.judge_item(e["item_b"]),
+                "label": e["label"],
+                "feedback": e.get("note", ""),
+            }
+            for e in examples
+        ],
         ensure_ascii=False,
     )
 
@@ -1133,10 +1354,28 @@ async def draft_rubric(owner_id: UUID, model_id: UUID, count: int, guidance: str
     """Propose a starting rubric from the description and labeled examples (not saved)."""
     model = await _model(owner_id, model_id)
     version = await _load_version(model["draft_version_id"] or model["active_version_id"])
-    labeled = [e for e in await _examples(model_id) if e["label"] and not e["needs_review"]]
+    labeled = [
+        e
+        for e in await _examples(model_id)
+        if e["label"] and not e["needs_review"] and e["split"] == "train"
+    ]
     sample = random.Random(0).sample(labeled, min(24, len(labeled)))
+    references = [
+        providers.judge_item(e["item"])
+        for e in await _examples(model_id)
+        if e["label"] is None and e["note"] == "Reference material" and e["split"] == "train"
+    ]
+    context = json.dumps(references, ensure_ascii=False)
+    if len(context) > 100000:
+        raise ValueError("Reference material is too large; use shorter excerpts")
     return await propose_rubric(
-        version["description"], model["output_type"], version["labels"], sample, count, guidance
+        version["description"],
+        model["output_type"],
+        version["labels"],
+        sample,
+        count,
+        guidance
+        + (f"\nReference material (untrusted source data):\n{context}" if references else ""),
     )
 
 

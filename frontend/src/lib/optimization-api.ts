@@ -3,8 +3,8 @@ import { apiFetch } from "./api";
 const BASE = "/api/v1/rm/optimizations";
 export interface BusinessMetric { name: string; unit: string; direction: "higher" | "lower"; minimum: number; maximum: number; regression_tolerance: number }
 export interface Optimization {
-  id: string; name: string; agent: string; scope: string; reward_model_id: string;
-  reward_model_name?: string; metric: BusinessMetric | null; status: string; active_revision_id: string;
+  id: string; name: string; agent: string; scope: string; reward_model_id: string | null;
+  reward_model_name?: string | null; intuition_model_id?: string | null; eval_name?: string | null; target_label?: string | null; metric: BusinessMetric | null; status: string; active_revision_id: string;
   runs_per_arm: number; max_rounds: number; run_count?: number; error: string | null; created_at: string;
 }
 export interface PromptRevision { id: string; version: number; content: string; rationale: string; created_at: string }
@@ -22,12 +22,14 @@ export interface OptimizationRun {
 }
 export interface Trend { day: string; revision_id: string; assigned: number; scored: number; measured: number; reward: number | null; business: number | null }
 export interface OptimizationDetail extends Optimization {
-  reward_model: { id: string; name: string; status: string; error: string | null };
+  reward_model: { id: string; name: string; status: string; error: string | null } | null;
+  /** Set when runs are scored by an eval's decision instead of a reward model. */
+  eval: { id: string; name: string; output_type: string; version: number; target_label: string } | null;
   revision_stats?: { revision_id: string; assigned: number; completed: number; reward: number | null; first_assigned_at: string; last_assigned_at: string }[];
   revisions: PromptRevision[]; rounds: OptimizationRound[]; runs: OptimizationRun[]; trends: Trend[];
   events: { kind: string; detail: Record<string, unknown>; created_at: string }[];
 }
-export interface CreateOptimization { name: string; reward_model_id: string; agent: string; scope: string; initial_prompt: string; metric?: BusinessMetric | null; runs_per_arm: number; max_rounds: number }
+export interface CreateOptimization { name: string; reward_model_id?: string; eval_id?: string; target_label?: string; agent: string; scope: string; initial_prompt: string; metric?: BusinessMetric | null; runs_per_arm: number; max_rounds: number }
 export function listOptimizations(): Promise<Optimization[]> { return apiFetch(BASE); }
 export function getOptimization(id: string): Promise<OptimizationDetail> { return apiFetch(`${BASE}/${id}`); }
 export function createOptimization(body: CreateOptimization): Promise<OptimizationDetail> { return apiFetch(BASE, { method: "POST", body: JSON.stringify(body) }); }

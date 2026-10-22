@@ -42,31 +42,42 @@ async def create(owner, body):
             body["scope"],
         ):
             raise ValueError("An optimization is already active for this agent and scope")
-        model = await conn.fetchrow(
-            "SELECT id,status,artifact_key,metrics FROM rm_reward_models WHERE id=$1 AND owner_user_id=$2 AND scope='personal'",
-            body["reward_model_id"],
-            owner,
-        )
-        if not model:
-            raise LookupError("Reward model not found")
-        if model["status"] == "failed":
-            raise ValueError("Train a successful reward model before starting optimization")
-        if model["status"] == "succeeded":
-            validate_model(model)
+        scorer = None
+        if body.get("eval_id"):
+            scorer = await eval_scorer(owner, body["eval_id"], body.get("target_label"))
+            model = None
+            status = "active"
+        else:
+            model = await conn.fetchrow(
+                "SELECT id,status,artifact_key,metrics FROM rm_reward_models WHERE id=$1 AND owner_user_id=$2 AND scope='personal'",
+                body["reward_model_id"],
+                owner,
+            )
+            if not model:
+                raise LookupError("Reward model not found")
+            if model["status"] == "failed":
+                raise ValueError("Train a successful reward model before starting optimization")
+            if model["status"] == "succeeded":
+                validate_model(model)
+            status = "active" if model["status"] == "succeeded" else "waiting_model"
         program = await conn.fetchrow(
             """INSERT INTO rm_optimizations
-            (owner_user_id,reward_model_id,name,agent,scope,metric,status,runs_per_arm,max_rounds)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *""",
+            (owner_user_id,reward_model_id,name,agent,scope,metric,status,runs_per_arm,max_rounds,
+             intuition_model_id,intuition_version_id,target_label)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *""",
             owner,
-            model["id"],
+            model["id"] if model else None,
             body["name"],
             body["agent"],
             body["scope"],
             # Empty JSON means reward-only; keep explicit legacy guardrails intact.
             body.get("metric") or {},
-            "active" if model["status"] == "succeeded" else "waiting_model",
+            status,
             body["runs_per_arm"],
             body["max_rounds"],
+            scorer and scorer["model_id"],
+            scorer and scorer["version_id"],
+            scorer and scorer["target_label"],
         )
         revision = await conn.fetchval(
             """INSERT INTO rm_prompt_revisions
@@ -83,13 +94,32 @@ async def create(owner, body):
             "started",
             {
                 "policy": policy.POLICY_VERSION,
-                "reward_model_id": str(model["id"]),
+                "reward_model_id": str(model["id"]) if model else None,
+                "eval": {k: str(v) for k, v in scorer.items()} if scorer else None,
                 "metric": body.get("metric"),
                 "runs_per_arm": body["runs_per_arm"],
                 "max_rounds": body["max_rounds"],
             },
         )
     return await detail(owner, program["id"])
+
+
+async def eval_scorer(owner, eval_id, target_label):
+    """Pin an eval's saved version as the reward: P(target_label) for each run."""
+    from ..intuition import service as evals
+
+    try:
+        model = await evals._model(owner, eval_id)
+    except evals.NotFound as exc:
+        raise LookupError("Eval not found") from exc
+    version = await evals._load_version(model["active_version_id"])
+    if version is None or version["head_stale"]:
+        raise ValueError("Save the eval before using it as the optimization reward")
+    allowed = version["classes"] if model["output_type"] == "choice" else ["good", "bad"]
+    target = target_label or ("good" if model["output_type"] == "preference" else None)
+    if target not in allowed:
+        raise ValueError(f"Choose which decision counts as success: {', '.join(allowed)}")
+    return {"model_id": model["id"], "version_id": version["id"], "target_label": target}
 
 
 def validate_model(model):
@@ -101,9 +131,10 @@ async def list_programs(owner):
     return [
         {**dict(r), "metric": r["metric"] or None}
         for r in await get_pool().fetch(
-            """SELECT o.*,m.name AS reward_model_name,
+            """SELECT o.*,m.name AS reward_model_name,e.name AS eval_name,
         (SELECT count(*) FROM rm_optimization_runs r WHERE r.optimization_id=o.id)::int AS run_count
-        FROM rm_optimizations o JOIN rm_reward_models m ON m.id=o.reward_model_id
+        FROM rm_optimizations o LEFT JOIN rm_reward_models m ON m.id=o.reward_model_id
+        LEFT JOIN intuition_models e ON e.id=o.intuition_model_id
         WHERE o.owner_user_id=$1 ORDER BY o.created_at DESC""",
             owner,
         )
@@ -113,11 +144,29 @@ async def list_programs(owner):
 async def detail(owner, optimization_id):
     program = await owned(owner, optimization_id)
     pool = get_pool()
-    program["reward_model"] = dict(
-        await pool.fetchrow(
-            "SELECT id,name,status,error FROM rm_reward_models WHERE id=$1",
-            program["reward_model_id"],
+    program["reward_model"] = (
+        dict(
+            await pool.fetchrow(
+                "SELECT id,name,status,error FROM rm_reward_models WHERE id=$1",
+                program["reward_model_id"],
+            )
         )
+        if program["reward_model_id"]
+        else None
+    )
+    program["eval"] = (
+        dict(
+            await pool.fetchrow(
+                """SELECT e.id,e.name,e.output_type,v.number AS version,$2::text AS target_label
+                FROM intuition_models e JOIN intuition_versions v ON v.id=$3
+                WHERE e.id=$1""",
+                program["intuition_model_id"],
+                program["target_label"],
+                program["intuition_version_id"],
+            )
+        )
+        if program["intuition_model_id"]
+        else None
     )
     program["revisions"] = [
         dict(r)
@@ -370,12 +419,24 @@ async def submit(owner, run_id, trace_id):
         )
         if not trace:
             raise LookupError("Trace not found")
-        model = await conn.fetchrow(
-            "SELECT * FROM rm_reward_models WHERE id=$1", program["reward_model_id"]
+        model = (
+            await conn.fetchrow(
+                "SELECT * FROM rm_reward_models WHERE id=$1", program["reward_model_id"]
+            )
+            if program["reward_model_id"]
+            else None
         )
-        if trace_id in model["trace_ids"]:
+        if model and trace_id in model["trace_ids"]:
             raise ValueError(
                 "Online evaluation must use fresh tasks, separate from reward-model training"
+            )
+        if not model and await conn.fetchval(
+            "SELECT 1 FROM intuition_examples WHERE model_id=$1 AND item::jsonb->>'trace_id'=$2",
+            program["intuition_model_id"],
+            str(trace_id),
+        ):
+            raise ValueError(
+                "Online evaluation must use fresh tasks, separate from the eval's examples"
             )
         steps = [
             dict(s)
@@ -412,7 +473,11 @@ async def submit(owner, run_id, trace_id):
             raise ValueError(
                 "Submit the completed run before requesting instructions for another task in this trace"
             )
-        items = policy.score_items(steps, trace_id, model, {s["id"] for s in targets})
+        items = (
+            policy.score_items(steps, trace_id, model, {s["id"] for s in targets})
+            if model
+            else policy.eval_items(trace, targets)
+        )
         if not items:
             raise ValueError("No agent actions to score")
         cleaned = policy.clean_steps(targets)

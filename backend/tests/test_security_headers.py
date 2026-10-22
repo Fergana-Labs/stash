@@ -50,6 +50,7 @@ async def test_unhandled_errors_are_redacted_and_keep_security_headers(
 
 
 async def test_startup_restores_request_error_logging_after_migrations(monkeypatch, caplog):
+    from contextlib import asynccontextmanager
     from unittest.mock import AsyncMock
 
     from backend import main
@@ -61,6 +62,13 @@ async def test_startup_restores_request_error_logging_after_migrations(monkeypat
     monkeypatch.setattr(main, "init_db", migrations_disable_logger)
     monkeypatch.setattr(main, "close_db", AsyncMock())
     monkeypatch.setattr(main.demo_service, "seed_demo", AsyncMock())
+
+    @asynccontextmanager
+    async def mcp_lifespan():
+        yield
+
+    # FastMCP's session manager is single-use; this test concerns migration logging.
+    monkeypatch.setattr(main.intuition_mcp.mcp.session_manager, "run", mcp_lifespan)
 
     async with main.lifespan(main.app):
         main.logger.error("Request errors remain visible after startup")

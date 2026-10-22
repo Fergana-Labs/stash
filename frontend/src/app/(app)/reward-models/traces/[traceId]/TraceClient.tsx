@@ -28,6 +28,10 @@ import { annotationStepIds, errorMessage, locateQuote, quoteForStep, relativeTim
 import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
+import TraceEval from "@/components/evals/TraceEval";
+import { AddToTestSetButton } from "@/components/test-sets/test-set-ui";
+import TraceFindings, { stepRange } from "@/components/behaviors/TraceFindings";
+import { ACTOR_COLOR, type BehaviorHit } from "@/lib/behaviors-api";
 import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
@@ -73,6 +77,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
+  const [selectedHit, setSelectedHit] = useState<BehaviorHit | null>(null);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -152,8 +157,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const actionScores = automaticActionScores(evaluation, trace.steps);
   const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
-  // Step labels say what each step is; the scores are built from them. Steps are numbered as the page shows them.
-  const numberOf = (step: RmStep) => presentation.numberById.get(step.id) ?? step.index + 1;
+  // Step labels say what each step is; the scores are built from them. One scheme everywhere:
+  // "step N" is the stored step index + 1 (a merged row reads as its first step).
+  const numberOf = (step: RmStep) => presentation.labelById.get(step.id) ?? step.index + 1;
   const labels = buildTraceLabels(trace.steps, numberOf);
   const stepScores = rubricSummary(trace.step_scores);
   const taskScores = new Map((stepScores?.episodes ?? []).map((task) => [task.task, task]));
@@ -260,9 +266,31 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     document.getElementById(`annotation-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  /** Trace step index (as the backend stores it) → the number this page shows. */
+  const numberOfIndex = (index: number) => {
+    const step = trace.steps.find((s) => s.index === index);
+    return (step && presentation.labelById.get(step.id)) ?? index + 1;
+  };
+  function jumpToIndex(index: number) {
+    const step = trace!.steps.find((s) => s.index === index) ?? trace!.steps.find((s) => s.index >= index);
+    if (step) revealStep(step.id);
+  }
+  const inSelectedHit = (step: RmStep) => {
+    if (!selectedHit) return false;
+    const row = rows.find((r) => r.key === step.id);
+    return (row ? rowSteps(row) : [step]).some((s) => s.index >= selectedHit.start_idx && s.index <= selectedHit.end_idx);
+  };
+  const firstMarkedId = selectedHit ? trace.steps.find((s) => s.index >= selectedHit.start_idx && s.index <= selectedHit.end_idx)?.id : undefined;
+
   const ann: StepAnnotations = {
+    mark: (step) => {
+      if (!selectedHit || !inSelectedHit(step)) return null;
+      const row = rows.find((r) => r.key === step.id);
+      const first = (row ? rowSteps(row) : [step]).some((s) => s.id === firstMarkedId);
+      return { label: first ? `${selectedHit.behavior_name ?? "Behavior"} · ${stepRange(selectedHit.start_idx, selectedHit.end_idx, numberOfIndex)}` : null, color: ACTOR_COLOR[selectedHit.actor ?? "agent"].hex };
+    },
     contextHref: (step) => `/reward-models/traces/${traceId}/context?step=${encodeURIComponent(step.id)}`,
-    stepNumber: (step) => presentation.numberById.get(step.id),
+    stepNumber: (step) => presentation.labelById.get(step.id),
     highlights: highlightsFor,
     actionScore: (step) => actionScores.get(step.id),
     commentCount: (step) => {
@@ -294,7 +322,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   return (
     <div className="relative flex h-full min-h-0">
       <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onStep={revealStep} focusedStepId={browsingSections ? focusedSection?.firstStepId : undefined}
-        copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
+        copy={assessments.copy} stepNumber={numberOf} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
         <div className="mx-auto max-w-5xl space-y-2">
@@ -307,6 +335,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              {trace.metadata?.website_demo != null && <Link href={`/reward-models/demos/website/${traceId}`} className="inline-flex h-7 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-surface">Website comparison</Link>}
+              <TraceEval trace={trace} />
+              <AddToTestSetButton traceId={traceId} steps={trace.steps} title={trace.title} />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"
@@ -327,7 +358,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          <TraceMinimap steps={presentation.mapSteps} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} completion={taskCompletion(completion.tasks, presentation.numberById)} completionLoading={completion.loading} focusedRange={browsingSections && focusedSection ? { first: (presentation.numberById.get(focusedSection.firstStepId) ?? 1) - 1, last: (presentation.numberById.get(focusedSection.lastStepId) ?? 1) - 1 } : undefined} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          <TraceMinimap steps={presentation.mapSteps} stepNumber={numberOf} totalSteps={trace.steps.length} annotations={mapAnnotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} completion={taskCompletion(completion.tasks, presentation.numberById)} completionLoading={completion.loading} focusedRange={browsingSections && focusedSection ? { first: (presentation.numberById.get(focusedSection.firstStepId) ?? 1) - 1, last: (presentation.numberById.get(focusedSection.lastStepId) ?? 1) - 1 } : undefined} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          <TraceFindings traceId={traceId} steps={trace.steps} numberOf={numberOfIndex} onReveal={revealStep} onJump={jumpToIndex} selectedId={selectedHit?.id ?? null} onSelect={setSelectedHit} />
 
 
         </div>
@@ -366,7 +398,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             <AnnotationComposer
               key={JSON.stringify(composer)}
               target={composer}
-              label={composerLabel(composer, trace, presentation.numberById)}
+              label={composerLabel(composer, trace, presentation.labelById)}
               onCancel={closeComposer}
               onSubmit={(comment) => submitComment(composer, comment)}
             />

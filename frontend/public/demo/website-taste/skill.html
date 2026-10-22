@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relay — Recent sessions</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f6f7f9; color: #111827; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: #ffffff; border-bottom: 2px solid #e5e7eb; }
+  .logo { font-size: 22px; font-weight: 800; color: #1e3a8a; }
+  header nav { display: flex; gap: 28px; font-weight: 600; font-size: 15px; color: #374151; }
+  header nav .active { color: #1d4ed8; border-bottom: 3px solid #1d4ed8; padding-bottom: 4px; }
+  .new { padding: 12px 26px; border-radius: 999px; background: #1d4ed8; color: #fff; font-weight: 700; font-size: 15px; }
+  main { max-width: 1240px; margin: 0 auto; padding: 36px 40px; }
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
+  h1 { font-size: 36px; font-weight: 800; margin: 0 0 6px; }
+  .subtitle { font-size: 16px; color: #4b5563; margin: 0; }
+  .search { width: 340px; padding: 13px 18px; border: 2px solid #d1d5db; border-radius: 12px; font-size: 15px; color: #9ca3af; background: #fff; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 18px 22px; background: #fff; border: 2px solid #e5e7eb; border-radius: 16px; margin-bottom: 28px; }
+  .filters .label { font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #374151; margin-right: 4px; }
+  .pill { padding: 9px 20px; border-radius: 999px; border: 2px solid #d1d5db; font-weight: 700; font-size: 14px; background: #fff; color: #374151; }
+  .pill.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .sep { width: 2px; height: 30px; background: #e5e7eb; margin: 0 10px; }
+  h2.group { font-size: 20px; font-weight: 800; margin: 0 0 14px; }
+  .list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+  .item { display: grid; grid-template-columns: 130px 1fr auto; grid-template-rows: auto auto; column-gap: 20px; row-gap: 6px; align-items: center; background: #fff; border: 2px solid #e5e7eb; border-radius: 14px; padding: 16px 22px; }
+  .item .status { grid-row: 1 / span 2; justify-self: start; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+  .status.run { background: #dbeafe; color: #1e40af; } .status.ok { background: #dcfce7; color: #166534; } .status.fail { background: #fee2e2; color: #991b1b; } .status.rev { background: #fef3c7; color: #92400e; }
+  .item h3 { font-size: 17px; font-weight: 800; margin: 0; }
+  .meta { font-size: 14px; color: #374151; }
+  .meta b { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #6b7280; margin: 0 6px 0 22px; }
+  .meta b:first-child { margin-left: 0; }
+  .btn-sm { grid-column: 3; grid-row: 1 / span 2; padding: 9px 20px; border-radius: 999px; border: 2px solid #1d4ed8; color: #1d4ed8; font-weight: 700; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Relay</div>
+  <nav><span>Overview</span><span class="active">Sessions</span><span>Projects</span><span>Settings</span></nav>
+  <span class="new">+ New session</span>
+</header>
+<main>
+  <div class="title-row">
+    <div><h1>Recent Sessions</h1><p class="subtitle">Browse and search the history of your coding-agent sessions.</p></div>
+    <div class="search">Search sessions…</div>
+  </div>
+  <div class="filters">
+    <span class="label">Status</span><span class="pill on">All</span><span class="pill">Running</span><span class="pill">Completed</span><span class="pill">Failed</span>
+    <span class="sep"></span>
+    <span class="label">Agent</span><span class="pill on">All</span><span class="pill">Claude Code</span><span class="pill">Codex</span>
+  </div>
+  <h2 class="group">Today</h2>
+  <div class="list">
+    <div class="item">
+      <span class="status run">Running</span>
+      <h3>Fix flaky auth test</h3>
+      <div class="meta"><b>PROJECT</b> relay-web<b>AGENT</b> Claude Code<b>MODEL</b> claude-opus-4.1<b>STARTED</b> Today, 09:41</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Migrate billing to Stripe v3</h3>
+      <div class="meta"><b>PROJECT</b> billing-svc<b>AGENT</b> Codex<b>MODEL</b> gpt-5-codex<b>STARTED</b> Today, 09:12</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Add rate limiting to /ingest</h3>
+      <div class="meta"><b>PROJECT</b> relay-api<b>AGENT</b> Claude Code<b>MODEL</b> claude-sonnet-4.5<b>STARTED</b> Today, 08:47</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status fail">Failed</span>
+      <h3>Investigate memory leak in indexer</h3>
+      <div class="meta"><b>PROJECT</b> relay-indexer<b>AGENT</b> Codex<b>MODEL</b> gpt-5-codex<b>STARTED</b> Today, 08:03</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+  </div>
+  <h2 class="group">Yesterday</h2>
+  <div class="list">
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Refactor session search to use FTS</h3>
+      <div class="meta"><b>PROJECT</b> relay-api<b>AGENT</b> Claude Code<b>MODEL</b> claude-opus-4.1<b>STARTED</b> Yesterday, 18:22</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Upgrade Next.js to 15</h3>
+      <div class="meta"><b>PROJECT</b> relay-web<b>AGENT</b> Codex<b>MODEL</b> o4-mini<b>STARTED</b> Yesterday, 16:05</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status rev">Needs review</span>
+      <h3>Write migration for org_members table</h3>
+      <div class="meta"><b>PROJECT</b> relay-api<b>AGENT</b> Claude Code<b>MODEL</b> claude-sonnet-4.5<b>STARTED</b> Yesterday, 14:30</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status fail">Failed</span>
+      <h3>Debug Stripe webhook retries</h3>
+      <div class="meta"><b>PROJECT</b> billing-svc<b>AGENT</b> Claude Code<b>MODEL</b> claude-opus-4.1<b>STARTED</b> Yesterday, 11:58</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Dark mode for settings page</h3>
+      <div class="meta"><b>PROJECT</b> relay-web<b>AGENT</b> Codex<b>MODEL</b> gpt-5-codex<b>STARTED</b> Yesterday, 10:14</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+  </div>
+  <h2 class="group">Mon Oct 12</h2>
+  <div class="list">
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Backfill invoice PDFs</h3>
+      <div class="meta"><b>PROJECT</b> billing-svc<b>AGENT</b> Codex<b>MODEL</b> gpt-5-codex<b>STARTED</b> Mon Oct 12, 17:40</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Add OpenTelemetry tracing</h3>
+      <div class="meta"><b>PROJECT</b> relay-indexer<b>AGENT</b> Claude Code<b>MODEL</b> claude-sonnet-4.5<b>STARTED</b> Mon Oct 12, 15:22</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Fix timezone bug in digest emails</h3>
+      <div class="meta"><b>PROJECT</b> relay-api<b>AGENT</b> Codex<b>MODEL</b> o4-mini<b>STARTED</b> Mon Oct 12, 13:09</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status fail">Failed</span>
+      <h3>Draft README for relay CLI</h3>
+      <div class="meta"><b>PROJECT</b> relay-cli<b>AGENT</b> Claude Code<b>MODEL</b> claude-sonnet-4.5<b>STARTED</b> Mon Oct 12, 10:51</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+  </div>
+  <h2 class="group">Sun Oct 11</h2>
+  <div class="list">
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Move ESLint config to flat format</h3>
+      <div class="meta"><b>PROJECT</b> relay-web<b>AGENT</b> Codex<b>MODEL</b> o4-mini<b>STARTED</b> Sun Oct 11, 19:02</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Add retries to S3 uploader</h3>
+      <div class="meta"><b>PROJECT</b> relay-indexer<b>AGENT</b> Claude Code<b>MODEL</b> claude-sonnet-4.5<b>STARTED</b> Sun Oct 11, 16:47</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status ok">Completed</span>
+      <h3>Spike pgvector for semantic search</h3>
+      <div class="meta"><b>PROJECT</b> relay-api<b>AGENT</b> Claude Code<b>MODEL</b> claude-opus-4.1<b>STARTED</b> Sun Oct 11, 14:15</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+    <div class="item">
+      <span class="status fail">Failed</span>
+      <h3>Remove legacy v1 billing endpoints</h3>
+      <div class="meta"><b>PROJECT</b> billing-svc<b>AGENT</b> Codex<b>MODEL</b> gpt-5-codex<b>STARTED</b> Sun Oct 11, 11:20</div>
+      <span class="btn-sm">Open session</span>
+    </div>
+  </div>
+</main>
+</body>
+</html>

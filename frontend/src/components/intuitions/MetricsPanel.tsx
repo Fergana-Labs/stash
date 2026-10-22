@@ -5,6 +5,8 @@ import type { Example, Metrics, OutputType } from "@/lib/intuition-api";
 import { itemSummary, labelText, num, pct } from "./im-helpers";
 import { Metric, MetricGrid, Panel } from "./im-ui";
 import ReliabilityChart from "./ReliabilityChart";
+import DifficultyChart from "./DifficultyChart";
+import ClassificationTable from "./ClassificationTable";
 
 export function ConfusionMatrix({ confusion, classes }: { confusion: Record<string, Record<string, number>>; classes: string[] }) {
   const max = Math.max(1, ...classes.flatMap((a) => classes.map((p) => confusion[a]?.[p] ?? 0)));
@@ -86,6 +88,16 @@ export default function MetricsPanel({
           {outputType === "choice" && held.confusion && (
             <Panel title="Confusion (held-out)">
               <ConfusionMatrix confusion={held.confusion} classes={classes} />
+            </Panel>
+          )}
+          {outputType === "choice" && held.classification && (
+            <Panel title="Per-class (held-out)">
+              <ClassificationTable classification={held.classification} />
+            </Panel>
+          )}
+          {!!held.by_difficulty?.length && (
+            <Panel title="Accuracy by difficulty (held-out)">
+              <DifficultyChart buckets={held.by_difficulty} />
             </Panel>
           )}
           {held.reliability && held.reliability.length > 0 && (

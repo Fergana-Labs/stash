@@ -102,6 +102,27 @@ def score_items(steps, trace_id, model, target_ids=None):
     ]
 
 
+def eval_items(trace, targets):
+    """One frozen eval input per run: the task's cleaned steps after the assignment."""
+    steps = [
+        {k: s.get(k) for k in ("role", "content", "tool_name", "tool_input")}
+        for s in clean_steps(targets)
+        if not (s.get("metadata") or {}).get("thinking")
+    ]
+    if not any(s["role"] == "assistant" for s in steps):
+        return []
+    return [
+        {
+            "trace_id": str(trace["id"]),
+            "eval_item": {
+                "title": trace["title"],
+                "trace_id": str(trace["id"]),
+                "steps": [{"index": i, **s} for i, s in enumerate(steps)],
+            },
+        }
+    ]
+
+
 def summary(values):
     if not values:
         return {"n": 0, "mean": None, "low": None, "high": None}

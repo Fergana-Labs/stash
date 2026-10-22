@@ -9,10 +9,13 @@ from backend.celery_app import celery
 from backend.exports.pdf import export_pdf
 from backend.exports.pptx import export_pptx
 from backend.integrations.google.exporters.slides import export_to_google_slides
+from backend.tasks.agent_judge import investigate
 from backend.tasks.agent_schedules import run_curator_now, run_scheduled_agent
+from backend.tasks.behaviors import scan_models, triage
 from backend.tasks.clips import process_url_imports
 from backend.tasks.drive_extraction import extract_drive_document
 from backend.tasks.extraction import extract_file_text
+from backend.tasks.intuitions import improve, refine
 from backend.tasks.optimization import score_run
 from backend.tasks.reward_models import (
     collect_examples,
@@ -25,6 +28,7 @@ from backend.tasks.reward_models import (
     train_reward_model,
 )
 from backend.tasks.sources import sync_source
+from backend.tasks.test_sets import score_run as score_test_run
 from backend.tasks.viz import precompute
 
 HEAVY_TASKS = {
@@ -37,6 +41,12 @@ HEAVY_TASKS = {
     run_scheduled_agent.name,
     run_curator_now.name,
     precompute.name,
+    improve.name,
+    refine.name,
+    scan_models.name,
+    triage.name,
+    investigate.name,
+    score_test_run.name,
 }
 
 

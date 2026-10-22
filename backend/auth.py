@@ -32,6 +32,9 @@ _READ_KEY_WRITE_ALLOWLIST = {
     ("POST", "/api/v1/me/ask"),
     ("POST", "/api/v1/me/vfs"),
     ("POST", "/api/v1/me/vfs/searches"),
+    # Read-only local history RPC: ephemeral request/result coordination only.
+    ("POST", "/api/v1/model-wizard/history/local/poll"),
+    ("POST", "/api/v1/model-wizard/history/local/results/{request_id}"),
 }
 
 

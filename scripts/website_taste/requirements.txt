@@ -1,0 +1,4 @@
+# Operator harness only. GPU packages belong to cloud.py's Modal image.
+gepa==0.1.4
+anthropic>=1.9.0
+httpx>=0.27

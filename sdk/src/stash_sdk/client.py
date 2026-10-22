@@ -455,3 +455,103 @@ class Stash:
             "DELETE",
             f"/api/v1/me/tables/{table_id}/columns/{column_id}",
         ).json()
+
+    # =========================================================================
+    # Evals (classifiers learned from your labels and feedback)
+    # =========================================================================
+
+    def list_evals(self) -> list:
+        return self._list("/api/v1/intuitions", "models")
+
+    def get_eval(self, eval_id: str) -> dict:
+        return self._get(f"/api/v1/intuitions/{eval_id}")
+
+    def eval_predict(
+        self,
+        eval_id: str,
+        item: str | dict,
+        *,
+        ref: str | None = None,
+        metadata: dict | None = None,
+        caller: str = "sdk",
+        run: str | None = None,
+        step: int | None = None,
+    ) -> dict:
+        """Judge one item with the eval's saved version. Pass ``ref`` (your own id for
+        what was judged) so feedback can find this call later, and ``run`` (the task it
+        belongs to) so ``run_outcome`` can credit the task's result to it."""
+        return self._post(
+            f"/api/v1/intuitions/{eval_id}/predict",
+            json={
+                "item": item,
+                "ref": ref,
+                "metadata": metadata or {},
+                "caller": caller,
+                "run": run,
+                "step": step,
+            },
+        )
+
+    def eval_compare(
+        self, eval_id: str, item_a: str | dict, item_b: str | dict, *, ref: str | None = None
+    ) -> dict:
+        return self._post(
+            f"/api/v1/intuitions/{eval_id}/compare",
+            json={"item_a": item_a, "item_b": item_b, "ref": ref, "caller": "sdk"},
+        )
+
+    def eval_feedback(
+        self,
+        eval_id: str,
+        *,
+        prediction_id: str | None = None,
+        ref: str | None = None,
+        label: str | None = None,
+        value: float | None = None,
+        source: str = "outcome",
+        note: str = "",
+        learn: bool = False,
+    ) -> dict:
+        """Attach feedback to an earlier call, found by ``prediction_id`` or ``ref``.
+
+        ``source`` is ``human`` (a correction), ``outcome`` (what happened later) or
+        ``downstream`` (another system's verdict). ``learn=True`` also makes a labeled
+        call a training example for the next Save.
+        """
+        body: dict = {"source": source, "note": note, "learn": learn}
+        body.update({"prediction_id": prediction_id} if prediction_id else {"ref": ref})
+        if label is not None:
+            body["label"] = label
+        if value is not None:
+            body["value"] = value
+        return self._post(f"/api/v1/intuitions/{eval_id}/feedback", json=body)
+
+    def eval_monitoring(self, eval_id: str, days: int = 30) -> dict:
+        return self._get(f"/api/v1/intuitions/{eval_id}/monitoring", days=days)
+
+    def eval_label_queue(self, eval_id: str, limit: int = 20) -> list:
+        """Unreviewed calls ranked by how much a label would teach the eval."""
+        return self._get(f"/api/v1/intuitions/{eval_id}/label-queue", limit=limit)
+
+    def eval_improve(self, eval_id: str) -> dict:
+        """Start a background search for better criteria; poll with ``eval_improve_status``."""
+        return self._post(f"/api/v1/intuitions/{eval_id}/improve")
+
+    def eval_improve_status(self, eval_id: str) -> dict | None:
+        return self._get(f"/api/v1/intuitions/{eval_id}/improve")["job"]
+
+    def eval_pin(self, eval_id: str, example_id: str, pinned: bool = True) -> dict:
+        """Pin an example as a regression test: new versions must keep it correct."""
+        return self._patch(
+            f"/api/v1/intuitions/{eval_id}/examples/{example_id}", json={"pinned": pinned}
+        )
+
+    def run_outcome(self, run: str, value: float, note: str = "") -> dict:
+        """Report how a task ended (0 failed … 1 succeeded); credited to its eval calls."""
+        return self._post(
+            f"/api/v1/intuitions/runs/{run}/outcome", json={"value": value, "note": note}
+        )
+
+    def eval_credit(self, eval_id: str) -> dict:
+        """Whether the eval's decisions inside runs predict the runs' outcomes."""
+        return self._get(f"/api/v1/intuitions/{eval_id}/credit")

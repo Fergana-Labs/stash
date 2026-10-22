@@ -33,7 +33,7 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name == null ? "assistant" : "call";
 }
 
-function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionScore; status?: string }) {
+function StepPreview({ step, number, score, status }: { step: RmStep; number: number; score?: RmActionScore; status?: string }) {
   const timestamp = step.metadata?.timestamp;
   const time = typeof timestamp === "string" ? new Date(timestamp) : null;
   const recordedTitle = step.tool_input?.title ?? step.tool_input?.description;
@@ -44,7 +44,7 @@ function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionSc
     : step.images?.length ? "Attached an image" : `${KINDS[kindOf(step)].label} message`);
   return <>
     <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums opacity-70">
-      <span>({step.index + 1})</span>
+      <span>step {number}</span>
       {time && Number.isFinite(time.getTime()) && <time dateTime={timestamp as string}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>}
     </span>
     <span className="min-w-0 flex-1 truncate">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</span>
@@ -52,8 +52,12 @@ function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionSc
   </>;
 }
 
-function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, unscoredReasons, completion = [], completionLoading = false, focusedRange, scroller, navigation, onJump }: {
+function LatestTraceMinimap({ steps, stepNumber, totalSteps, annotations, actionScores, annotationStatus, unscoredReasons, completion = [], completionLoading = false, focusedRange, scroller, navigation, onJump }: {
   steps: RmStep[];
+  /** The "step N" people read for a map step; defaults to its position. */
+  stepNumber?: (step: RmStep) => number;
+  /** How many recorded steps the trace has (map steps can merge several). */
+  totalSteps?: number;
   annotations: RmAnnotation[];
   actionScores?: Map<string, RmActionScore>;
   annotationStatus?: string;
@@ -127,6 +131,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
 
 
   if (!steps.length) return null;
+  const numberOf = (step: RmStep) => stepNumber?.(step) ?? step.index + 1;
   const graded = steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit));
   const maxCredit = steps.reduce((max, step) => {
     const credit = actionScores?.get(step.id)?.credit;
@@ -174,7 +179,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     const kind = KINDS[kindOf(step)];
     const score = actionScores?.get(step.id);
     const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "";
-    return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : missingReason ? `, ${missingReason}` : ""}`;
+    return `Step ${numberOf(step)}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : missingReason ? `, ${missingReason}` : ""}`;
   }
 
   return (
@@ -258,20 +263,20 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {completionLine && <svg aria-label="Estimated task completion over time" role="img" viewBox="0 0 1000 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-0.5 h-[calc(100%-4px)] w-full overflow-visible text-teal-600/30 dark:text-teal-400/30">
           <path data-completion-line d={completionLine} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         </svg>}
-        {focusedRange && <span data-section-range aria-label={`Selected section: steps ${focusedRange.first + 1}–${focusedRange.last + 1}`} className="pointer-events-none absolute inset-y-0 rounded-[2px] border border-brand-500 bg-brand-500/5" style={{ left: `${focusedRange.first / steps.length * 100}%`, width: `${(focusedRange.last - focusedRange.first + 1) / steps.length * 100}%` }} />}
+        {focusedRange && <span data-section-range aria-label={`Selected section: steps ${steps[focusedRange.first] ? numberOf(steps[focusedRange.first]) : focusedRange.first + 1}–${steps[focusedRange.last] ? numberOf(steps[focusedRange.last]) : focusedRange.last + 1}`} className="pointer-events-none absolute inset-y-0 rounded-[2px] border border-brand-500 bg-brand-500/5" style={{ left: `${focusedRange.first / steps.length * 100}%`, width: `${(focusedRange.last - focusedRange.first + 1) / steps.length * 100}%` }} />}
         <span aria-hidden="true" data-active-step-marker className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-brand-500" style={{ left: `${(activeIndex + 0.5) / steps.length * 100}%` }} />
         {hoveredIndex !== null && steps[hoveredIndex] && <div
           id={tooltipId}
           role="tooltip"
           className="pointer-events-none absolute top-full z-20 mt-2 flex h-8 w-[40rem] max-w-full items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-foreground px-3 text-xs text-background shadow-md"
           style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 20rem), max(0px, calc(100% - 40rem)))` }}
-        ><StepPreview step={steps[hoveredIndex]} score={actionScores?.get(steps[hoveredIndex].id)} status={isGradableAction(steps[hoveredIndex]) ? unscoredReasons?.get(steps[hoveredIndex].id) ?? "awaiting score" : undefined} />{progress && <span className="shrink-0 text-[11px]">Completion {percent}</span>}</div>}
+        ><StepPreview step={steps[hoveredIndex]} number={numberOf(steps[hoveredIndex])} score={actionScores?.get(steps[hoveredIndex].id)} status={isGradableAction(steps[hoveredIndex]) ? unscoredReasons?.get(steps[hoveredIndex].id) ?? "awaiting score" : undefined} />{progress && <span className="shrink-0 text-[11px]">Completion {percent}</span>}</div>}
       </div>
       {completionLine && <div aria-label="Task completion scale: 0 to 100 percent" className="relative h-12 w-6 shrink-0 text-right text-[9px] leading-none text-teal-600/80 dark:text-teal-400/80 tabular-nums">
         <span className="absolute top-0 right-0">100%</span><span className="absolute right-0 bottom-0">0%</span>
       </div>}
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className="whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
+        <span className="whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex] ? numberOf(steps[activeIndex]) : 1} of {totalSteps ?? steps.length}</span>
         <span aria-label="Estimated task completion" title={progress ? `${progress.objective}\n${progress.reason}` : "Estimated progress toward completing the request. No supported estimate at this step."} className="whitespace-nowrap text-[10px] text-teal-600 dark:text-teal-400 tabular-nums">Est. completion {completionLoading ? "…" : percent}</span>
         {graded && <div role="group" aria-label="Credit scale" className="flex rounded-md border border-border-subtle p-0.5 text-[10px]">
           {([['fixed', '±1', 'Use a fixed −1 to +1 scale'], ['fit', 'Fit', 'Scale to the largest absolute step credit']] as const).map(([value, label, title]) => <button

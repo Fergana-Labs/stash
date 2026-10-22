@@ -143,6 +143,27 @@ async def _reconcile_history_events() -> int:
     return len(empty) + len(ids)
 
 
+async def _reconcile_trace_segments() -> int:
+    """Trace segments (a user turn and the agent's work after it) for behavior search."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, LEFT(text, $2) AS text FROM rm_trace_segments WHERE embed_stale LIMIT $1",
+        BATCH_SIZE,
+        TEXT_LIMIT,
+    )
+    rows = [r for r in rows if r["text"]]
+    if not rows:
+        return 0
+    vecs = await embedding_service.embed_batch([r["text"] for r in rows])
+    if not vecs:
+        return 0
+    await pool.executemany(
+        "UPDATE rm_trace_segments SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        [(v, r["id"]) for r, v in zip(rows, vecs)],
+    )
+    return len(rows)
+
+
 async def _reconcile_files() -> int:
     # Files only get embeddings once `extract_one` lands the extracted text.
     # The worker flips embed_stale to TRUE; this reconciler turns it back
@@ -215,6 +236,7 @@ async def _reconcile() -> int:
         _reconcile_pages,
         _reconcile_table_rows,
         _reconcile_history_events,
+        _reconcile_trace_segments,
         _reconcile_files,
         _reconcile_source_documents,
     ):
