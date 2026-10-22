@@ -9,7 +9,8 @@ import { ConnectAgent, STAGES, UploadBox } from "@/components/image-eval/ImageEv
 import { imageEvalGet, imageEvalUploadExamples, type ImageEvalDetail, type ImageEvalLabel } from "@/lib/image-eval-api";
 import { CardShell, pct, useWizard } from "../wizard-ui";
 
-const UPLOAD_BATCH = 20;
+const UPLOAD_BATCH = 10;
+const PARALLEL_UPLOADS = 3;
 const MIN_LIKED = 3;
 const POLL_MS = 3000;
 
@@ -33,39 +34,89 @@ export default function ImageEvalCard({ section, evalId, readOnly = false }: { s
   return <Connect data={data} error={alert} />;
 }
 
+type Pending = { key: string; url: string; label: ImageEvalLabel; state: "uploading" | "done" | "error" };
+
 function Examples({ data, reload, readOnly, error }: { data: ImageEvalDetail; reload: () => Promise<void>; readOnly: boolean; error: React.ReactNode }) {
   const { send } = useWizard();
-  const [busy, setBusy] = useState("");
+  const [pending, setPending] = useState<Pending[]>([]);
   const [uploadError, setUploadError] = useState("");
+  const [showDisliked, setShowDisliked] = useState(false);
   const [sent, setSent] = useState(false);
+  // Thumbnails use object URLs; free them when the card goes away, not while they are shown.
+  const urls = useRef<string[]>([]);
+  useEffect(() => () => urls.current.forEach((url) => URL.revokeObjectURL(url)), []);
+  const uploading = pending.filter((p) => p.state === "uploading").length;
   const { liked, disliked } = data.examples;
+
   async function upload(label: ImageEvalLabel, files: File[]) {
     setUploadError("");
-    try {
-      for (let i = 0; i < files.length; i += UPLOAD_BATCH) {
-        setBusy(`Uploading ${Math.min(i + UPLOAD_BATCH, files.length)}/${files.length}…`);
-        await imageEvalUploadExamples(data.id, label, files.slice(i, i + UPLOAD_BATCH));
+    const added = files.map((file, i) => ({ key: `${Date.now()}-${i}-${file.name}`, url: URL.createObjectURL(file), label, state: "uploading" as const }));
+    urls.current.push(...added.map((a) => a.url));
+    setPending((prev) => [...prev, ...added]);
+    const batches: number[] = [];
+    for (let i = 0; i < files.length; i += UPLOAD_BATCH) batches.push(i);
+    const mark = (from: number, state: Pending["state"]) => {
+      const keys = new Set(added.slice(from, from + UPLOAD_BATCH).map((a) => a.key));
+      setPending((prev) => prev.map((p) => (keys.has(p.key) ? { ...p, state } : p)));
+    };
+    // A few batches at once: uploads only store the images, so the server answers quickly.
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, batches.length) }, async () => {
+      while (next < batches.length) {
+        const from = batches[next++];
+        try {
+          await imageEvalUploadExamples(data.id, label, files.slice(from, from + UPLOAD_BATCH));
+          mark(from, "done");
+        } catch (e) {
+          mark(from, "error");
+          setUploadError(errorMessage(e));
+        }
       }
-    } catch (e) { setUploadError(errorMessage(e)); }
-    setBusy("");
+    }));
     await reload();
   }
-  const locked = readOnly || sent || !!busy;
+
+  const locked = readOnly || sent;
+  const shown = pending.filter((p) => p.label === "liked");
+  const total = pending.length;
   return (
-    <CardShell icon={Images} title="Show it the style" subtitle="Images you like teach it the style; images you don't are optional">
+    <CardShell icon={Images} title="Show it the style" subtitle="Drop in images in the style you want. That's all it needs.">
       {error}
       {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
-      <div className="grid gap-3 md:grid-cols-2">
-        <UploadBox label="liked" title={`Images you like (${liked})`} disabled={locked} onFiles={(f) => void upload("liked", f)} />
-        <UploadBox label="disliked" title={`Images you don't (${disliked})`} disabled={locked} onFiles={(f) => void upload("disliked", f)} />
-      </div>
+      <UploadBox label="liked" title={liked ? `Images in the style (${liked})` : "Images in the style"} disabled={locked} onFiles={(f) => void upload("liked", f)} />
+      {total > 0 && (
+        <div className="mt-3 space-y-2">
+          {uploading > 0 && (
+            <div role="progressbar" aria-label="Uploading images" aria-valuemin={0} aria-valuemax={total} aria-valuenow={total - uploading} className="h-1.5 overflow-hidden rounded bg-muted">
+              <div className="h-full bg-brand-500 transition-all" style={{ width: `${((total - uploading) / total) * 100}%` }} />
+            </div>
+          )}
+          {shown.length > 0 && (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-1.5">
+              {shown.map((p) => (
+                // eslint-disable-next-line @next/next/no-img-element -- local object URLs of the files being uploaded
+                <img key={p.key} src={p.url} alt="" className={`aspect-square w-full rounded object-cover transition-opacity ${p.state === "done" ? "opacity-100" : p.state === "error" ? "opacity-30 ring-2 ring-destructive" : "animate-pulse opacity-40"}`} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {showDisliked ? (
+        <div className="mt-3">
+          <UploadBox label="disliked" title={`Images that aren't the style (${disliked})`} disabled={locked} onFiles={(f) => void upload("disliked", f)} />
+        </div>
+      ) : !readOnly && (
+        <button type="button" className="mt-2 text-xs text-muted-foreground underline" onClick={() => setShowDisliked(true)}>
+          Also add images that aren&apos;t the style (optional)
+        </button>
+      )}
       <div className="mt-3 flex items-center justify-between gap-3">
         <p role="status" className="text-xs text-muted-foreground">
-          {busy || (liked < MIN_LIKED ? `Add at least ${MIN_LIKED} images you like; 20 or more works much better.` : "Stash will draw its own close imitations, so you don't need to label anything else.")}
+          {uploading ? `Uploading ${total - uploading}/${total}…` : liked < MIN_LIKED ? `Add at least ${MIN_LIKED}; 20 or more works much better.` : "Stash draws its own near-misses to learn from, so you don't need to label anything."}
         </p>
-        {!readOnly && <Button size="sm" disabled={locked || liked < MIN_LIKED} onClick={() => {
+        {!readOnly && <Button size="sm" disabled={locked || uploading > 0 || liked < MIN_LIKED} onClick={() => {
           setSent(true);
-          send(`I added ${liked} images I like and ${disliked} I don't.`, "event");
+          send(`I added ${liked} images in the style${disliked ? ` and ${disliked} that aren't` : ""}.`, "event");
         }}>Build it</Button>}
       </div>
     </CardShell>

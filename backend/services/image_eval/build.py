@@ -187,7 +187,10 @@ async def run(classifier_id: UUID) -> None:
         raise ValueError(f"Need at least {service.heads.MIN_PER_CLASS} liked examples")
 
     await _set(classifier_id, stage="brief", done=0, total=IMITATIONS)
-    written = await write_brief(classifier_id, liked, disliked)
+    # Uploads are stored unembedded; embed them while Claude studies the style.
+    written, _ = await asyncio.gather(
+        write_brief(classifier_id, liked, disliked), service.embed_pending(classifier_id)
+    )
     await get_pool().execute(
         "UPDATE image_evals SET style_brief=$2 WHERE id=$1", classifier_id, written["brief"]
     )

@@ -372,3 +372,14 @@ async def test_by_model_is_404_for_other_evals(client: AsyncClient):
     auth = await _register(client)
     missing = await client.get(f"/api/v1/image-evals/by-model/{uuid4()}", headers=auth)
     assert missing.status_code == 404
+
+
+async def test_upload_returns_without_embedding_and_training_embeds(client: AsyncClient, fakes):
+    auth = await _register(client)
+    cid = (await client.post("/api/v1/image-evals", headers=auth, json={"name": "Reds"})).json()["id"]
+    assert (await _upload(client, auth, cid, "liked", RED[:4])).status_code == 201
+    assert (await _upload(client, auth, cid, "disliked", BLUE[:3])).status_code == 201
+    assert fakes["embed"] == 0
+    trained = await client.post(f"/api/v1/image-evals/{cid}/train", headers=auth)
+    assert trained.status_code == 200 and trained.json()["trained"]
+    assert fakes["embed"] == 7

@@ -239,7 +239,9 @@ async def delete(owner: UUID, classifier_id: UUID) -> None:
 async def add_examples(
     owner: UUID, classifier_id: UUID, label: str, files: list[tuple[str, bytes, str]]
 ) -> list[dict]:
-    """files: (filename, bytes, content_type). Validates all before embedding any."""
+    """files: (filename, bytes, content_type). Validates all, then stores them unembedded:
+    the next build or training run embeds them (embed_pending), so an upload never waits
+    on a cold GPU."""
     await _owned(owner, classifier_id)
     have = await get_pool().fetchval(
         "SELECT count(*) FROM image_eval_examples WHERE classifier_id=$1", classifier_id
@@ -247,19 +249,17 @@ async def add_examples(
     if have + len(files) > MAX_EXAMPLES:
         raise ValueError(f"A classifier holds at most {MAX_EXAMPLES} examples")
     images = [(name, *await validate_image(data, name, ctype)) for name, data, ctype in files]
-    vectors = await embedder.embed([data for _, data, _ in images])
+    keys = await asyncio.gather(*(_store(owner, data, ctype) for _, data, ctype in images))
     out = []
-    for (name, data, ctype), vector in zip(images, vectors, strict=True):
-        key = await _store(owner, data, ctype)
+    for (name, _, ctype), key in zip(images, keys, strict=True):
         row = await get_pool().fetchrow(
-            """INSERT INTO image_eval_examples (classifier_id,label,source,filename,image_key,content_type,embedding)
-            VALUES ($1,$2,'upload',$3,$4,$5,$6) RETURNING id,label,source,filename,note,created_at""",
+            """INSERT INTO image_eval_examples (classifier_id,label,source,filename,image_key,content_type)
+            VALUES ($1,$2,'upload',$3,$4,$5) RETURNING id,label,source,filename,note,created_at""",
             classifier_id,
             label,
             name[:300],
             key,
             ctype,
-            vector,
         )
         out.append(dict(row))
     await get_pool().execute(
@@ -316,8 +316,29 @@ async def example_image(owner: UUID, classifier_id: UUID, example_id: UUID) -> t
 # ── Training ─────────────────────────────────────────────────────────────
 
 
+EMBED_BATCH = 64
+
+
+async def embed_pending(classifier_id: UUID) -> int:
+    """Embed the examples uploaded since the last build or training run. Returns how many."""
+    rows = await get_pool().fetch(
+        "SELECT id,image_key FROM image_eval_examples WHERE classifier_id=$1 AND embedding IS NULL",
+        classifier_id,
+    )
+    for i in range(0, len(rows), EMBED_BATCH):
+        batch = rows[i : i + EMBED_BATCH]
+        images = await asyncio.gather(*(_read(r["image_key"]) for r in batch))
+        vectors = await embedder.embed(list(images))
+        for r, vector in zip(batch, vectors, strict=True):
+            await get_pool().execute(
+                "UPDATE image_eval_examples SET embedding=$2 WHERE id=$1", r["id"], vector
+            )
+    return len(rows)
+
+
 async def train(owner: UUID, classifier_id: UUID) -> dict:
     await _owned(owner, classifier_id)
+    await embed_pending(classifier_id)
     rows = await get_pool().fetch(
         "SELECT id,label,embedding FROM image_eval_examples WHERE classifier_id=$1 ORDER BY created_at",
         classifier_id,

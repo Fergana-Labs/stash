@@ -11,6 +11,9 @@ so the score measures "indistinguishable from the real thing" rather than
 model_id links an image eval made in the eval wizard to its intuition_models row,
 so it is listed with the other evals and the wizard can resume it.
 
+An uploaded example's embedding is NULL until the next build or training run
+embeds it, so uploads return without waiting on the GPU.
+
 Revision ID: 0250
 Revises: 0249
 """
@@ -64,7 +67,7 @@ def upgrade() -> None:
         note text NOT NULL DEFAULT '',
         image_key text NOT NULL,
         content_type text NOT NULL,
-        embedding real[] NOT NULL,
+        embedding real[],
         created_at timestamptz NOT NULL DEFAULT now()
     )""")
     op.execute(
