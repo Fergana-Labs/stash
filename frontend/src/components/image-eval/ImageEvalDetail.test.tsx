@@ -32,7 +32,7 @@ describe("ImageEvalDetail", () => {
 
   it("shows accuracy, each call's fixes, and the score across an agent's drafts", async () => {
     render(<ImageEvalDetail id="c1" />);
-    expect(await screen.findByText("97%")).toBeInTheDocument();
+    expect(await screen.findByText(/Claude grading the image 1–5 on each trait/)).toBeInTheDocument();
     expect(screen.getAllByText("Hair is one outline")).toHaveLength(2);
     expect(screen.getByText("0.62 → 0.81")).toBeInTheDocument();
     expect(screen.getByText(/stash image-eval check c1/)).toBeInTheDocument();
@@ -42,19 +42,20 @@ describe("ImageEvalDetail", () => {
 
   it("labels a call with the note", async () => {
     render(<ImageEvalDetail id="c1" />);
-    await screen.findByText("97%");
+    await screen.findByText(/Claude grading the image 1–5 on each trait/);
     fireEvent.change(screen.getAllByLabelText("Note on this image")[1], { target: { value: "too thin" } });
     fireEvent.click(screen.getAllByText("I don't")[1]);
     await waitFor(() => expect(api.imageEvalLabelCall).toHaveBeenCalledWith("c1", "k1", "disliked", "too thin"));
   });
 });
 
-describe("Quality", () => {
-  it("reports each kind of example and flags a weak one", async () => {
-    const { Quality } = await import("@/components/image-eval/ImageEvalDetail");
-    render(<Quality detail={{ heldout_accuracy: 0.86, heldout_by_group: { liked: 0.97, imitation: 0.58, offstyle: 1 } }} />);
-    expect(screen.getByText("97%")).toBeInTheDocument();
-    expect(screen.getByText("of clearly off-style images rejected")).toBeInTheDocument();
-    expect(screen.getByText(/Weak spot: near-miss imitations rejected/)).toBeInTheDocument();
+describe("call grades", () => {
+  it("shows each trait's grade on an agent call", async () => {
+    vi.mocked(api.imageEvalGet).mockResolvedValue(detail);
+    vi.mocked(api.imageEvalExamples).mockResolvedValue([]);
+    vi.mocked(api.imageEvalCalls).mockResolvedValue([{ ...call("k3", 0.69), comments: { summary: "Close", fixes: [], keep: [], traits: [{ trait: "line work", score: 4, why: "bold, slightly thin" }] } }]);
+    render(<ImageEvalDetail id="c1" />);
+    expect(await screen.findByText((_, el) => el?.textContent === "line work 4/5" && el.tagName === "SPAN")).toBeInTheDocument();
+    expect(screen.getByText(/Claude grading the image 1–5 on each trait/)).toBeInTheDocument();
   });
 });

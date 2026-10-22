@@ -34,7 +34,7 @@ BLUE = [_png((30, 40 + i * 5, 200 + i * 10)) for i in range(5)]
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch, tmp_path):
     monkeypatch.setenv("IMAGE_EVAL_IMAGE_DIR", str(tmp_path))
-    calls = {"embed": 0, "comments": 0}
+    calls = {"embed": 0, "comments": 0, "judged": 0}
 
     async def embed(images):
         calls["embed"] += len(images)
@@ -49,16 +49,27 @@ def fakes(monkeypatch, tmp_path):
             )
         return out
 
-    async def comments(classifier_id, name, data, content_type, score):
-        calls["comments"] += 1
+    async def judge(classifier_id, name, data, with_fixes=True):
+        # Grades red images high and blue ones low, like a judge that knows a red style.
+        calls["judged"] += 1
+        r, _, b = np.asarray(Image.open(BytesIO(data)).convert("RGB")).reshape(-1, 3).mean(0) / 255
+        grade = 5 if r > b else 1
+        traits = [
+            {"trait": "color", "score": grade, "why": "red" if r > b else "blue"},
+            {"trait": "line", "score": 3, "why": "fine"},
+        ]
+        if with_fixes:
+            calls["comments"] += 1
         return {
-            "summary": f"score {score:.2f}",
-            "fixes": [{"issue": "too blue", "fix": "use red"}],
+            "score": (np.mean([t["score"] for t in traits]) - 1) / 4,
+            "traits": traits,
+            "summary": f"grades {grade} and 3" if with_fixes else "",
+            "fixes": [{"issue": "too blue", "fix": "use red"}] if with_fixes else [],
             "keep": [],
         }
 
     monkeypatch.setattr(embedder, "embed", embed)
-    monkeypatch.setattr(critic, "comments", comments)
+    monkeypatch.setattr(critic, "judge", judge)
     return calls
 
 
@@ -117,14 +128,16 @@ async def test_train_and_score(client: AsyncClient, fakes):
         },
     )
     assert red.status_code == 200 and blue.status_code == 200, (red.text, blue.text)
-    assert red.json()["score"] > 0.5 > blue.json()["score"]
+    # The score is the mean trait grade on 1-5 scaled to 0-1: (5+3)/2 -> 0.75, (1+3)/2 -> 0.25.
+    assert red.json()["score"] == 0.75 and blue.json()["score"] == 0.25
+    assert [t["trait"] for t in red.json()["traits"]] == ["color", "line"]
     assert red.json()["label"] == "liked"
     assert red.json()["fixes"] == [{"issue": "too blue", "fix": "use red"}]
 
     calls = (await client.get(f"/api/v1/image-evals/{cid}/calls", headers=auth)).json()["calls"]
     assert [c["caller"] for c in calls][-1] == "draw-agent"
     assert calls[-1]["task"] == "a red cat"
-    assert calls[-1]["comments"]["summary"].startswith("score")
+    assert calls[-1]["comments"]["summary"].startswith("grades")
     image = await client.get(
         f"/api/v1/image-evals/{cid}/calls/{calls[0]['id']}/image", headers=auth
     )
@@ -143,6 +156,7 @@ async def test_comments_can_be_skipped(client: AsyncClient, fakes):
     )
     assert resp.status_code == 200
     assert resp.json()["fixes"] == [] and fakes["comments"] == before
+    assert resp.json()["score"] == 0.75  # still scored, just without written fixes
 
 
 async def test_labeling_a_call_adds_an_example_without_reembedding(client: AsyncClient, fakes):
@@ -443,3 +457,19 @@ def test_predict_caps_images_unlike_every_liked_example():
     assert heads.predict(head, stranger, liked) == 0
     # A liked-looking image is untouched by the guard.
     assert heads.predict(head, liked[0], liked) == pytest.approx(heads.predict(head, liked[0]))
+
+
+async def test_score_fails_loudly_when_the_judge_is_unavailable(client: AsyncClient, monkeypatch):
+    auth = await _register(client)
+    cid = await _trained(client, auth)
+
+    async def down(*a, **k):
+        raise critic.JudgeUnavailable("Couldn't score this image right now; try again")
+
+    monkeypatch.setattr(critic, "judge", down)
+    resp = await client.post(
+        f"/api/v1/image-evals/{cid}/score",
+        headers=auth,
+        files={"file": ("x.png", RED[4], "image/png")},
+    )
+    assert resp.status_code == 503  # never a made-up number

@@ -405,20 +405,14 @@ async def score(
     if row["head"] is None:
         raise ValueError("Train the classifier before scoring")
     data, content_type = await validate_image(data, filename, content_type)
-    (vector,) = await embedder.embed([data])
-    liked = await get_pool().fetch(
-        "SELECT embedding FROM image_eval_examples WHERE classifier_id=$1 AND label='liked' AND embedding IS NOT NULL",
-        classifier_id,
+    # The number and the feedback come from Claude grading each trait of the style
+    # (critic.judge). The embedding is kept so a labeled call can become an example.
+    (vector,), judged = await asyncio.gather(
+        embedder.embed([data]), critic.judge(classifier_id, row["name"], data, with_fixes=comments)
     )
-    value = heads.predict(
-        row["head"], np.asarray(vector), np.array([r["embedding"] for r in liked], dtype=np.float64)
-    )
+    value = judged["score"]
+    notes = {k: judged[k] for k in ("traits", "summary", "fixes", "keep")}
     key = await _store(owner, data, content_type)
-    notes = (
-        await critic.comments(classifier_id, row["name"], data, content_type, value)
-        if comments
-        else None
-    )
     call = await get_pool().fetchrow(
         """INSERT INTO image_eval_calls (classifier_id,caller,task,image_key,content_type,embedding,score,comments,trained_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,created_at""",
@@ -436,9 +430,10 @@ async def score(
         "call_id": call["id"],
         "score": round(value, 4),
         "label": "liked" if value >= 0.5 else "disliked",
-        "summary": (notes or {}).get("summary", ""),
-        "fixes": (notes or {}).get("fixes", []),
-        "keep": (notes or {}).get("keep", []),
+        "traits": notes["traits"],
+        "summary": notes["summary"],
+        "fixes": notes["fixes"],
+        "keep": notes["keep"],
         "created_at": call["created_at"],
     }
 

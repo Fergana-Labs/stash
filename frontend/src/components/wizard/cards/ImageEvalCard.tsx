@@ -6,7 +6,7 @@ import { Check, Images, Loader2 } from "lucide-react";
 import Markdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { ConnectAgent, Quality, UploadBox } from "@/components/image-eval/ImageEvalDetail";
+import { ConnectAgent, HowScored, UploadBox } from "@/components/image-eval/ImageEvalDetail";
 import ImageEvalImage from "@/components/image-eval/ImageEvalImage";
 import { imageEvalExampleImagePath, imageEvalExamples, imageEvalGet, imageEvalUploadExamples, type ImageEvalDetail, type ImageEvalExample, type ImageEvalLabel } from "@/lib/image-eval-api";
 import { CardShell, useWizard } from "../wizard-ui";
@@ -220,7 +220,7 @@ function Connect({ data, error }: { data: ImageEvalDetail; error: React.ReactNod
     <CardShell icon={Images} title="Your eval is ready"
       subtitle={`Learned from ${data.examples.liked} of your images and ${data.examples.imitations} near-misses Stash drew`}>
       {error}
-      <div className="mb-3"><Quality detail={data} compact /></div>
+      <div className="mb-3"><HowScored compact /></div>
       <ConnectAgent id={data.id} />
       {data.model_id && <p className="mt-3 text-xs"><Link className="underline" href={`/reward-models/evals/${data.model_id}`}>Open the eval</Link> to watch your agent&apos;s calls and label them.</p>}
     </CardShell>

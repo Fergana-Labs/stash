@@ -51,7 +51,9 @@ export interface ImageEvalExample {
   created_at: string;
 }
 export interface ImageEvalFix { issue: string; fix: string }
-export interface ImageEvalComments { summary: string; fixes: ImageEvalFix[]; keep: string[] }
+/** One trait of the style, graded 1-5; the score is the mean grade scaled to 0-1. */
+export interface ImageEvalTrait { trait: string; score: number; why: string }
+export interface ImageEvalComments { summary: string; fixes: ImageEvalFix[]; keep: string[]; traits?: ImageEvalTrait[] }
 export interface ImageEvalCall {
   id: string;
   caller: string;

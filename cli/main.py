@@ -4045,6 +4045,8 @@ def image_eval_check(
         output_json(r)
         return
     console.print(f"score: [bold]{r['score']:.2f}[/bold] ({r['label']})")
+    if r.get("traits"):
+        console.print("  ".join(f"{t['trait']} {t['score']}/5" for t in r["traits"]))
     if r.get("summary"):
         console.print(r["summary"])
     for i, fix in enumerate(r.get("fixes", []), 1):

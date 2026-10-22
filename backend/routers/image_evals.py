@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.image_eval import embedder, service
+from ..services.image_eval import critic, embedder, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -59,7 +59,11 @@ async def checked(coro):
         raise HTTPException(404, str(exc)) from exc
     except service.Conflict as exc:
         raise HTTPException(409, str(exc)) from exc
-    except (service.StorageUnavailable, embedder.EmbedderUnavailable) as exc:
+    except (
+        service.StorageUnavailable,
+        embedder.EmbedderUnavailable,
+        critic.JudgeUnavailable,
+    ) as exc:
         raise HTTPException(503, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc

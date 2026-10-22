@@ -108,7 +108,7 @@ function Accuracy({ detail }: { detail: Detail }) {
     </EmptyState>;
   }
   return <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-md border border-border px-4 py-3">
-    <Quality detail={detail} />
+    <HowScored />
     <div className="text-[13px] text-muted-foreground">{liked} liked · {disliked} disliked{detail.examples.imitations ? ` · ${detail.examples.imitations} imitations` : ""} · {detail.calls} agent calls{detail.trained_at && ` · trained ${relativeTime(detail.trained_at)}`}</div>
     {detail.needs_training && <div className="text-[13px] text-amber-600">New examples since the last training run</div>}
   </div>;
@@ -172,6 +172,7 @@ function CallRow({ id, call, onLabel }: { id: string; call: ImageEvalCall; onLab
       <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)} · {call.caller || "unknown caller"}{call.task && ` · ${call.task}`}</div>
       <div className="mt-1"><span className="text-[20px] font-semibold">{call.score.toFixed(2)}</span></div>
       {c?.summary && <p className="mt-1">{c.summary}</p>}
+      {c?.traits && c.traits.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{c.traits.map((tr) => <span key={tr.trait} title={tr.why} className="rounded border border-border px-1.5 py-0.5 text-[11px]">{tr.trait} <b>{tr.score}</b>/5</span>)}</div>}
       {c && c.fixes.length > 0 && <ol className="mt-1 list-decimal space-y-1 pl-5">{c.fixes.map((f, i) => <li key={i}><span className="font-medium">{f.issue}</span> <span className="text-muted-foreground">{f.fix}</span></li>)}</ol>}
       {c && c.keep.length > 0 && <p className="mt-1 text-[12px] text-muted-foreground">Keep: {c.keep.join("; ")}</p>}
     </div>
@@ -212,22 +213,9 @@ function Examples({ id, examples, onDelete }: { id: string; examples: ImageEvalE
   </section>;
 }
 
-const GROUPS = [
-  { key: "liked", label: "of your images recognized" },
-  { key: "imitation", label: "of near-miss imitations rejected" },
-  { key: "disliked", label: "of the images you marked as not the style rejected" },
-  { key: "offstyle", label: "of clearly off-style images rejected" },
-] as const;
-
-/** How the eval did on examples it did not train on, per kind of example. */
-export function Quality({ detail, compact = false }: { detail: Pick<Detail, "heldout_accuracy" | "heldout_by_group">; compact?: boolean }) {
-  const by = detail.heldout_by_group;
-  if (!by) return <div><span className="text-[26px] font-semibold">{Math.round((detail.heldout_accuracy ?? 0) * 100)}%</span> <span className="text-[13px] text-muted-foreground">right on examples it did not train on</span></div>;
-  const rows = GROUPS.filter((g) => by[g.key] != null);
-  const weak = rows.filter((g) => (by[g.key] ?? 1) < 0.8);
-  return <div className={compact ? "space-y-0.5 text-xs" : "w-full space-y-1 text-[13px]"}>
-    <div className="text-muted-foreground">On examples it didn&apos;t train on:</div>
-    {rows.map((g) => <div key={g.key}><span className="font-semibold tabular-nums">{Math.round((by[g.key] ?? 0) * 100)}%</span> {g.label}</div>)}
-    {weak.length > 0 && <div className="text-amber-600">Weak spot: {weak.map((g) => g.label.replace(/^of /, "")).join("; ")}. Add more examples, or treat its scores there with care.</div>}
-  </div>;
+/** The score agents get: Claude grading the image on each trait of the style, against these examples. */
+export function HowScored({ compact = false }: { compact?: boolean }) {
+  return <p className={compact ? "text-xs text-muted-foreground" : "w-full text-[13px] text-muted-foreground"}>
+    Each check is scored by Claude grading the image 1–5 on each trait of this style, side by side with your images; the score is the average, from 0 to 1. The same call writes the fixes.
+  </p>;
 }
