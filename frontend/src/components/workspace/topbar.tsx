@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import { StashIcon } from "@/components/SkillIcons";
 import ScopeSwitcher from "./scope-switcher";
 
 /** Full-width top bar: octopus logo + breadcrumb (left), ⌘K search (center),
  *  share action (right). Account actions live on the rail's bottom avatar. */
-export default function Topbar() {
+export default function Topbar({ onMenu }: { onMenu?: () => void }) {
   const pathname = usePathname();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const searchBarRef = useRef<HTMLDivElement>(null);
@@ -29,6 +29,11 @@ export default function Topbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 bg-rail px-3">
+      {onMenu && (
+        <button type="button" onClick={onMenu} aria-label="Open navigation" className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-surface hover:text-foreground md:hidden">
+          <Menu className="size-5" />
+        </button>
+      )}
       <div className="flex shrink-0 items-center gap-2.5">
         <Link href="/" aria-label="Stash" className="flex shrink-0 items-center gap-1.5 text-brand-500">
           <StashIcon className="text-[22px]" />
@@ -44,7 +49,7 @@ export default function Topbar() {
           >
             <Search className="h-4 w-4 shrink-0" />
             <span className="min-w-0 flex-1 truncate">Search</span>
-            <span className="rounded bg-base px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground ring-1 ring-border">⌘K</span>
+            <span className="hidden rounded bg-base px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground ring-1 ring-border sm:inline">⌘K</span>
           </button>
         </div>
       </div>
