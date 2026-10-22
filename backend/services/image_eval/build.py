@@ -50,7 +50,7 @@ person would mistake for one of their liked examples. Be concrete and visual: li
 characters and faces are drawn, lettering and the voice of any text, composition and empty \
 space, and what separates the liked images from the disliked ones. Use the close-ups for \
 mark-making detail. No generic words like "clean" or "modern" without saying what they look \
-like here.
+like here. Leave out signatures, handles, watermarks and logos; they are not part of the style.
 
 Return only JSON: {"brief": str (markdown bullets, under 350 words), "subjects": [str] \
 (%d short, varied subjects typical of the liked examples, each one line)}"""

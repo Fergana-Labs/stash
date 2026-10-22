@@ -34,7 +34,9 @@ higher = closer to what they like), and the image to review.
 
 Name the most important differences between the image and what they like, as fixes someone \
 making it could act on (which element, what is wrong, what the liked examples do instead). \
-Mention what already matches only if it is worth keeping. Do not judge the subject matter.
+Mention what already matches only if it is worth keeping. Do not judge the subject matter. \
+Ignore signatures, handles, watermarks and logos: never ask for one, since copying an artist's \
+signature onto someone else's work is forgery, not style.
 
 Return only JSON: {"summary": str (one sentence), "fixes": [{"issue": str, "fix": str}] \
 (1-4, most important first), "keep": [str] (0-2)}"""
