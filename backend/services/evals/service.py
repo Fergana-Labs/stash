@@ -7,6 +7,7 @@ returns a score, a grade per trait, an explanation and fixes (judge.py), and log
 call to intuition_predictions, where labeling it turns it into a new example.
 """
 
+import asyncio
 from uuid import UUID
 
 from ...database import get_pool
@@ -126,7 +127,10 @@ async def add_examples(
     if have + wanted > MAX_EXAMPLES:
         raise ValueError(f"An eval holds at most {MAX_EXAMPLES} examples")
     stored = (
-        [await items.store(owner, name, [(name, data, ctype)]) for name, data, ctype in files]
+        # Files are checked and uploaded concurrently; a batch of images otherwise waits on each in turn.
+        await asyncio.gather(
+            *(items.store(owner, name, [(name, data, ctype)]) for name, data, ctype in files)
+        )
         if files
         else [await items.store(owner, "", [], text=text, trace=trace)]
     )
