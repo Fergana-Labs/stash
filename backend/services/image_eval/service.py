@@ -8,6 +8,7 @@ image, score and written comments; labeling a call turns it into an example.
 
 import asyncio
 import os
+import time
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -200,7 +201,7 @@ async def start_build(owner: UUID, classifier_id: UUID) -> dict:
     await get_pool().execute(
         "UPDATE image_evals SET build=$2, updated_at=now() WHERE id=$1",
         classifier_id,
-        {"stage": "queued", "done": 0, "total": 0, "error": None},
+        {"stage": "queued", "done": 0, "total": 0, "error": None, "started_at": time.time()},
     )
     try:
         image_eval_tasks.build_classifier.delay(str(classifier_id))

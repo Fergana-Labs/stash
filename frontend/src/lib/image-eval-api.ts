@@ -12,6 +12,8 @@ export interface ImageEvalBuild {
   total?: number;
   imitations?: number;
   error?: string | null;
+  /** Unix seconds when the build was queued. */
+  started_at?: number;
 }
 export interface ImageEvalSummary {
   id: string;

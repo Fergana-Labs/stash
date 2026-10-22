@@ -31,7 +31,7 @@ import numpy as np
 
 from ...database import get_pool
 from .. import llm
-from . import critic, embedder, service
+from . import critic, service
 
 logger = logging.getLogger(__name__)
 IMITATIONS = 12
@@ -209,28 +209,22 @@ async def run(classifier_id: UUID) -> None:
         )
         async with gate:
             png = await imitate(written["brief"], subject, refs)
-        done += 1
-        await _set(classifier_id, done=done)
-        return subject, png
-
-    made = [
-        (s, p)
-        for s, p in await asyncio.gather(*(one(i, s) for i, s in enumerate(written["subjects"])))
-        if p
-    ]
-    if made:
-        vectors = await embedder.embed([p for _, p in made])
-        for (subject, png), vector in zip(made, vectors, strict=True):
+        if png:
+            # Saved as soon as it is drawn so the build card can show it; training embeds it.
             key = await service._store(owner, png, "image/png")
             await get_pool().execute(
-                """INSERT INTO image_eval_examples (classifier_id,label,source,filename,note,image_key,content_type,embedding)
-                VALUES ($1,'disliked','imitation',$2,'',$3,'image/png',$4)""",
+                """INSERT INTO image_eval_examples (classifier_id,label,source,filename,note,image_key,content_type)
+                VALUES ($1,'disliked','imitation',$2,'',$3,'image/png')""",
                 classifier_id,
                 subject[:300],
                 key,
-                vector,
             )
+        done += 1
+        await _set(classifier_id, done=done)
+        return png is not None
 
-    await _set(classifier_id, stage="training", imitations=len(made))
+    made = sum(await asyncio.gather(*(one(i, s) for i, s in enumerate(written["subjects"]))))
+
+    await _set(classifier_id, stage="training", imitations=made)
     await service.train(owner, classifier_id)
     await _set(classifier_id, stage="done", error=None)

@@ -6,8 +6,9 @@ import * as api from "@/lib/image-eval-api";
 
 vi.mock("@/lib/image-eval-api", async (original) => ({
   ...(await original<typeof import("@/lib/image-eval-api")>()),
-  imageEvalGet: vi.fn(), imageEvalUploadExamples: vi.fn(),
+  imageEvalGet: vi.fn(), imageEvalUploadExamples: vi.fn(), imageEvalExamples: vi.fn(),
 }));
+vi.mock("@/components/image-eval/ImageEvalImage", () => ({ default: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 
 const detail = (liked: number) => ({
   id: "e1", model_id: "m1", name: "Yoko", description: "", style_brief: "", build: null, trained: false, trained_at: null,
@@ -44,5 +45,27 @@ describe("ImageEvalCard examples", () => {
     await waitFor(() => expect(build).toBeEnabled());
     fireEvent.click(build);
     expect(send).toHaveBeenCalledWith("I added 12 images in the style.", "event");
+  });
+});
+
+describe("ImageEvalCard progress", () => {
+  it("walks the steps, shows what it noticed and each near-miss as it is drawn", async () => {
+    vi.mocked(api.imageEvalGet).mockResolvedValue({
+      ...detail(34), style_brief: "- **Line:** wobbly near-black crayon",
+      build: { stage: "imitations", done: 2, total: 12, started_at: Date.now() / 1000 - 75 },
+    });
+    vi.mocked(api.imageEvalExamples).mockResolvedValue([
+      { id: "i1", label: "disliked", source: "imitation", call_id: null, filename: "a cat in a box", note: "", heldout_score: null, created_at: "" },
+      { id: "i2", label: "disliked", source: "imitation", call_id: null, filename: "a mug", note: "", heldout_score: null, created_at: "" },
+    ]);
+    render(<WizardProvider value={{ modelId: "m1", send: vi.fn(), refresh: () => {}, version: 0, busy: false }}><ImageEvalCard section="progress" evalId="e1" /></WizardProvider>);
+
+    expect(await screen.findByText("Drawing near-misses · 2/12")).toBeInTheDocument();
+    expect(screen.getByText(/^1:1\d · usually 4–5 minutes/)).toBeInTheDocument();
+    expect(screen.getByLabelText("done")).toBeInTheDocument();
+    expect(screen.getByLabelText("in progress")).toBeInTheDocument();
+    expect(screen.getByText("wobbly near-black crayon")).toBeInTheDocument();
+    expect(await screen.findByText("Near-miss: a cat in a box")).toBeInTheDocument();
+    expect(screen.getByText("Near-miss: a mug")).toBeInTheDocument();
   });
 });
