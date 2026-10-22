@@ -43,6 +43,7 @@ MAX_HISTORY_MESSAGES = 80
 
 CARD_KINDS = (
     "website_eval",
+    "image_eval",
     "choices",
     "uploader",
     "labeler",
@@ -111,6 +112,19 @@ answers them. Your text around a card is one or two short sentences. Two liked a
 disliked examples are enough for the initial endpoint. NEVER invent labels or examples.
 Never promise a capability or action the tool cannot perform. Completion means a built
 grader and its actual prediction API.
+
+## Image style evals
+The user teaches the grader with images: drawings, illustrations, photos or designs in a
+style they want agents to match. Like website evals, it is three steps only: the user
+uploads images, Stash builds the eval in the background, the user gets a scoring endpoint.
+Call image_eval prepare first, with a short name from what the user said ("Yoko's drawing
+style"). Its card asks for images they like (required, at least 3; 20 or more is much
+better) and, optionally, images they don't; the turn ends there. Do not search or read
+history for image evals, and do not ask the user to label anything: the build writes a
+style brief and draws its own close imitations to learn real from not-quite. When an event
+says the user added images, call image_eval finish; it starts the build. When an event says
+the build finished or failed, call finish again; it returns the endpoint or the cause. Your
+text around a card is one or two short sentences, and you never list images or scores in chat.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -282,6 +296,15 @@ BRIEF_SCHEMA = {
 }
 
 TOOLS = [
+    _tool(
+        "image_eval",
+        "Turn example images of a style the user likes into a scoring API: prepare shows the upload card, finish builds it and returns the endpoint.",
+        {
+            "operation": {"type": "string", "enum": ["prepare", "status", "finish"]},
+            "name": {"type": "string", "maxLength": 160},
+        },
+        ["operation"],
+    ),
     _tool(
         "website_eval",
         "Turn supplied website-design traces into a grading API. Gather evidence automatically, ask only essential clarifications, finish with the endpoint.",
@@ -779,6 +802,8 @@ async def run_tool(
     """Execute one tool. Returns (result for Claude, card to render or None)."""
     if name == "website_eval":
         return await website_tool(owner_id, session, args, progress)
+    if name == "image_eval":
+        return await image_tool(owner_id, session, args)
     if name == "search_history":
         return await history.search(owner_id, **args), None
     if name == "read_history":
@@ -1005,10 +1030,15 @@ ACTIVITY = {
 
 async def setup_tools(owner_id, session):
     from .. import taste
+    from ..image_eval import service as image_evals
 
     if session.get("model_id") and await taste.mapped_model(owner_id, UUID(session["model_id"])):
         # Website evals learn from example sites, never from the user's history.
         return [tool for tool in TOOLS if tool["name"] == "website_eval"]
+    if session.get("model_id") and await image_evals.by_model(
+        owner_id, UUID(session["model_id"])
+    ):
+        return [tool for tool in TOOLS if tool["name"] == "image_eval"]
     return TOOLS
 
 
@@ -1044,16 +1074,17 @@ async def stream_turn(
     try:
         client = llm._get_client()
         # A new website-design eval always starts by asking for traces, not by searching.
-        force_website = kind == "message" and not session["model_id"] and _website_intent(text)
+        fresh = kind == "message" and not session["model_id"]
+        force_website = fresh and _website_intent(text)
+        force_image = fresh and not force_website and _image_intent(text)
         for turn in range(MAX_TURNS):
             state = await status(owner_id, session["model_id"], session["brief"])
             system = (
                 SYSTEM + "\n\nCURRENT STATE (authoritative):\n" + json.dumps(state, default=str)
             )
+            forced = "website_eval" if force_website else "image_eval" if force_image else None
             extra = (
-                {"tool_choice": {"type": "tool", "name": "website_eval"}}
-                if force_website and turn == 0
-                else {}
+                {"tool_choice": {"type": "tool", "name": forced}} if forced and turn == 0 else {}
             )
             async with client.messages.stream(
                 model=settings.ANTHROPIC_MODEL,
@@ -1120,7 +1151,10 @@ async def stream_turn(
                     if card:
                         parts.append({"type": "card", **card})
                         yield {"type": "card", **card}
-                    if use.name in ("create_model", "website_eval") and session["model_id"]:
+                    if (
+                        use.name in ("create_model", "website_eval", "image_eval")
+                        and session["model_id"]
+                    ):
                         yield {
                             "type": "model",
                             "model_id": session["model_id"],
@@ -1129,7 +1163,7 @@ async def stream_turn(
                     background_work = (
                         background_work
                         or (
-                            use.name == "website_eval"
+                            use.name in ("website_eval", "image_eval")
                             and isinstance(result, dict)
                             and result.get("status") == "working"
                         )
@@ -1174,7 +1208,7 @@ async def stream_turn(
                 if not is_error and (
                     use.name == "promote"
                     or (
-                        use.name == "website_eval"
+                        use.name in ("website_eval", "image_eval")
                         and isinstance(result, dict)
                         and result.get("published") is True
                     )
@@ -1218,8 +1252,24 @@ def _website_intent(text: str) -> bool:
     return bool(re.search(r"\b(website|web ?site|web page|landing page|UI|design)\b", text, re.I))
 
 
+def _image_intent(text: str) -> bool:
+    """Style matching from example images. Not every mention of an image: "flag which
+    guidelines a product photo breaks" is a multi-issue eval, not a style eval."""
+    return bool(
+        re.search(
+            r"\b(drawing|art|illustration|image|photo|visual|painting) ?style\b"
+            r"|\bstyle of (my|these|her|his|their|our)\b"
+            r"|\b(drawings?|illustrations?|sketches|artwork)\b",
+            text,
+            re.I,
+        )
+    )
+
+
 def _awaits_user(card, result) -> bool:
-    """A website card that needs the user's input ends the turn; the card speaks for itself."""
+    """A setup card that needs the user's input ends the turn; the card speaks for itself."""
+    if card and card.get("kind") == "image_eval":
+        return card.get("props", {}).get("section") == "examples"
     if not card or card.get("kind") != "website_eval":
         return False
     section = card.get("props", {}).get("section")
@@ -1355,3 +1405,73 @@ async def website_tool(owner, session, args, progress):
         "status": "working",
         "next": "Wait for completion, then call finish. The user does not need to choose the next step.",
     }, _card("website_eval", section="progress", jobId=identity)
+
+
+IMAGE_BUILDING = ("queued", "brief", "imitations", "training")
+
+
+async def image_tool(owner, session, args):
+    """Image style evals: an image_evals classifier linked to this chat's intuition model."""
+    from ..image_eval import head as heads
+    from ..image_eval import service as image_evals
+
+    found = (
+        await image_evals.by_model(owner, UUID(session["model_id"]))
+        if session.get("model_id")
+        else None
+    )
+    if args["operation"] == "prepare" and found is None:
+        if session.get("model_id"):
+            raise service.Conflict("This chat is already building a different kind of eval.")
+        name = (args.get("name") or "").strip() or "Image style"
+        model = await service.create_model(
+            owner,
+            name=name,
+            output_type="choice",
+            description="Does this image match the style of the images I like?",
+            labels=[
+                {"id": "liked", "description": "Matches the style I like"},
+                {"id": "disliked", "description": "Does not match it"},
+            ],
+            rubric=[],
+        )
+        session["model_id"] = str(model["model"]["id"])
+        session["title"] = name
+        await _save(session)
+        created = await image_evals.create(owner, name, "", model_id=UUID(session["model_id"]))
+        found = await image_evals.get(owner, created["id"])
+    if found is None:
+        raise service.Conflict("Prepare this eval first.")
+    eid = str(found["id"])
+    examples = found["examples"]
+    stage = (found["build"] or {}).get("stage")
+    if stage in IMAGE_BUILDING:
+        return {
+            "status": "working",
+            "stage": stage,
+            "next": "The build continues in the background and the card shows progress. Stop here.",
+        }, _card("image_eval", section="progress", evalId=eid)
+    if found["trained"] and stage == "done":
+        return {
+            "published": True,
+            "eval_id": session["model_id"],
+            "endpoint": f"/api/v1/image-evals/{eid}/score",
+            "heldout_accuracy": found["heldout_accuracy"],
+        }, _card("image_eval", section="connect", evalId=eid)
+    if stage == "failed" and args["operation"] != "finish":
+        return {
+            "status": "needs_attention",
+            "error": (found["build"] or {}).get("error"),
+            "next": "Explain the cause in one sentence; finish retries the build.",
+        }, _card("image_eval", section="progress", evalId=eid)
+    if args["operation"] != "finish" or examples["liked"] < heads.MIN_PER_CLASS:
+        return {
+            "liked": examples["liked"],
+            "disliked": examples["disliked"],
+            "next": f"The card asks for at least {heads.MIN_PER_CLASS} images they like. Say so in one sentence and stop.",
+        }, _card("image_eval", section="examples", evalId=eid)
+    await image_evals.start_build(owner, found["id"])
+    return {
+        "status": "working",
+        "next": "Building takes a few minutes: a style brief, imitations, then training. The card shows progress; stop here.",
+    }, _card("image_eval", section="progress", evalId=eid)

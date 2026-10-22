@@ -75,7 +75,7 @@ export default function ImageEvalDetail({ id }: { id: string }) {
   </RmPage>;
 }
 
-const STAGES: Record<ImageEvalBuild["stage"], string> = {
+export const STAGES: Record<ImageEvalBuild["stage"], string> = {
   queued: "Waiting to start…",
   brief: "Studying your examples and writing a style brief…",
   imitations: "Drawing imitations to learn real from close-but-not-quite…",
@@ -113,7 +113,7 @@ function Accuracy({ detail }: { detail: Detail }) {
   </div>;
 }
 
-function UploadBox({ label, title, disabled, onFiles }: { label: ImageEvalLabel; title: string; disabled: boolean; onFiles: (files: File[]) => void }) {
+export function UploadBox({ label, title, disabled, onFiles }: { label: ImageEvalLabel; title: string; disabled: boolean; onFiles: (files: File[]) => void }) {
   const [over, setOver] = useState(false);
   const pick = (list: FileList | null) => { const files = Array.from(list ?? []).filter((f) => f.type.startsWith("image/") || /\.heic$/i.test(f.name)); if (files.length) onFiles(files); };
   return <label onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
@@ -125,7 +125,7 @@ function UploadBox({ label, title, disabled, onFiles }: { label: ImageEvalLabel;
   </label>;
 }
 
-function ConnectAgent({ id }: { id: string }) {
+export function ConnectAgent({ id }: { id: string }) {
   const cli = `stash image-eval check ${id} drawing.png --caller my-agent --task "what it is for"`;
   const origin = typeof window === "undefined" ? "https://api.joinstash.ai" : window.location.origin;
   const curl = `curl -H "Authorization: Bearer $STASH_API_KEY" \\\n  -F file=@drawing.png -F caller=my-agent -F task="what it is for" \\\n  ${origin}/api/v1/image-evals/${id}/score`;

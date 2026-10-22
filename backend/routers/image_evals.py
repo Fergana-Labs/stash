@@ -83,6 +83,15 @@ async def create_classifier(body: CreateClassifier, user: User):
     return await service.create(user["id"], body.name, body.description)
 
 
+@router.get("/by-model/{model_id}")
+async def get_by_model(model_id: UUID, user: User):
+    """The image eval behind a wizard-made eval; 404 when the eval is another kind."""
+    found = await service.by_model(user["id"], model_id)
+    if found is None:
+        raise HTTPException(404, "Not an image eval")
+    return found
+
+
 @router.get("/{classifier_id}")
 async def get_classifier(classifier_id: UUID, user: User):
     return await checked(service.get(user["id"], classifier_id))

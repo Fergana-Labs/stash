@@ -8,6 +8,9 @@ examples and adds imitations of them as disliked examples (source 'imitation'),
 so the score measures "indistinguishable from the real thing" rather than
 "better than generic images".
 
+model_id links an image eval made in the eval wizard to its intuition_models row,
+so it is listed with the other evals and the wizard can resume it.
+
 Revision ID: 0250
 Revises: 0249
 """
@@ -24,6 +27,7 @@ def upgrade() -> None:
     op.execute("""CREATE TABLE image_evals (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        model_id uuid UNIQUE REFERENCES intuition_models(id) ON DELETE SET NULL,
         name text NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
         description text NOT NULL DEFAULT '',
         embed_model text NOT NULL,

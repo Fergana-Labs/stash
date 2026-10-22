@@ -9,6 +9,8 @@ import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { CheckinsSection, LearnedSection } from "@/components/taste/TasteSections";
 import HillClimbSection from "@/components/taste/HillClimbSection";
+import ImageEvalDetail from "@/components/image-eval/ImageEvalDetail";
+import { imageEvalByModel } from "@/lib/image-eval-api";
 export default function EvalDestination({ id }: { id: string }) {
   const router = useRouter();
   const [resetting, setResetting] = useState(false);
@@ -16,6 +18,15 @@ export default function EvalDestination({ id }: { id: string }) {
   const [website, setWebsite] = useState<TasteWorkspace | null | undefined>(
     undefined,
   );
+  // The image eval behind this eval, if the wizard made it as one; null for other kinds.
+  const [imageEvalId, setImageEvalId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    imageEvalByModel(id)
+      .then((found) => { if (active) setImageEvalId(found.id); })
+      .catch(() => { if (active) setImageEvalId(null); });
+    return () => { active = false; };
+  }, [id]);
   useEffect(() => {
     let active = true;
     const load = () =>
@@ -34,7 +45,8 @@ export default function EvalDestination({ id }: { id: string }) {
       clearInterval(timer);
     };
   }, [id]);
-  if (website === undefined)
+  if (imageEvalId) return <ImageEvalDetail id={imageEvalId} />;
+  if (website === undefined || imageEvalId === undefined)
     return (
       <p role="status" className="p-6 text-sm">
         Loading eval…

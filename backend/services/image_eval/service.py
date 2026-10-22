@@ -96,6 +96,7 @@ def _summary(row) -> dict:
     metrics = row["metrics"] or {}
     return {
         "id": row["id"],
+        "model_id": row["model_id"],
         "name": row["name"],
         "description": row["description"],
         "embed_model": row["embed_model"],
@@ -122,16 +123,27 @@ async def _owned(owner: UUID, classifier_id: UUID):
     return row
 
 
-async def create(owner: UUID, name: str, description: str) -> dict:
+async def create(
+    owner: UUID, name: str, description: str, model_id: UUID | None = None
+) -> dict:
     row = await get_pool().fetchrow(
-        """INSERT INTO image_evals (owner_user_id, name, description, embed_model)
-        VALUES ($1,$2,$3,$4) RETURNING *""",
+        """INSERT INTO image_evals (owner_user_id, name, description, embed_model, model_id)
+        VALUES ($1,$2,$3,$4,$5) RETURNING *""",
         owner,
         name.strip(),
         description,
         embedder.EMBED_MODEL,
+        model_id,
     )
     return _summary(row)
+
+
+async def by_model(owner: UUID, model_id: UUID) -> dict | None:
+    """The image eval the wizard made for this intuition model, or None."""
+    classifier_id = await get_pool().fetchval(
+        "SELECT id FROM image_evals WHERE model_id=$1 AND owner_user_id=$2", model_id, owner
+    )
+    return await get(owner, classifier_id) if classifier_id else None
 
 
 async def list_classifiers(owner: UUID) -> list[dict]:

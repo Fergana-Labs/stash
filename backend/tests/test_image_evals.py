@@ -6,7 +6,7 @@ real SQL, storage, fitting and auth without Modal or Claude.
 """
 
 from io import BytesIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
@@ -323,3 +323,52 @@ async def test_build_writes_brief_adds_imitations_and_trains(
         "a mug",
         "a tree",
     ]
+
+
+async def test_wizard_image_eval_goes_from_upload_card_to_endpoint(
+    client: AsyncClient, monkeypatch, pool
+):
+    from backend.services.intuition import wizard
+    from backend.tasks import image_evals as image_eval_tasks
+
+    auth = await _register(client)
+    owner = UUID((await client.get("/api/v1/users/me", headers=auth)).json()["id"])
+    session = await wizard.create_session(owner)
+    assert wizard._image_intent("Learn Yoko's drawing style from her drawings")
+    assert not wizard._image_intent("Flag which brand guidelines a product photo breaks")
+
+    result, card = await wizard.image_tool(owner, session, {"operation": "prepare", "name": "Reds"})
+    assert card["kind"] == "image_eval" and card["props"]["section"] == "examples"
+    assert wizard._awaits_user(card, result)
+    assert [t["name"] for t in await wizard.setup_tools(owner, session)] == ["image_eval"]
+    cid = card["props"]["evalId"]
+    found = (await client.get(f"/api/v1/image-evals/by-model/{session['model_id']}", headers=auth)).json()
+    assert found["id"] == cid and found["name"] == "Reds"
+
+    # Too few images: finish keeps asking for them instead of building.
+    result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
+    assert card["props"]["section"] == "examples"
+
+    await _upload(client, auth, cid, "liked", RED[:4])
+    started = []
+    monkeypatch.setattr(image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_))
+    result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
+    assert result["status"] == "working" and card["props"]["section"] == "progress"
+    assert started == [cid]
+
+    async def ask(system, content, max_tokens):
+        if "Return only JSON" in system:
+            return '{"brief": "- warm reds", "subjects": ["a cat", "a box", "a mug", "a tree"]}'
+        return "```svg\n" + SVG_RED + "\n```"
+
+    monkeypatch.setattr(build, "_ask", ask)
+    await image_eval_tasks.build_classifier_async(UUID(cid))
+    result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
+    assert result["published"] is True and card["props"]["section"] == "connect"
+    assert result["endpoint"] == f"/api/v1/image-evals/{cid}/score"
+
+
+async def test_by_model_is_404_for_other_evals(client: AsyncClient):
+    auth = await _register(client)
+    missing = await client.get(f"/api/v1/image-evals/by-model/{uuid4()}", headers=auth)
+    assert missing.status_code == 404

@@ -15,6 +15,7 @@ export interface ImageEvalBuild {
 }
 export interface ImageEvalSummary {
   id: string;
+  model_id: string | null;
   name: string;
   description: string;
   style_brief: string;
@@ -62,6 +63,8 @@ export const imageEvalList = () => apiFetch<{ classifiers: ImageEvalListItem[] }
 export const imageEvalCreate = (name: string, description = "") =>
   apiFetch<ImageEvalSummary>(T, { method: "POST", body: JSON.stringify({ name, description }) });
 export const imageEvalGet = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id}`);
+/** The image eval behind a wizard-made eval; rejects (404) when the eval is another kind. */
+export const imageEvalByModel = (modelId: string) => apiFetch<ImageEvalDetail>(`${T}/by-model/${modelId}`);
 export const imageEvalDelete = (id: string) => apiFetch<void>(`${T}/${id}`, { method: "DELETE" });
 export const imageEvalBuild = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id}/build`, { method: "POST" });
 export const imageEvalTrain = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id}/train`, { method: "POST" });
