@@ -7,6 +7,7 @@ import { Plus, Search } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
+import { evalList, type Eval } from "@/lib/evals-api";
 import { EvalsViewToggle } from "@/components/test-sets/test-set-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { wizardSessionName, wzSessions, type WizardSession } from "@/lib/wizard-api";
@@ -18,12 +19,14 @@ export default function EvalsPage() {
   useBreadcrumbs([{ label: "Evals" }], "evals");
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [sessions, setSessions] = useState<WizardSession[]>([]);
+  const [judged, setJudged] = useState<Eval[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const router = useRouter();
   const load = useCallback(async () => {
     try {
-      const [evals, drafts] = await Promise.all([imList(), wzSessions()]);
+      const [evals, drafts, made] = await Promise.all([imList(), wzSessions(), evalList().catch(() => [] as Eval[])]);
+      setJudged(made);
       setModels(evals.models); setSessions(drafts.sessions); setError("");
     } catch (e) { setError(errorMessage(e)); }
   }, []);
@@ -31,6 +34,10 @@ export default function EvalsPage() {
   const rows = [
     ...(models ?? []).map((model) => {
       const session = sessions.find((s) => s.model_id === model.id);
+      // Evals made from examples are ready once built and count their own examples.
+      const made = judged.find((e) => e.id === model.id);
+      if (made) return { id: model.id, name: made.name, draft: !made.ready, href: `/reward-models/evals/${model.id}`,
+        description: made.build?.summary ?? made.instructions, examples: made.examples.good + made.examples.bad, metrics: model.active_metrics };
       return { id: model.id, name: model.name, draft: model.active_number == null,
         href: model.active_number == null && session ? `/reward-models/wizard/${session.id}` : `/reward-models/evals/${model.id}`,
         description: model.active_description ?? model.draft_description ?? "", examples: model.examples, metrics: model.active_metrics };

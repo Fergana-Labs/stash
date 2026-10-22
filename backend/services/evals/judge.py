@@ -123,20 +123,18 @@ async def context(model_id: UUID, exclude: UUID | None = None) -> list[dict]:
 
 def _parse(text: str) -> dict:
     parsed = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
-    traits = [
-        {
-            "trait": str(t["trait"])[:80],
-            "score": int(t["score"]),
-            "why": str(t.get("why", ""))[:300],
-        }
+    grades = [
+        (str(t["trait"])[:80], int(t["score"]), str(t.get("why", ""))[:300])
         for t in parsed.get("traits", [])
         if isinstance(t, dict) and 1 <= int(t.get("score", 0)) <= 5
     ]
-    if not traits:
+    if not grades:
         raise ValueError("no trait grades")
+    # The judge grades 1-5 (easier to anchor); everything returned is on 0-1.
+    to_unit = lambda g: (g - 1) / 4  # noqa: E731
     return {
-        "score": round((float(np.mean([t["score"] for t in traits])) - 1) / 4, 4),
-        "traits": traits,
+        "score": round(to_unit(float(np.mean([g for _, g, _ in grades]))), 4),
+        "traits": [{"trait": name, "score": to_unit(g), "why": why} for name, g, why in grades],
         "explanation": str(parsed.get("summary", ""))[:1000],
         "fixes": [
             {"issue": str(f.get("issue", ""))[:600], "fix": str(f.get("fix", ""))[:600]}

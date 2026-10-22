@@ -154,7 +154,7 @@ async def test_examples_build_and_score_with_an_explanation(client: AsyncClient,
     assert red.status_code == 200, red.text
     body = red.json()
     assert body["score"] == 1.0 and body["explanation"] == "graded 5"
-    assert body["traits"][0] == {"trait": "Color", "score": 5, "why": "red"}
+    assert body["traits"][0] == {"trait": "Color", "score": 1.0, "why": "red"}
     assert body["fixes"] == [{"issue": "too blue", "fix": "use red"}]
 
     blue = await client.post(

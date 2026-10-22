@@ -4,7 +4,7 @@ POST /api/v1/evals/{id}/score
   JSON:      {"trace": [...] | "text", "output": {"text": "...", "images": ["<base64 or data URL>"]},
               "caller": "...", "ref": "...", "metadata": {...}}
   multipart: trace (JSON or text), text, caller, ref, files (images, PDFs, text files)
--> {"call_id", "score" (0-1), "traits": [{"trait", "score" (1-5), "why"}],
+-> {"call_id", "score" (0-1), "traits": [{"trait", "score" (0-1), "why"}],
     "explanation", "fixes": [{"issue", "fix"}], "keep"}
 """
 
