@@ -14,9 +14,6 @@ so it is listed with the other evals and the wizard can resume it.
 An uploaded example's embedding is NULL until the next build or training run
 embeds it, so uploads return without waiting on the GPU.
 
-interview holds the questions Claude asked the person after upload and their answers
-(services/image_eval/interview.py); NULL until it is asked.
-
 Revision ID: 0250
 Revises: 0249
 """
@@ -38,7 +35,6 @@ def upgrade() -> None:
         description text NOT NULL DEFAULT '',
         embed_model text NOT NULL,
         style_brief text NOT NULL DEFAULT '',
-        interview jsonb,
         build jsonb,
         head jsonb,
         metrics jsonb,

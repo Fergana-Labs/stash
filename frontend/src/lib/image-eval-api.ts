@@ -15,23 +15,12 @@ export interface ImageEvalBuild {
   /** Unix seconds when the build was queued. */
   started_at?: number;
 }
-export interface ImageEvalQuestion { question: string; why: string; options: string[] }
-/** Questions Claude asked after looking at the uploads, and the person's answers. */
-export interface ImageEvalInterview {
-  questions: ImageEvalQuestion[];
-  outliers: string[];
-  answers: { question: string; answer: string }[];
-  left_out: string[];
-  done: boolean;
-  skipped?: boolean;
-}
 export interface ImageEvalSummary {
   id: string;
   model_id: string | null;
   name: string;
   description: string;
   style_brief: string;
-  interview: ImageEvalInterview | null;
   build: ImageEvalBuild | null;
   trained: boolean;
   trained_at: string | null;
@@ -79,9 +68,6 @@ export const imageEvalGet = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id
 /** The image eval behind a wizard-made eval; rejects (404) when the eval is another kind. */
 export const imageEvalByModel = (modelId: string) => apiFetch<ImageEvalDetail>(`${T}/by-model/${modelId}`);
 export const imageEvalDelete = (id: string) => apiFetch<void>(`${T}/${id}`, { method: "DELETE" });
-export const imageEvalInterview = (id: string) => apiFetch<ImageEvalInterview>(`${T}/${id}/interview`, { method: "POST" });
-export const imageEvalAnswer = (id: string, body: { answers: { question: string; answer: string }[]; leave_out: string[]; skipped?: boolean }) =>
-  apiFetch<ImageEvalDetail>(`${T}/${id}/interview`, { method: "PUT", body: JSON.stringify(body) });
 export const imageEvalBuild = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id}/build`, { method: "POST" });
 export const imageEvalTrain = (id: string) => apiFetch<ImageEvalDetail>(`${T}/${id}/train`, { method: "POST" });
 export const imageEvalExamples = (id: string) =>

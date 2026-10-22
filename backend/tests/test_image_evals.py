@@ -352,12 +352,6 @@ async def test_wizard_image_eval_goes_from_upload_card_to_endpoint(
     await _upload(client, auth, cid, "liked", RED[:4])
     started = []
     monkeypatch.setattr(image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_))
-    # With images in, the wizard asks its questions before building anything.
-    result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
-    assert card["props"]["section"] == "questions" and wizard._awaits_user(card, result)
-    assert started == []
-    skipped = await client.put(f"/api/v1/image-evals/{cid}/interview", headers=auth, json={"skipped": True})
-    assert skipped.status_code == 200
     result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
     assert result["status"] == "working" and card["props"]["section"] == "progress"
     assert started == [cid]
@@ -389,46 +383,3 @@ async def test_upload_returns_without_embedding_and_training_embeds(client: Asyn
     trained = await client.post(f"/api/v1/image-evals/{cid}/train", headers=auth)
     assert trained.status_code == 200 and trained.json()["trained"]
     assert fakes["embed"] == 7
-
-
-async def test_interview_asks_about_the_images_and_its_answers_shape_the_brief(
-    client: AsyncClient, monkeypatch
-):
-    auth = await _register(client)
-    cid = (await client.post("/api/v1/image-evals", headers=auth, json={"name": "Reds"})).json()["id"]
-    await _upload(client, auth, cid, "liked", RED[:4] + BLUE[:1])
-    prompts = []
-
-    async def ask(system, content, max_tokens):
-        prompts.append("\n".join(c["text"] for c in content if c.get("type") == "text"))
-        if "interviewing an expert" in system:
-            return (
-                '{"questions": [{"question": "Is the deep red essential?", "why": "decides color fixes",'
-                ' "options": ["Essential", "Any warm color"]}], "outliers": [5, 99]}'
-            )
-        if "Return only JSON" in system:
-            return '{"brief": "- warm reds", "subjects": ["a cat", "a box", "a mug", "a tree"]}'
-        return "```svg\n" + SVG_RED + "\n```"
-
-    monkeypatch.setattr(build, "_ask", ask)
-    asked = (await client.post(f"/api/v1/image-evals/{cid}/interview", headers=auth)).json()
-    assert asked["questions"][0]["options"] == ["Essential", "Any warm color"]
-    examples = (await client.get(f"/api/v1/image-evals/{cid}/examples", headers=auth)).json()["examples"]
-    blue = next(e["id"] for e in examples if e["filename"] == "liked4.png")
-    assert asked["outliers"] == [blue]  # out-of-range numbers are dropped
-    # Asking again returns the same interview instead of writing a new one.
-    again = (await client.post(f"/api/v1/image-evals/{cid}/interview", headers=auth)).json()
-    assert again["questions"] == asked["questions"] and len(prompts) == 1
-
-    saved = await client.put(
-        f"/api/v1/image-evals/{cid}/interview",
-        headers=auth,
-        json={"answers": [{"question": "Is the deep red essential?", "answer": "Essential, never pink"}], "leave_out": [blue]},
-    )
-    assert saved.status_code == 200 and saved.json()["examples"]["liked"] == 4
-    assert saved.json()["interview"]["done"] is True
-
-    from backend.services.image_eval import interview
-
-    await build.write_brief(UUID(cid), RED[:4], [], interview.told(saved.json()["interview"]))
-    assert "Essential, never pink" in prompts[-1] and "overrides" in prompts[-1]

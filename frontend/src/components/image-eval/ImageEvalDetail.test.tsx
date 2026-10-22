@@ -11,7 +11,7 @@ vi.mock("@/lib/image-eval-api", async (original) => ({
 }));
 
 const detail = {
-  id: "c1", model_id: null, name: "Yoko", description: "", style_brief: "- hair is built from small loops", interview: null, build: { stage: "done" as const }, trained: true, trained_at: "2026-10-22T07:00:00Z",
+  id: "c1", model_id: null, name: "Yoko", description: "", style_brief: "- hair is built from small loops", build: { stage: "done" as const }, trained: true, trained_at: "2026-10-22T07:00:00Z",
   heldout_accuracy: 0.97, heldout_balanced_accuracy: 0.96, heldout_method: "leave-one-out", liked: 34, disliked: 35,
   created_at: "2026-10-22T06:00:00Z", updated_at: "2026-10-22T07:00:00Z",
   examples: { liked: 34, disliked: 35, imitations: 12 }, calls: 2, needs_training: false,

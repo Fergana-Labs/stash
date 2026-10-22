@@ -85,9 +85,7 @@ async def _ask(system: str, content: list, max_tokens: int) -> str:
     return "".join(b.text for b in reply.content if b.type == "text")
 
 
-async def write_brief(
-    classifier_id: UUID, liked: list[bytes], disliked: list[bytes], told: str = ""
-) -> dict:
+async def write_brief(classifier_id: UUID, liked: list[bytes], disliked: list[bytes]) -> dict:
     rng = random.Random(str(classifier_id))
     refs = rng.sample(liked, min(BRIEF_REFS, len(liked)))
     contrast = rng.sample(disliked, min(BRIEF_CONTRAST, len(disliked)))
@@ -102,8 +100,6 @@ async def write_brief(
             {"type": "text", "text": "Images they don't like:"},
             *[critic.jpeg(b, 512) for b in contrast],
         ]
-    if told:
-        content.append({"type": "text", "text": told + "\nBuild the brief around these answers."})
     content.append({"type": "text", "text": "Write the style brief and subjects now."})
     text = await _ask(BRIEF_SYSTEM % IMITATIONS, content, 6000)
     match = re.search(r"\{.*\}", text, re.S)
@@ -177,10 +173,8 @@ def _blank(png: bytes) -> bool:
 
 
 async def run(classifier_id: UUID) -> None:
-    from . import interview
-
     row = await get_pool().fetchrow(
-        "SELECT owner_user_id, interview FROM image_evals WHERE id=$1", classifier_id
+        "SELECT owner_user_id FROM image_evals WHERE id=$1", classifier_id
     )
     owner = row["owner_user_id"]
     rows = await get_pool().fetch(
@@ -195,8 +189,7 @@ async def run(classifier_id: UUID) -> None:
     await _set(classifier_id, stage="brief", done=0, total=IMITATIONS)
     # Uploads are stored unembedded; embed them while Claude studies the style.
     written, _ = await asyncio.gather(
-        write_brief(classifier_id, liked, disliked, interview.told(row["interview"])),
-        service.embed_pending(classifier_id),
+        write_brief(classifier_id, liked, disliked), service.embed_pending(classifier_id)
     )
     await get_pool().execute(
         "UPDATE image_evals SET style_brief=$2 WHERE id=$1", classifier_id, written["brief"]
@@ -204,8 +197,7 @@ async def run(classifier_id: UUID) -> None:
 
     await _set(classifier_id, stage="imitations")
     await get_pool().execute(
-        "DELETE FROM image_eval_examples WHERE classifier_id=$1 AND source='imitation'",
-        classifier_id,
+        "DELETE FROM image_eval_examples WHERE classifier_id=$1 AND source='imitation'", classifier_id
     )
     gate = asyncio.Semaphore(CONCURRENCY)
     done = 0

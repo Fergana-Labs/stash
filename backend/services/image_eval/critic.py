@@ -86,7 +86,6 @@ def model() -> str:
 async def comments(
     classifier_id: UUID, name: str, data: bytes, content_type: str, score: float
 ) -> dict | None:
-    from . import interview
     from .service import _read
 
     try:
@@ -102,8 +101,8 @@ async def comments(
             classifier_id,
             NOTES,
         )
-        brief, said = await get_pool().fetchrow(
-            "SELECT style_brief, interview FROM image_evals WHERE id=$1", classifier_id
+        brief = await get_pool().fetchval(
+            "SELECT style_brief FROM image_evals WHERE id=$1", classifier_id
         )
         content: list = [{"type": "text", "text": f"Liked examples for '{name}':"}]
         content += [jpeg(b, 768) for b in ref_bytes]
@@ -112,8 +111,6 @@ async def comments(
             content += [jpeg(b, 768, crop=True) for b in ref_bytes[:CLOSEUPS]]
         if brief:
             content.append({"type": "text", "text": f"Style brief for what they like:\n{brief}"})
-        if told := interview.told(said):
-            content.append({"type": "text", "text": told})
         if notes:
             content.append(
                 {
