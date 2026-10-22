@@ -37,6 +37,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    image_evals,
     intuition_mcp,
     intuitions,
     machine,
@@ -168,6 +169,7 @@ app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
 app.include_router(taste.router)
+app.include_router(image_evals.router)
 app.include_router(behaviors.router)
 app.include_router(agent_judge.router)
 app.include_router(test_sets.router)

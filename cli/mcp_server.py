@@ -1082,6 +1082,28 @@ def stash_intuition_list() -> str:
 
 
 @mcp.tool()
+def stash_image_eval_list() -> str:
+    """The user's image evals: id, name, example counts and held-out accuracy.
+    An image eval scores images (drawings, rendered pages, screenshots) against
+    what this user has said they like."""
+    with _client() as client:
+        return _json(client.image_eval_list())
+
+
+@mcp.tool()
+def stash_image_eval_score(
+    classifier_id: str, image_path: str, task: str = "", caller: str = "agent"
+) -> str:
+    """Check an image you made against the user's image eval. `image_path` is a
+    local PNG/JPEG/WEBP/GIF (render HTML to an image first). Returns a score from 0 to
+    1 (higher = closer to what the user likes) and the most important fixes. Use it
+    after each revision, fix what it names first, and keep your best-scoring version.
+    Every call is logged for the user to review."""
+    with _client() as client:
+        return _json(client.image_eval_score(classifier_id, image_path, caller=caller, task=task))
+
+
+@mcp.tool()
 def stash_intuition_get(model_id: str) -> str:
     """Full definition of one intuition model: description, output labels, rubric
     questions, head weights, held-out metrics, versions and data counts."""

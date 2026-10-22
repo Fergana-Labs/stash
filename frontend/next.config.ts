@@ -28,8 +28,12 @@ const nextConfig: NextConfig = {
   // at 10MB by default — larger uploads were silently truncated before they
   // reached the backend. Keep in sync with MAX_FILE_SIZE in
   // backend/routers/files.py and the guard in src/lib/api.ts.
+  // proxyTimeout: rewrites give up after 30s by default, but an image eval
+  // upload waits on a cold Modal GPU (~35s), so the UI showed a 500 for an
+  // upload the backend had already saved.
   experimental: {
     middlewareClientMaxBodySize: "100mb",
+    proxyTimeout: 120_000,
   },
   async redirects() {
     return [

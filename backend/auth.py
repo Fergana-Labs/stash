@@ -21,6 +21,9 @@ API_KEY_ACCESS_LEVELS = {"read", "full"}
 # transcripts/events is part of the read-key contract for production agents,
 # and /ask is read semantics. Matched on FastAPI route templates.
 _READ_KEY_WRITE_ALLOWLIST = {
+    # Agents check their work against an image eval mid-task. Scoring only
+    # logs the call for the owner to review; it never changes the classifier.
+    ("POST", "/api/v1/image-evals/{classifier_id}/score"),
     ("POST", "/api/v1/me/transcripts"),
     # Native recording hooks receive only already released, session-scoped
     # instructions. This writes delivery bookkeeping, never a release/change.

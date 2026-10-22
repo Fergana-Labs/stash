@@ -18,6 +18,7 @@ import { useWizardDraft } from "./useWizardDraft";
 import { useDictation } from "./useDictation";
 import { takeWizardMessage } from "./wizard-navigation";
 import WebsiteEvalCard from "./cards/WebsiteEvalCard";
+import ImageEvalCard from "./cards/ImageEvalCard";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
 import ChoicesCard from "./cards/ChoicesCard";
@@ -33,6 +34,7 @@ import UploaderCard from "./cards/UploaderCard";
 
 const STARTERS = [
   "Learn my website taste from examples of good and bad sites",
+  "Learn a drawing style from example images",
   "Build an eval from my past Codex sessions",
   "Check my coding agent's PRs before it opens them",
   "Grade my AI assistant's answers as good or bad",
@@ -47,6 +49,7 @@ const EVAL_STARTERS = [
 
 const TITLES: Record<Card["kind"], string> = {
   website_eval: "Your eval",
+  image_eval: "Your eval",
   choices: "Quick choices", uploader: "Add examples", labeler: "Label examples", criteria: "Criteria",
   report: "Training report", playground: "Try it", review: "Review predictions", robustness: "Robustness", examples: "Examples",
   brief: "Eval brief", inbox: "Inbox", golden: "Golden set", agreement: "Agreement", topics: "Topics",
@@ -57,6 +60,7 @@ function CardView({ card, fresh = false }: { card: Card; fresh?: boolean }) {
   const p = card.props as any;
   switch (card.kind) {
     case "website_eval": return <WebsiteEvalCard section={p.section} jobId={p.jobId} exampleIds={p.exampleIds} />;
+    case "image_eval": return <ImageEvalCard section={p.section} evalId={p.evalId} />;
     case "choices": return <ChoicesCard question={p.question} options={p.options ?? []} multi={p.multi} />;
     case "uploader": return <UploaderCard prompt={p.prompt} />;
     case "labeler": return <LabelerCard which={p.which} fresh={fresh} />;
