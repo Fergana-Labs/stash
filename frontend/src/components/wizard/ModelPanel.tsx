@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {tasteGet,type TasteWorkspace} from "@/lib/taste-api";
+import { imageEvalByModel } from "@/lib/image-eval-api";
 import { imGet, type ModelDetail } from "@/lib/intuition-api";
 import { wzReport, type TrainingReport } from "@/lib/wizard-api";
 import { pct, userCriteria } from "./wizard-ui";
@@ -18,16 +19,20 @@ function Step({ done, label, detail }: { done: boolean; label: string; detail?: 
 /** The model as it stands, beside the chat: a checklist the wizard is filling in. */
 export default function ModelPanel({ modelId, version }: { modelId: string | null; version: number }) {
   const [website,setWebsite]=useState<TasteWorkspace|null>(null);
+  // Image evals have their own build and accuracy; this panel's checklist does not apply.
+  const [imageEvalFor, setImageEvalFor] = useState<string | null>(null);
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
   useEffect(() => {
     if (!modelId) return;
     void tasteGet().then(setWebsite).catch(()=>{});
+    imageEvalByModel(modelId).then(() => setImageEvalFor(modelId)).catch(() => {});
     imGet(modelId).then(setDetail).catch(() => {});
     wzReport(modelId).then((r) => setReport(r.report)).catch(() => {});
   }, [modelId, version]);
 
   if (website?.model_id === modelId && modelId) return null;
+  if (imageEvalFor === modelId && modelId) return null;
   const v = detail?.draft ?? detail?.active;
   const criteria = v ? userCriteria(v.rubric) : [];
   const counts = detail?.counts;

@@ -10,6 +10,7 @@ import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { EvalsViewToggle } from "@/components/test-sets/test-set-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { wizardSessionName, wzSessions, type WizardSession } from "@/lib/wizard-api";
+import { imageEvalList, type ImageEvalListItem } from "@/lib/image-eval-api";
 import { tasteGet, type TasteWorkspace } from "@/lib/taste-api";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
 
@@ -20,14 +21,16 @@ export default function EvalsPage() {
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [sessions, setSessions] = useState<WizardSession[]>([]);
   const [taste, setTaste] = useState<TasteWorkspace | null>(null);
+  const [imageEvals, setImageEvals] = useState<ImageEvalListItem[]>([]);
   const [showDrafts, setShowDrafts] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const router = useRouter();
   const load = useCallback(async () => {
     try {
-      const [evals, drafts, tasteWorkspace] = await Promise.all([imList(), wzSessions(), tasteGet().catch(() => null)]);
+      const [evals, drafts, tasteWorkspace, images] = await Promise.all([imList(), wzSessions(), tasteGet().catch(() => null), imageEvalList().catch(() => [])]);
       setTaste(tasteWorkspace);
+      setImageEvals(images);
       setModels(evals.models); setSessions(drafts.sessions); setError("");
     } catch (e) { setError(errorMessage(e)); }
   }, []);
@@ -35,6 +38,12 @@ export default function EvalsPage() {
   const rows = [
     ...(models ?? []).map((model) => {
       const session = sessions.find((s) => s.model_id === model.id);
+      // Image evals keep their own examples and accuracy; the intuition model is only their listing.
+      const image = imageEvals.find((i) => i.model_id === model.id);
+      if (image) return { id: model.id, name: image.name, draft: !image.trained,
+        href: !image.trained && session ? `/reward-models/wizard/${session.id}` : `/reward-models/evals/${model.id}`,
+        description: "Scores images against the style of the ones you like", examples: image.examples, metrics: model.active_metrics,
+        holdout: image.heldout_accuracy == null ? undefined : `${Math.round(image.heldout_accuracy * 100)}% · held out` };
       return { id: model.id, name: model.name, draft: model.id===taste?.model_id ? !taste.published : model.active_number == null,
         href: model.id===taste?.model_id && taste.published ? `/reward-models/evals/${model.id}` : model.active_number == null && session ? `/reward-models/wizard/${session.id}` : `/reward-models/evals/${model.id}`,
         description: model.active_description ?? model.draft_description ?? "", examples: model.id===taste?.model_id ? taste.examples.length : model.examples, metrics: model.active_metrics };
@@ -57,7 +66,7 @@ export default function EvalsPage() {
         if ((event.target as HTMLElement).closest("a")) return;
         router.push(model.href);
       }}>
-        <td><div className="flex items-center gap-2"><Link href={model.href} className="block py-2 text-left font-medium">{model.name}</Link>{model.draft && <span className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Draft</span>}</div></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.metrics?.eval.accuracy == null ? "—" : `${Math.round(model.metrics.eval.accuracy * 100)}% · ${model.metrics.eval.n} checked`}</td>
+        <td><div className="flex items-center gap-2"><Link href={model.href} className="block py-2 text-left font-medium">{model.name}</Link>{model.draft && <span className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Draft</span>}</div></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{"holdout" in model && model.holdout ? model.holdout : model.metrics?.eval.accuracy == null ? "—" : `${Math.round(model.metrics.eval.accuracy * 100)}% · ${model.metrics.eval.n} checked`}</td>
       </tr>)}
       {!models && !error && <tr><td colSpan={3} className="py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
       {models && !visible.length && <tr><td colSpan={3} className="py-8 text-muted-foreground">{rows.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}

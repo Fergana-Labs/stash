@@ -36,7 +36,7 @@ describe("ImageEvalDetail", () => {
     expect(screen.getAllByText("Hair is one outline")).toHaveLength(2);
     expect(screen.getByText("0.62 → 0.81")).toBeInTheDocument();
     expect(screen.getByText(/stash image-eval check c1/)).toBeInTheDocument();
-    expect(screen.getByText("- hair is built from small loops")).toBeInTheDocument();
+    expect(screen.getByText("hair is built from small loops")).toBeInTheDocument();
     expect(screen.getByText(/12 imitations/)).toBeInTheDocument();
   });
 

@@ -7,6 +7,7 @@ import { EmptyState, RmPage } from "@/components/reward-models/rm-ui";
 import { relativeTime } from "@/components/reward-models/rm-text";
 import ImageEvalImage from "@/components/image-eval/ImageEvalImage";
 import { cn } from "@/lib/utils";
+import Markdown from "react-markdown";
 import {
   imageEvalCallImagePath, imageEvalCalls, imageEvalDeleteExample, imageEvalExampleImagePath, imageEvalExamples, imageEvalGet,
   imageEvalBuild, imageEvalLabelCall, imageEvalTrain, imageEvalUploadExamples,
@@ -95,7 +96,7 @@ function BuildStatus({ build }: { build: ImageEvalBuild }) {
 function StyleBrief({ brief }: { brief: string }) {
   return <details className="mt-4 rounded-md border border-border px-4 py-3" open>
     <summary className="cursor-pointer text-[13px] font-semibold">What Stash learned about this style</summary>
-    <div className="mt-2 whitespace-pre-wrap text-[13px] text-muted-foreground">{brief}</div>
+    <div className="mt-2 text-[13px] text-muted-foreground [&_li]:mb-1 [&_strong]:text-foreground [&_ul]:list-disc [&_ul]:pl-5"><Markdown>{brief}</Markdown></div>
   </details>;
 }
 
