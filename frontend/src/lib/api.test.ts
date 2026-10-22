@@ -160,6 +160,38 @@ describe("managed Auth0 token handling", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("shares one Auth0 token request between API calls that start together", async () => {
+    const { getAuthToken } = await import("./api");
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ token: "auth0-access-token" }),
+    } as Response);
+
+    const tokens = await Promise.all([getAuthToken(), getAuthToken(), getAuthToken()]);
+
+    expect(tokens).toEqual(["auth0-access-token", "auth0-access-token", "auth0-access-token"]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a JWT until shortly before it expires, and refetches after a 401", async () => {
+    const { apiFetch, getAuthToken } = await import("./api");
+    const jwt = (exp: number) => `h.${btoa(JSON.stringify({ exp }))}.s`;
+    const first = jwt(Math.floor(Date.now() / 1000) + 3600);
+
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ token: first }) } as Response);
+    expect(await getAuthToken()).toBe(first);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30 * 60_000);
+    expect(await getAuthToken()).toBe(first);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: false, status: 401, statusText: "Unauthorized", json: () => Promise.resolve({ detail: "expired" }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ token: "fresh" }) } as Response);
+    await expect(apiFetch("/api/v1/users/me")).rejects.toThrow("expired");
+    expect(await getAuthToken()).toBe("fresh");
+  });
+
   it("revokeStoredApiKey revokes the legacy browser key server-side, not just locally", async () => {
     const { revokeStoredApiKey } = await import("./api");
     localStorage.setItem("stash_token", "legacy-api-key");

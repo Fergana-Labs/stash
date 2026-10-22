@@ -84,22 +84,45 @@ export async function revokeStoredApiKey(): Promise<void> {
   }).catch(() => {});
 }
 
-// Cached briefly so chatty views don't pay a serial round-trip to the
-// Next.js auth route before every backend call.
-const AUTH0_TOKEN_CACHE_MS = 60_000;
-let auth0TokenCache: { token: string; fetchedAt: number } | null = null;
+// Cached until shortly before the token expires, and shared by requests that start
+// together, so views don't pay a round-trip to the Next.js auth route per backend call.
+const AUTH0_TOKEN_FALLBACK_MS = 60_000;
+const AUTH0_TOKEN_EXPIRY_MARGIN_MS = 60_000;
+let auth0TokenCache: { token: string; expiresAt: number } | null = null;
+let auth0TokenRequest: Promise<string | null> | null = null;
+
+function auth0TokenExpiresAt(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (typeof payload.exp === "number") return payload.exp * 1000 - AUTH0_TOKEN_EXPIRY_MARGIN_MS;
+  } catch {
+    // Not a readable JWT: fall back to a short cache.
+  }
+  return Date.now() + AUTH0_TOKEN_FALLBACK_MS;
+}
+
+export function clearAuth0AccessToken() {
+  auth0TokenCache = null;
+}
 
 export async function getAuth0AccessToken(): Promise<string | null> {
   if (!AUTH0_ENABLED || typeof window === "undefined") return null;
-  if (auth0TokenCache && Date.now() - auth0TokenCache.fetchedAt < AUTH0_TOKEN_CACHE_MS) {
+  if (auth0TokenCache && Date.now() < auth0TokenCache.expiresAt) {
     return auth0TokenCache.token;
   }
-  const res = await fetch("/auth/access-token", { credentials: "include" });
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => ({}));
-  if (typeof body.token !== "string" || !body.token) return null;
-  auth0TokenCache = { token: body.token, fetchedAt: Date.now() };
-  return body.token;
+  auth0TokenRequest ??= (async () => {
+    try {
+      const res = await fetch("/auth/access-token", { credentials: "include" });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => ({}));
+      if (typeof body.token !== "string" || !body.token) return null;
+      auth0TokenCache = { token: body.token, expiresAt: auth0TokenExpiresAt(body.token) };
+      return body.token;
+    } finally {
+      auth0TokenRequest = null;
+    }
+  })();
+  return auth0TokenRequest;
 }
 
 // The onboarding agent prompt needs a persistent API key — agents can't use
@@ -155,6 +178,8 @@ export async function apiFetch<T>(
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  // A rejected token is fetched again on the next call rather than reused from the cache.
+  if (res.status === 401) clearAuth0AccessToken();
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = body.detail;
