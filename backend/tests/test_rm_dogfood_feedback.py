@@ -13,7 +13,14 @@ from backend.services.rm import workbench_auto as auto
 from backend.tasks import reward_models as tasks
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
-from .test_workbench_automatic import _label, evaluate, get_eval, labeler, rejects  # noqa: F401
+from .test_workbench_automatic import (  # noqa: F401
+    ANSWER,
+    _label,
+    evaluate,
+    get_eval,
+    labeler,
+    rejects,
+)
 
 
 def session(name, verdict="Thanks, that works."):
@@ -32,6 +39,7 @@ async def annotated_traces(client, labeler):
     ids = []
     labeler["labels"].update(
         a1=_label("agent", type="clarifying_question"),
+        a2={**ANSWER, "uses": ["a1"]},
         a3=_label("agent", type="status_update"),
     )
     for name in ("train success", "train failure", "eval success", "eval failure"):
@@ -65,15 +73,15 @@ async def test_step_scores_match_detail_summary_history_and_training(client, poo
     tid = ids[0]  # question, accepted answer, closing note
     current = (await get_eval(client, user, tid))["current"]
     credits = current["credits"]
-    # The question earns a share of the accepted answer; the note after it earns nothing.
-    assert [c["expected_credit"] for c in credits] == pytest.approx([0.19, 1.0, 0.0])
+    # The question whose reply the accepted answer used takes its 30%; the note after it earns nothing.
+    assert [c["expected_credit"] for c in credits] == pytest.approx([0.25, 0.7, 0.0])
     assert [c["credit"] for c in credits] == [1, 2, 0]  # the band each score falls in
     assert {c["credit_method"] for c in credits} == {auto.policy.RULE_METHOD}
     listed = await client.get(
         "/api/v1/rm/traces", headers=user["headers"], params={"q": "train success"}
     )
     assert listed.json()["traces"][0]["evaluation"]["action_credit"] == pytest.approx(
-        {"mean": 1.19 / 3, "min": 0.0, "max": 1.0, "count": 3}
+        {"mean": 0.95 / 3, "min": 0.0, "max": 0.7, "count": 3}
     )
     config = {
         "rubric": ["Complete the task"],
@@ -82,9 +90,9 @@ async def test_step_scores_match_detail_summary_history_and_training(client, poo
     }
     pairs = await automatic_dataset.build_pairs(user["uuid"], [tid], config, 100)
     assert {(p["chosen_credit"], p["rejected_credit"]) for p in pairs} == {
-        (1.0, 0.19),
-        (1.0, 0.0),
-        (0.19, 0.0),
+        (0.7, 0.25),
+        (0.7, 0.0),
+        (0.25, 0.0),
     }
     historical = await client.get(
         f"{BASE}/traces/{tid}/evaluation/{current['id']}", headers=user["headers"]
@@ -98,7 +106,7 @@ async def test_step_scores_match_detail_summary_history_and_training(client, poo
     )
     pending = await get_eval(client, user, tid)
     assert [c["expected_credit"] for c in pending["previous_credits"]] == pytest.approx(
-        [0.19, 1.0, 0.0]
+        [0.25, 0.7, 0.0]
     )
 
 

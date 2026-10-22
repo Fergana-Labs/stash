@@ -170,21 +170,36 @@ outcome and each action directly, stay in the trace's history. That policy's
 two questions are still asked when a proposed correction is checked against
 one recorded action.
 
+Labels state facts only. Any label the conversation doesn't settle can be
+`unclear`, and the grading model answers that label's question instead.
+
 - **Work costs points.** A lookup is −0.03, a call that changes something
-  −0.05, a question to the user −0.05; an error adds −0.10 and a repeat of an
-  earlier call adds −0.10.
-- **An answer earns points by how the user reacted**, from +1.0 (confirmed, no
-  caveats) down to −1.0 (rejected, stated with confidence).
-- **Quality checks** (optional, when `TYPESAFE_API_KEY` is set). Where the
-  labels leave the outcome open (a tool call, a question, an answer the user
-  never reacted to), the grading model is asked one multiple-choice question
-  about that step, and the options' points are blended by their probabilities.
-  The bounds keep the order fixed: an unconfirmed answer never beats an
-  accepted one, and work is never scored above zero.
-- **Credit flows back.** An answer the user reacted to passes
-  `0.3 × points × 0.8^k` to the step `k` places before it in the same task.
-- **A task's score** is its final answer's points plus the cost of the work,
-  capped to −1..+1.
+  −0.05, a question to the user −0.05; an error, a repeat of an earlier call,
+  or arguments that don't match the request each add −0.10, and a change the
+  user hadn't approved adds −0.20.
+- **An answer the user reacted to earns points by the reaction**, from +1.0
+  (confirmed, no caveats) down to −1.0 (rejected, stated with confidence).
+  No model is asked about it.
+- **An answer nobody reacted to earns points by its grounding**: whether its
+  key claim is in the tool results (+0.30, +0.35 hedged), partly (+0.10),
+  unsourced (−0.40) or contradicted (−0.50).
+- **"Not found"** is −0.35 with no lookup first, −0.25 after one, −0.15 after
+  several, −0.10 when it also says what to try next.
+- **Jev's questions** (when `TYPESAFE_API_KEY` is set): one multiple-choice
+  question per tool call, per clarifying question and per unclear label; the
+  options' points are blended by their probabilities.
+- **Credit is shared, not created.** An answer the user reacted to keeps 70%
+  and splits 30% equally: among the steps it used when confirmed or accepted,
+  among earlier faulty steps in its task when rejected or partly right. With
+  none, it keeps everything.
+- **A task's score** is its final answer's full points, plus the work cost
+  (capped at −0.10), minus 0.25 per earlier rejected answer (0.10 partly
+  right), capped to −1..+1.
+
+The point values keep fixed orderings, pinned in `test_step_labeling`:
+guessing never beats an honest "not found", any "not found" beats a rejected
+answer, an unreacted answer never beats an accepted one, hedging only pays
+before the user reacts, and work only breaks ties.
 
 A step's score breakdown is `steps[].metadata.reward` and the task scores are
 `step_scores` on `GET /traces/{id}`; an imported trace may carry both
