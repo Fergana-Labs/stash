@@ -560,7 +560,7 @@ function DiscoverSection() {
       {fetching ? (
         <CardGridSkeleton />
       ) : skills.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted-foreground">
+        <p className="rounded-lg border border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted-foreground">
           No public Skills match.
         </p>
       ) : (
@@ -1043,7 +1043,7 @@ function PlusGlyph() {
 
 function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
+    <div className="rounded-lg border border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
       <p className="m-0">No skills yet.</p>
       <p className="m-0 mt-1.5">Create one from your terminal:</p>
       <div className="mt-3">

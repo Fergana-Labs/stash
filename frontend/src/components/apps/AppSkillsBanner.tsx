@@ -97,7 +97,7 @@ export default function AppSkillsBanner({ slug }: { slug: string }) {
                   "cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] transition-colors disabled:opacity-50 " +
                   (mine
                     ? "border-border bg-base text-foreground hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-700)]"
-                    : "border-dashed border-border bg-transparent text-muted-foreground hover:border-[var(--color-brand-300)] hover:text-foreground")
+                    : " border-border bg-transparent text-muted-foreground hover:border-[var(--color-brand-300)] hover:text-foreground")
                 }
               >
                 {mine ? skill.name : `+ ${skill.name}`}

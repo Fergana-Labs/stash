@@ -22,13 +22,13 @@ export default function FileThumb({ path, alt, className }: { path: string; alt:
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [path]);
   if (!url) {
-    return <div className={cn("flex items-center justify-center rounded-md border border-border bg-surface/30 text-[11px] text-muted-foreground", className)} role="status">
+    return <div className={cn("flex items-center justify-center rounded border border-border bg-surface/30 text-[11px] text-muted-foreground", className)} role="status">
       {failed ? "Image unavailable" : "Loading…"}
     </div>;
   }
   return <Dialog>
     <DialogTrigger asChild>
-      <button type="button" aria-label={`Enlarge ${alt}`} className={cn("block cursor-zoom-in overflow-hidden rounded-md border border-border bg-white p-0", className)}>
+      <button type="button" aria-label={`Enlarge ${alt}`} className={cn("block cursor-zoom-in overflow-hidden rounded-sm border border-border bg-white p-0", className)}>
         {/* Authenticated blobs cannot go through the public image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt={alt} className="h-full w-full object-contain" />

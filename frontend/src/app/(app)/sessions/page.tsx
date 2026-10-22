@@ -241,7 +241,7 @@ const PLUGIN_INSTALL_COMMANDS = "uv tool install stashai\nstash signin";
 // CLI installs, so an empty list usually means that setup hasn't happened yet.
 function SessionsEmptyState() {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+    <div className="rounded-lg border border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
       <p className="m-0">No sessions yet.</p>
       <p className="m-0 mt-1.5">
         Sessions from Claude Code, Cursor, Codex and other agents appear here

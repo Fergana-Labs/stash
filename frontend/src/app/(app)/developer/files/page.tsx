@@ -149,7 +149,7 @@ function FileLine({ file }: { file: DeveloperFileRow }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
+    <p className="mt-4 rounded border border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
       {children}
     </p>
   );

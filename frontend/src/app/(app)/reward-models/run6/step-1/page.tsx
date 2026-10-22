@@ -58,7 +58,7 @@ export default function HillClimbingPage() {
       description="How each production agent's reward is moving as its prompt changes. Rewards are daily means across scored runs, from 0 to 1."
       actions={<RangePicker value={range} onChange={setRange} />}
     >
-      <div className="mb-3 rounded-md border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">Sample data. This view will show your agents once production reward history is available.</div>
+      <div className="mb-3 rounded-md border border-border px-3 py-2 text-[12px] text-muted-foreground">Sample data. This view will show your agents once production reward history is available.</div>
 
       <section aria-label="Summary" className="grid grid-cols-2 divide-border border-y border-border md:grid-cols-4 md:divide-x">
         <Stat label={`Reward, last ${COMPARE_DAYS} days`} value={fmt(fleetSummary.end)} detail={<TrendText change={fleetSummary.change} suffix={`since ${rangeStart}`} />} />
@@ -202,7 +202,7 @@ function Legend({ selected }: { selected: ClimbAgent | null }) {
   return (
     <div className="flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground">
       {selected && <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-[#2a78d6] dark:bg-[#3987e5]" />{selected.name}</span>}
-      <span className="inline-flex items-center gap-1.5"><span className={cn("h-0.5 w-4", selected ? "border-t-2 border-dashed border-foreground/70" : "bg-foreground/70")} />All agents (run-weighted)</span>
+      <span className="inline-flex items-center gap-1.5"><span className={cn("h-0.5 w-4", selected ? "border-t-2 border-foreground/70" : "bg-foreground/70")} />All agents (run-weighted)</span>
       <span className="inline-flex items-center gap-1.5"><span className="h-px w-4 bg-muted-foreground/40" />Each agent</span>
     </div>
   );

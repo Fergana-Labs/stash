@@ -154,7 +154,7 @@ export default function SharedWithMeFiles() {
 
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
+      <p className="rounded-lg border border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
         Nothing shared with you yet. Folders, pages, files, and tables others
         share with you show up here.
       </p>

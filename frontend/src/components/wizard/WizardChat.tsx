@@ -68,7 +68,7 @@ function CardSlot({ card, latest, fresh }: { card: Card; latest: boolean; fresh:
   const [open, setOpen] = useState(false);
   if (latest || open || card.kind === "robustness") return <CardView card={card} fresh={fresh && latest} />;
   return (
-    <button type="button" onClick={() => setOpen(true)} className="my-1 flex w-full items-center gap-2 rounded-md border border-dashed border-border px-3 py-1.5 text-left text-[12px] text-muted-foreground hover:bg-surface/60">
+    <button type="button" onClick={() => setOpen(true)} className="my-1 flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-left text-[12px] text-muted-foreground hover:bg-surface/60">
       <Sparkles className="size-3" />{TITLES[card.kind]} <span className="ml-auto underline">Reopen</span>
     </button>
   );
