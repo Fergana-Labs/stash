@@ -125,7 +125,9 @@ async def test_train_and_score(client: AsyncClient, fakes):
     assert [c["caller"] for c in calls][-1] == "draw-agent"
     assert calls[-1]["task"] == "a red cat"
     assert calls[-1]["comments"]["summary"].startswith("score")
-    image = await client.get(f"/api/v1/image-evals/{cid}/calls/{calls[0]['id']}/image", headers=auth)
+    image = await client.get(
+        f"/api/v1/image-evals/{cid}/calls/{calls[0]['id']}/image", headers=auth
+    )
     assert image.status_code == 200 and image.content == BLUE[4]
 
 
@@ -172,7 +174,9 @@ async def test_labeling_a_call_adds_an_example_without_reembedding(client: Async
 
     # Relabeling replaces the example; clearing removes it.
     await client.put(
-        f"/api/v1/image-evals/{cid}/calls/{call['call_id']}/label", headers=auth, json={"label": "liked"}
+        f"/api/v1/image-evals/{cid}/calls/{call['call_id']}/label",
+        headers=auth,
+        json={"label": "liked"},
     )
     assert (await client.get(f"/api/v1/image-evals/{cid}", headers=auth)).json()["examples"] == {
         "liked": 5,
@@ -180,7 +184,9 @@ async def test_labeling_a_call_adds_an_example_without_reembedding(client: Async
         "imitations": 0,
     }
     await client.put(
-        f"/api/v1/image-evals/{cid}/calls/{call['call_id']}/label", headers=auth, json={"label": None}
+        f"/api/v1/image-evals/{cid}/calls/{call['call_id']}/label",
+        headers=auth,
+        json={"label": None},
     )
     assert (await client.get(f"/api/v1/image-evals/{cid}", headers=auth)).json()["examples"] == {
         "liked": 4,
@@ -195,15 +201,21 @@ async def test_labeling_a_call_adds_an_example_without_reembedding(client: Async
 async def test_examples_list_image_and_delete(client: AsyncClient):
     auth = await _register(client)
     cid = await _trained(client, auth)
-    examples = (await client.get(f"/api/v1/image-evals/{cid}/examples", headers=auth)).json()["examples"]
+    examples = (await client.get(f"/api/v1/image-evals/{cid}/examples", headers=auth)).json()[
+        "examples"
+    ]
     assert len(examples) == 8 and all(e["heldout_score"] is not None for e in examples)
     first = examples[0]
-    image = await client.get(f"/api/v1/image-evals/{cid}/examples/{first['id']}/image", headers=auth)
+    image = await client.get(
+        f"/api/v1/image-evals/{cid}/examples/{first['id']}/image", headers=auth
+    )
     assert image.status_code == 200 and image.content == RED[0]
     assert (
         await client.delete(f"/api/v1/image-evals/{cid}/examples/{first['id']}", headers=auth)
     ).status_code == 204
-    assert (await client.get(f"/api/v1/image-evals/{cid}", headers=auth)).json()["examples"]["liked"] == 3
+    assert (await client.get(f"/api/v1/image-evals/{cid}", headers=auth)).json()["examples"][
+        "liked"
+    ] == 3
 
 
 async def test_rejections(client: AsyncClient):
@@ -217,7 +229,9 @@ async def test_rejections(client: AsyncClient):
     )
     assert bad.status_code == 422
     untrained = await client.post(
-        f"/api/v1/image-evals/{cid}/score", headers=auth, files={"file": ("x.png", RED[0], "image/png")}
+        f"/api/v1/image-evals/{cid}/score",
+        headers=auth,
+        files={"file": ("x.png", RED[0], "image/png")},
     )
     assert untrained.status_code == 422
     await _upload(client, auth, cid, "liked", RED[:2])
@@ -239,7 +253,9 @@ async def test_owner_isolation(client: AsyncClient):
     ]:
         assert (await getattr(client, method)(path, headers=other)).status_code == 404, path
     scored = await client.post(
-        f"/api/v1/image-evals/{cid}/score", headers=other, files={"file": ("x.png", RED[4], "image/png")}
+        f"/api/v1/image-evals/{cid}/score",
+        headers=other,
+        files={"file": ("x.png", RED[4], "image/png")},
     )
     assert scored.status_code == 404
     assert (await client.get("/api/v1/image-evals", headers=other)).json()["classifiers"] == []
@@ -253,7 +269,9 @@ async def test_read_key_can_score_but_not_train(client: AsyncClient):
     )
     read = _auth(minted.json()["api_key"])
     scored = await client.post(
-        f"/api/v1/image-evals/{cid}/score", headers=read, files={"file": ("x.png", RED[4], "image/png")}
+        f"/api/v1/image-evals/{cid}/score",
+        headers=read,
+        files={"file": ("x.png", RED[4], "image/png")},
     )
     assert scored.status_code == 200, scored.text
     assert (await client.post(f"/api/v1/image-evals/{cid}/train", headers=read)).status_code == 403
@@ -304,7 +322,9 @@ async def test_build_writes_brief_adds_imitations_and_trains(
     started = []
     from backend.tasks import image_evals as image_eval_tasks
 
-    monkeypatch.setattr(image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_))
+    monkeypatch.setattr(
+        image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_)
+    )
     queued = await client.post(f"/api/v1/image-evals/{cid}/build", headers=auth)
     assert queued.status_code == 202 and queued.json()["build"]["stage"] == "queued"
     assert started == [cid]
@@ -316,7 +336,9 @@ async def test_build_writes_brief_adds_imitations_and_trains(
     assert detail["build"]["stage"] == "done" and detail["build"]["imitations"] == 4
     assert detail["examples"] == {"liked": 4, "disliked": 3, "imitations": 4}
     assert detail["trained"] and not detail["needs_training"]
-    examples = (await client.get(f"/api/v1/image-evals/{cid}/examples", headers=auth)).json()["examples"]
+    examples = (await client.get(f"/api/v1/image-evals/{cid}/examples", headers=auth)).json()[
+        "examples"
+    ]
     assert sorted(e["filename"] for e in examples if e["source"] == "imitation") == [
         "a box",
         "a cat",
@@ -342,7 +364,9 @@ async def test_wizard_image_eval_goes_from_upload_card_to_endpoint(
     assert wizard._awaits_user(card, result)
     assert [t["name"] for t in await wizard.setup_tools(owner, session)] == ["image_eval"]
     cid = card["props"]["evalId"]
-    found = (await client.get(f"/api/v1/image-evals/by-model/{session['model_id']}", headers=auth)).json()
+    found = (
+        await client.get(f"/api/v1/image-evals/by-model/{session['model_id']}", headers=auth)
+    ).json()
     assert found["id"] == cid and found["name"] == "Reds"
 
     # Too few images: finish keeps asking for them instead of building.
@@ -351,7 +375,9 @@ async def test_wizard_image_eval_goes_from_upload_card_to_endpoint(
 
     await _upload(client, auth, cid, "liked", RED[:4])
     started = []
-    monkeypatch.setattr(image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_))
+    monkeypatch.setattr(
+        image_eval_tasks.build_classifier, "delay", lambda cid_: started.append(cid_)
+    )
     result, card = await wizard.image_tool(owner, session, {"operation": "finish"})
     assert result["status"] == "working" and card["props"]["section"] == "progress"
     assert started == [cid]
@@ -376,10 +402,44 @@ async def test_by_model_is_404_for_other_evals(client: AsyncClient):
 
 async def test_upload_returns_without_embedding_and_training_embeds(client: AsyncClient, fakes):
     auth = await _register(client)
-    cid = (await client.post("/api/v1/image-evals", headers=auth, json={"name": "Reds"})).json()["id"]
+    cid = (await client.post("/api/v1/image-evals", headers=auth, json={"name": "Reds"})).json()[
+        "id"
+    ]
     assert (await _upload(client, auth, cid, "liked", RED[:4])).status_code == 201
     assert (await _upload(client, auth, cid, "disliked", BLUE[:3])).status_code == 201
     assert fakes["embed"] == 0
     trained = await client.post(f"/api/v1/image-evals/{cid}/train", headers=auth)
     assert trained.status_code == 200 and trained.json()["trained"]
     assert fakes["embed"] == 7
+
+
+def test_head_learns_off_style_and_reports_each_group():
+    rng = np.random.default_rng(0)
+    style = np.array([1.0, 0.2] + [0.0] * 14)
+    liked = style + rng.normal(0, 0.05, (20, 16))
+    near = style + np.array([0, 0.3] + [0] * 14) + rng.normal(0, 0.05, (8, 16))  # imitations
+    off = rng.normal(0, 1, (40, 16))  # clearly not the style
+    x = np.vstack([liked, near, off])
+    y = np.array([1] * 20 + [0] * 48)
+    groups = np.array(["liked"] * 20 + ["imitation"] * 8 + ["offstyle"] * 40)
+    head, metrics = heads.train(x, y, groups)
+    assert set(metrics["heldout_by_group"]) == {"liked", "imitation", "offstyle"}
+    assert metrics["heldout_by_group"]["offstyle"] >= 0.9
+    # The headline number averages the groups instead of counting 40 easy off-style images.
+    assert metrics["heldout_accuracy"] == pytest.approx(
+        np.mean(list(metrics["heldout_by_group"].values()))
+    )
+    assert 0 < head["typical_floor"] < 1
+
+
+def test_predict_caps_images_unlike_every_liked_example():
+    rng = np.random.default_rng(1)
+    liked = np.array([1.0, 0.0, 0.0]) + rng.normal(0, 0.05, (10, 3))
+    other = np.array([0.0, 1.0, 0.0]) + rng.normal(0, 0.05, (10, 3))
+    head, _ = heads.train(np.vstack([liked, other]), np.array([1] * 10 + [0] * 10))
+    # Far along the "away from disliked" direction, and unlike every liked example.
+    stranger = np.array([1.0, -3.0, 2.5])
+    assert heads.predict(head, stranger) > 0.9
+    assert heads.predict(head, stranger, liked) == 0
+    # A liked-looking image is untouched by the guard.
+    assert heads.predict(head, liked[0], liked) == pytest.approx(heads.predict(head, liked[0]))

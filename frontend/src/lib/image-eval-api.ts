@@ -25,6 +25,8 @@ export interface ImageEvalSummary {
   trained: boolean;
   trained_at: string | null;
   heldout_accuracy: number | null;
+  /** Held-out share judged right per group: liked recognized; disliked, imitation and offstyle rejected. */
+  heldout_by_group?: Partial<Record<"liked" | "disliked" | "imitation" | "offstyle", number>> | null;
   heldout_balanced_accuracy: number | null;
   heldout_method: string | null;
   liked: number | null;

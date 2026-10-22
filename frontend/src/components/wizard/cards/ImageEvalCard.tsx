@@ -6,10 +6,10 @@ import { Check, Images, Loader2 } from "lucide-react";
 import Markdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { ConnectAgent, UploadBox } from "@/components/image-eval/ImageEvalDetail";
+import { ConnectAgent, Quality, UploadBox } from "@/components/image-eval/ImageEvalDetail";
 import ImageEvalImage from "@/components/image-eval/ImageEvalImage";
 import { imageEvalExampleImagePath, imageEvalExamples, imageEvalGet, imageEvalUploadExamples, type ImageEvalDetail, type ImageEvalExample, type ImageEvalLabel } from "@/lib/image-eval-api";
-import { CardShell, pct, useWizard } from "../wizard-ui";
+import { CardShell, useWizard } from "../wizard-ui";
 
 const UPLOAD_BATCH = 10;
 const PARALLEL_UPLOADS = 3;
@@ -218,8 +218,9 @@ function useElapsed(startedAt: number | undefined, stopped: boolean) {
 function Connect({ data, error }: { data: ImageEvalDetail; error: React.ReactNode }) {
   return (
     <CardShell icon={Images} title="Your eval is ready"
-      subtitle={`${pct(data.heldout_accuracy)} right on examples it did not train on · ${data.examples.liked} liked · ${data.examples.imitations} imitations`}>
+      subtitle={`Learned from ${data.examples.liked} of your images and ${data.examples.imitations} near-misses Stash drew`}>
       {error}
+      <div className="mb-3"><Quality detail={data} compact /></div>
       <ConnectAgent id={data.id} />
       {data.model_id && <p className="mt-3 text-xs"><Link className="underline" href={`/reward-models/evals/${data.model_id}`}>Open the eval</Link> to watch your agent&apos;s calls and label them.</p>}
     </CardShell>

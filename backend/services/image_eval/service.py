@@ -108,6 +108,7 @@ def _summary(row) -> dict:
         "liked": metrics.get("liked"),
         "disliked": metrics.get("disliked"),
         "heldout_accuracy": metrics.get("heldout_accuracy"),
+        "heldout_by_group": metrics.get("heldout_by_group"),
         "heldout_balanced_accuracy": metrics.get("heldout_balanced_accuracy"),
         "heldout_method": metrics.get("heldout_method"),
         "created_at": row["created_at"],
@@ -124,9 +125,7 @@ async def _owned(owner: UUID, classifier_id: UUID):
     return row
 
 
-async def create(
-    owner: UUID, name: str, description: str, model_id: UUID | None = None
-) -> dict:
+async def create(owner: UUID, name: str, description: str, model_id: UUID | None = None) -> dict:
     row = await get_pool().fetchrow(
         """INSERT INTO image_evals (owner_user_id, name, description, embed_model, model_id)
         VALUES ($1,$2,$3,$4,$5) RETURNING *""",
@@ -263,9 +262,7 @@ async def add_examples(
             ctype,
         )
         out.append(dict(row))
-    await get_pool().execute(
-        "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-    )
+    await get_pool().execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
     return out
 
 
@@ -297,9 +294,7 @@ async def delete_example(owner: UUID, classifier_id: UUID, example_id: UUID) -> 
     )
     if deleted is None:
         raise NotFound("Example not found")
-    await get_pool().execute(
-        "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-    )
+    await get_pool().execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
 
 
 async def example_image(owner: UUID, classifier_id: UUID, example_id: UUID) -> tuple[bytes, str]:
@@ -337,18 +332,51 @@ async def embed_pending(classifier_id: UUID) -> int:
     return len(rows)
 
 
+CONTRAST = Path(__file__).with_name("contrast.npz")
+_contrast: np.ndarray | None = None
+
+
+def contrast() -> np.ndarray:
+    """Embeddings of the shared off-style set (backend/scripts/build_image_eval_contrast.py):
+    every eval also learns from these what is clearly not its style, so an eval built only
+    from images in the style still has something to say no to."""
+    global _contrast
+    if _contrast is None:
+        if not CONTRAST.exists():
+            _contrast = np.zeros((0, 0))
+        else:
+            data = np.load(CONTRAST)
+            same_model = str(data["embed_model"]) == embedder.EMBED_MODEL
+            _contrast = data["embeddings"].astype(np.float64) if same_model else np.zeros((0, 0))
+    return _contrast
+
+
+def _group(row) -> str:
+    if row["label"] == "liked":
+        return "liked"
+    return "imitation" if row["source"] == "imitation" else "disliked"
+
+
 async def train(owner: UUID, classifier_id: UUID) -> dict:
     await _owned(owner, classifier_id)
     await embed_pending(classifier_id)
     rows = await get_pool().fetch(
-        "SELECT id,label,embedding FROM image_eval_examples WHERE classifier_id=$1 ORDER BY created_at",
+        "SELECT id,label,source,embedding FROM image_eval_examples WHERE classifier_id=$1 ORDER BY created_at",
         classifier_id,
     )
-    x = np.array([r["embedding"] for r in rows], dtype=np.float64)
-    y = np.array([r["label"] == "liked" for r in rows])
     if len(rows) == 0:
         raise ValueError("Add liked and disliked examples first")
-    fitted, metrics = await asyncio.to_thread(heads.train, x, y)
+    x = np.array([r["embedding"] for r in rows], dtype=np.float64)
+    y = np.array([r["label"] == "liked" for r in rows])
+    groups = np.array([_group(r) for r in rows])
+    off = contrast()
+    if len(off) and off.shape[1] == x.shape[1]:
+        x = np.vstack([x, off])
+        y = np.concatenate([y, np.zeros(len(off), dtype=bool)])
+        groups = np.concatenate([groups, np.full(len(off), "offstyle")])
+    fitted, metrics = await asyncio.to_thread(heads.train, x, y, groups)
+    # Only the eval's own examples have ids; the shared off-style rows are summarized by group.
+    metrics["heldout_scores"] = metrics["heldout_scores"][: len(rows)]
     metrics["example_ids"] = [str(r["id"]) for r in rows]
     await get_pool().execute(
         "UPDATE image_evals SET head=$2, metrics=$3, trained_at=now(), updated_at=now() WHERE id=$1",
@@ -378,7 +406,13 @@ async def score(
         raise ValueError("Train the classifier before scoring")
     data, content_type = await validate_image(data, filename, content_type)
     (vector,) = await embedder.embed([data])
-    value = heads.predict(row["head"], np.asarray(vector))
+    liked = await get_pool().fetch(
+        "SELECT embedding FROM image_eval_examples WHERE classifier_id=$1 AND label='liked' AND embedding IS NOT NULL",
+        classifier_id,
+    )
+    value = heads.predict(
+        row["head"], np.asarray(vector), np.array([r["embedding"] for r in liked], dtype=np.float64)
+    )
     key = await _store(owner, data, content_type)
     notes = (
         await critic.comments(classifier_id, row["name"], data, content_type, value)
@@ -459,7 +493,5 @@ async def label_call(
                 call["content_type"],
                 call["embedding"],
             )
-        await conn.execute(
-            "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-        )
+        await conn.execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
     return {"call_id": call_id, "feedback_label": label, "feedback_note": note if label else None}

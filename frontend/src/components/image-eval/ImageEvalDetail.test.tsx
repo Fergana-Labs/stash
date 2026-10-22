@@ -48,3 +48,13 @@ describe("ImageEvalDetail", () => {
     await waitFor(() => expect(api.imageEvalLabelCall).toHaveBeenCalledWith("c1", "k1", "disliked", "too thin"));
   });
 });
+
+describe("Quality", () => {
+  it("reports each kind of example and flags a weak one", async () => {
+    const { Quality } = await import("@/components/image-eval/ImageEvalDetail");
+    render(<Quality detail={{ heldout_accuracy: 0.86, heldout_by_group: { liked: 0.97, imitation: 0.58, offstyle: 1 } }} />);
+    expect(screen.getByText("97%")).toBeInTheDocument();
+    expect(screen.getByText("of clearly off-style images rejected")).toBeInTheDocument();
+    expect(screen.getByText(/Weak spot: near-miss imitations rejected/)).toBeInTheDocument();
+  });
+});

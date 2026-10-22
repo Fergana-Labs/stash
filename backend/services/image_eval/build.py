@@ -197,7 +197,8 @@ async def run(classifier_id: UUID) -> None:
 
     await _set(classifier_id, stage="imitations")
     await get_pool().execute(
-        "DELETE FROM image_eval_examples WHERE classifier_id=$1 AND source='imitation'", classifier_id
+        "DELETE FROM image_eval_examples WHERE classifier_id=$1 AND source='imitation'",
+        classifier_id,
     )
     gate = asyncio.Semaphore(CONCURRENCY)
     done = 0
