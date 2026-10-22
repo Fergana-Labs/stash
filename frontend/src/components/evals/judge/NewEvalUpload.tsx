@@ -53,7 +53,7 @@ export default function NewEvalUpload() {
   }
 
   return (
-    <div className="max-w-xl space-y-3">
+    <div className="w-full max-w-2xl space-y-3">
       <input value={name} onChange={(e) => setName(e.target.value)} disabled={working} maxLength={160}
         placeholder="Name (optional)" aria-label="Eval name"
         className="w-full rounded border border-border bg-background px-3 py-2 text-sm" />
