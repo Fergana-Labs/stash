@@ -14,9 +14,9 @@ import {
 
 const BUILDING = ["queued", "traits", "checking"];
 const STAGE_TEXT: Record<string, string> = {
-  queued: "Starting",
-  traits: "Reading examples",
-  checking: "Checking against examples",
+  queued: "starting",
+  traits: "reading examples",
+  checking: "checking against examples",
 };
 
 /** A judge eval: its build, its endpoint, what it learned, agent calls and examples. */
@@ -78,7 +78,7 @@ function BuildStatus({ data, building }: { data: Eval; building: boolean }) {
   if (build.stage === "failed") return <p role="alert" className="rounded border border-destructive/40 px-4 py-3 text-sm text-destructive">Build failed: {build.error || "unknown error"}</p>;
   if (building) {
     const progress = build.stage === "checking" && build.total ? ` ${build.done ?? 0}/${build.total}` : "";
-    return <p role="status" className="flex items-center gap-2 rounded border border-border px-4 py-3 text-sm"><Loader2 className="size-4 animate-spin" />{STAGE_TEXT[build.stage]}{progress}</p>;
+    return <p role="status" className="flex items-center gap-2 rounded border border-border px-4 py-3 text-sm"><Loader2 className="size-4 animate-spin" />Building your eval API endpoint<span className="text-muted-foreground">· {STAGE_TEXT[build.stage]}{progress}</span></p>;
   }
   const m = build.metrics;
   return <p className="rounded border border-border px-4 py-3 text-sm">
