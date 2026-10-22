@@ -209,7 +209,7 @@ export function HeadTable({ head, rubric }: { head: Head; rubric: RubricQuestion
             );
           })}
           <tr className="border-t border-border bg-surface/40">
-            <td className="px-3 py-1 font-medium">Bias · temperature {head.temperature.toFixed(2)}</td>
+            <td className="px-3 py-1 font-medium">Bias, temperature {head.temperature.toFixed(2)}</td>
             {head.bias.map((b, ci) => (
               <td key={ci} className="px-2 py-1 text-right font-mono tabular-nums">
                 {b.toFixed(2)}

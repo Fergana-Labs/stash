@@ -8,7 +8,7 @@ import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
 export default function InboxCard() {
   const { modelId } = useWizard();
   return (
-    <CardShell icon={Inbox} title="Inbox" subtitle="Real decisions, least confident first · confirm or correct">
+    <CardShell icon={Inbox} title="Inbox" subtitle="Real decisions, least confident first, confirm or correct">
       {modelId ? <InboxPanel compact /> : <NeedsModel />}
     </CardShell>
   );

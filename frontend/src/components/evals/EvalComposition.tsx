@@ -53,7 +53,7 @@ export function OutcomeLink({ id }: { id: string }) {
   const at = (n: number) => `${50 + n / span * 50}%`;
   return <section aria-label="Outcome link" className="space-y-3 rounded border border-border p-4">
     <div><h3 className="text-sm font-medium">Do its decisions predict outcomes?</h3>
-      <p className="text-xs text-muted-foreground">Calls tagged with a run, and the outcome reported for that run later (0 failed … 1 succeeded). {credit.runs} runs with outcomes · {percent(credit.success_rate)} succeeded.</p></div>
+      <p className="text-xs text-muted-foreground">Calls tagged with a run, and the outcome reported for that run later (0 failed … 1 succeeded). {credit.runs} runs with outcomes, {percent(credit.success_rate)} succeeded.</p></div>
     <table className="w-full text-left text-xs"><thead><tr className="border-b border-border text-muted-foreground"><th className="py-1.5 font-medium">When it decided</th><th className="pl-4 text-right font-medium">Runs</th><th className="pl-4 text-right font-medium">Succeeded</th></tr></thead>
       <tbody>{credit.by_decision.map((d) => <tr key={d.decision} className="border-b border-border/60"><td className="py-1.5">{d.decision}</td><td className="pl-4 text-right tabular-nums">{d.runs}</td><td className="pl-4 text-right tabular-nums">{percent(d.success_rate)}</td></tr>)}</tbody></table>
     {!credit.ready ? <p className="text-xs text-muted-foreground">{credit.reason}</p> : <>

@@ -25,7 +25,7 @@ it("labels with number keys, shows images, and reports back to the wizard", asyn
   const send = vi.fn();
   render(<WizardProvider value={{ modelId: "m", send, refresh: vi.fn(), version: 0, busy: false }}><Labeler which="needs_review" /></WizardProvider>);
   expect(await screen.findByRole("img", { name: "shot.png" })).toBeVisible();
-  expect(screen.getByText("1 of 2 · press 1–2")).toBeVisible();
+  expect(screen.getByText("1 of 2, press 1–2")).toBeVisible();
   await user.keyboard("2");
   await screen.findByText("please send");
   fireEvent.click(screen.getByRole("button", { name: /send/ }));

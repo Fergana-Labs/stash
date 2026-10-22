@@ -116,7 +116,7 @@ export default function EvalWorkspace({ id }: { id: string }) {
             regression = await promoteChecked(id); return;
           }
           if (!graded.graded) throw new Error("Evaluation did not make progress. Try saving again.");
-          stage(2, `${scored} evaluations scored · ${graded.remaining} remaining…`);
+          stage(2, `${scored} evaluations scored, ${graded.remaining} remaining…`);
         }
         throw new Error("More examples remain. Try saving again.");
       } catch (e) { setSaveError(errorMessage(e)); throw e; }
@@ -253,7 +253,7 @@ function EvalTest({ id, detail, initialItem }: { id: string; detail: ModelDetail
     catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   }}>{busy ? "Evaluating…" : "Run eval"}</Button></div><EvalInput initialItem={initialItem} disabled={busy} onDetail={setTrace} onChange={(next) => { setItem(next); setResult(null); setError(""); }} />{!version?.head && <p className="text-xs text-muted-foreground">Save the eval to start testing.</p>}</section>
     <section className="min-w-0 space-y-3 rounded border border-border p-4"><h2 className="text-sm font-semibold">Scorecard</h2>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}{busy && <p role="status" className="text-xs">Evaluating input…</p>}{result ? <>
-      <div className="flex items-baseline gap-3"><strong className="text-xl">{result.label}</strong><span className="text-xs text-muted-foreground">{Math.round(result.confidence * 100)}% confidence · v{result.version}</span></div>
+      <div className="flex items-baseline gap-3"><strong className="text-xl">{result.label}</strong><span className="text-xs text-muted-foreground">{Math.round(result.confidence * 100)}% confidence, v{result.version}</span></div>
       <ProbabilityBars probabilities={result.probabilities} order={labels} highlight={result.label} />
       <RubricAnswersView rubric={version?.rubric ?? []} answers={result.rubric} />
       <textarea aria-label="Score correction feedback" className={inputClass} rows={2} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What should the eval have judged differently?" />

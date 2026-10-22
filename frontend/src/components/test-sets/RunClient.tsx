@@ -42,11 +42,11 @@ export function RunSummaryLine({ run }: { run: RunDetail }) {
   if (run.status === "failed" || !s) return <p className="text-xs text-destructive">{run.error ?? "Scoring failed"}</p>;
   return <p className="flex flex-wrap items-center gap-x-2 text-[13px]">
     <span><span className="font-medium tabular-nums">{s.passed}/{s.cases}</span> passed ({pct(s.pass_rate)})</span>
-    {s.baseline && <><span className="text-muted-foreground">·</span>{run.baseline_run_id
+    {s.baseline && <>{run.baseline_run_id
       ? <Link href={runHref(run.baseline_run_id)} className="text-muted-foreground hover:text-foreground hover:underline" title="Open the run this one is compared with">baseline {pct(s.baseline.pass_rate)}</Link>
       : <span className="text-muted-foreground">baseline {pct(s.baseline.pass_rate)}</span>}
-      <span className="text-muted-foreground">·</span><span className="inline-flex items-center gap-1.5">Gate: <GateBadge gate={s.gate} /></span></>}
-    {s.errors > 0 && <><span className="text-muted-foreground">·</span><span className="text-destructive">{s.errors} couldn’t be scored</span></>}
+      <span className="inline-flex items-center gap-1.5">Gate: <GateBadge gate={s.gate} /></span></>}
+    {s.errors > 0 && <><span className="text-destructive">{s.errors} couldn’t be scored</span></>}
   </p>;
 }
 
@@ -93,7 +93,7 @@ export default function RunClient({ runId }: { runId: string }) {
         {shown.map((r) => {
           const status = resultStatus(r);
           const expanded = open.has(r.case_id);
-          const why = r.error ?? r.scores.filter((s) => !s.passed).map((s) => s.reason).join(" · ");
+          const why = r.error ?? r.scores.filter((s) => !s.passed).map((s) => s.reason).join(", ");
           return <Fragment key={r.case_id}>
             <tr className="cursor-pointer border-b border-border align-top hover:bg-surface/60 [&>td]:px-3 [&>td]:py-2" onClick={() => toggle(r.case_id)}>
               <td><button type="button" aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${r.case_name || "case"}`} className="text-muted-foreground">{expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button></td>
@@ -133,7 +133,7 @@ function ResultDetail({ r }: { r: ResultRow }) {
       <Block label="This run" text={r.output} />
       {r.baseline_output !== null && <Block label={`Baseline (${r.baseline_passed ? "passed" : "failed"})`} text={r.baseline_output} muted />}
     </div>
-    {(r.passed || r.scores.length > 1) && r.scores.length > 0 && <ul className="grid gap-1">{r.scores.map((s, i) => <li key={i}><span className={s.passed ? "text-success" : "text-destructive"}>{s.passed ? "Pass" : "Fail"}</span> · {s.scorer === "expected" ? "Expected answer" : `Eval${s.label ? ` (${s.label})` : ""}`}: <span className="text-muted-foreground">{s.reason}</span></li>)}</ul>}
+    {(r.passed || r.scores.length > 1) && r.scores.length > 0 && <ul className="grid gap-1">{r.scores.map((s, i) => <li key={i}><span className={s.passed ? "text-success" : "text-destructive"}>{s.passed ? "Pass" : "Fail"}</span>, {s.scorer === "expected" ? "Expected answer" : `Eval${s.label ? ` (${s.label})` : ""}`}: <span className="text-muted-foreground">{s.reason}</span></li>)}</ul>}
     {r.trace_id && <Link href={`/reward-models/traces/${r.trace_id}`} className="text-muted-foreground underline hover:text-foreground">Open trace</Link>}
   </div>;
 }

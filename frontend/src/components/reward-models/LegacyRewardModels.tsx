@@ -165,7 +165,7 @@ function RubricModelRow({ model }: { model: ModelSummary }) {
       </button>
       <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="cursor-pointer truncate py-1 text-left font-medium hover:text-brand-600 hover:underline" title={model.name}>{model.name}</button>
     </div></td>
-    <td>{model.active_number === null ? "Draft" : `Ready · v${model.active_number}`}</td>
+    <td>{model.active_number === null ? "Draft" : `Ready, v${model.active_number}`}</td>
     <td className="text-muted-foreground">—</td>
     <td className="text-muted-foreground">Rubric-based</td>
     <td className="text-right tabular-nums">{model.examples}</td>
@@ -215,7 +215,7 @@ function ModelRow({ model }: { model: RmRewardModel }) {
           {trainingStage(model)}
         </span></td>
         <td className="text-[12px] text-muted-foreground tabular-nums"><ModelTiming model={model} /></td>
-        <td className="text-muted-foreground"><span className="block truncate" title={`Fine-tuned · ${model.base_model}`}>Fine-tuned · {model.base_model}</span></td>
+        <td className="text-muted-foreground"><span className="block truncate" title={`Fine-tuned, ${model.base_model}`}>Fine-tuned, {model.base_model}</span></td>
         <td className="text-right tabular-nums">{model.trace_count}</td>
         <td className="text-right tabular-nums">{metrics?.eval_accuracy == null ? <span className="text-muted-foreground">—</span> : `${(metrics.eval_accuracy * 100).toFixed(1)}%`}</td>
         <td className="text-right text-[11.5px] text-muted-foreground tabular-nums"><time dateTime={model.created_at} title={date.toLocaleString(undefined, { timeZoneName: "long" })}>{timestamp}</time></td>

@@ -77,7 +77,7 @@ export function toolActionSummary(step: Pick<RmStep, "tool_name" | "tool_input">
     const source = typeof input.input === "string" ? input.input : typeof input.code === "string" ? input.code : "";
     const calls = [...source.matchAll(/\btools\.([\w]+)\s*\(/g)];
     const actions = [...new Set(calls.map((call, index) => action(call[1], literalArguments(source.slice(call.index, calls[index + 1]?.index)))))];
-    if (actions.length) return short(actions.join(" · "))!;
+    if (actions.length) return short(actions.join(", "))!;
     if (/\bALL_TOOLS\b/.test(source)) return "Inspect available tools";
     return name.toLowerCase() === "js" ? "Run JavaScript" : "Run a script";
   }

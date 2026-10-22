@@ -20,8 +20,8 @@ function slug(text: string, taken: Set<string>): string {
 
 function kindOf(q: RubricQuestion): string {
   if (q.type === "noul") return "yes / no";
-  if (q.type === "score") return `scale · ${(q.criteria as string[]).length} levels`;
-  return `pick one · ${Object.keys(q.criteria).length}`;
+  if (q.type === "score") return `scale, ${(q.criteria as string[]).length} levels`;
+  return `pick one, ${Object.keys(q.criteria).length}`;
 }
 
 /** Co-create criteria: accept or dismiss proposals, edit wording, add your own, then save. */

@@ -75,7 +75,7 @@ it("logs test calls through the prediction API and saves human corrections", asy
   fireEvent.click(await screen.findByRole("button", { name: "Sandbox" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Example output" }), { target: { value: "A reply" } });
   fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
-  expect(await screen.findByText("80% confidence · v1")).toBeVisible();
+  expect(await screen.findByText("80% confidence, v1")).toBeVisible();
   expect(api.imPredict).toHaveBeenCalledWith("eval", "A reply", "active");
   fireEvent.change(screen.getByRole("textbox", { name: "Score correction feedback" }), { target: { value: "Too vague" } });
   fireEvent.click(screen.getByRole("button", { name: "Mark bad" }));
@@ -346,12 +346,12 @@ it("tests the saved evaluator even while edits exist, and uses the updated one a
   fireEvent.click(await screen.findByRole("button", { name: "Sandbox" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Example output" }), { target: { value: "A reply" } });
   fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
-  expect(await screen.findByText("90% confidence · v1")).toBeVisible();
+  expect(await screen.findByText("90% confidence, v1")).toBeVisible();
   expect(api.imPredict).toHaveBeenLastCalledWith("eval", "A reply", "active");
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("button", { name: "Open sandbox" })).toBeVisible();
   api.imPredict.mockResolvedValue({ label: "good", confidence: 0.9, probabilities: { good: 0.9, bad: 0.1 }, version: 2, rubric: {} });
   fireEvent.click(screen.getByRole("button", { name: "Run eval" }));
-  expect(await screen.findByText("90% confidence · v2")).toBeVisible();
+  expect(await screen.findByText("90% confidence, v2")).toBeVisible();
   expect(api.imPredict).toHaveBeenLastCalledWith("eval", "A reply", "active");
 });

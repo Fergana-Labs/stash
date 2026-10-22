@@ -66,7 +66,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
     <section aria-label="Action credit" className="mb-4 rounded-md border border-border px-3 py-2.5 text-[12px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Action credit</span>
-        {isDefault && <span className="text-muted-foreground">{trace.default_evaluator ? `Stash evaluator · v${trace.default_evaluator.revision}` : "Stash evaluator"}</span>}
+        {isDefault && <span className="text-muted-foreground">{trace.default_evaluator ? `Stash evaluator, v${trace.default_evaluator.revision}` : "Stash evaluator"}</span>}
         {effectiveModelId && <>
           <span className="text-muted-foreground">{scored} / {eligible.length} actions scored</span>
           <button type="button" onClick={() => void score()} disabled={requesting || active || !eligible.length}

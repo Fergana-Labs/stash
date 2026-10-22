@@ -86,7 +86,7 @@ export default function ImportDialog({
           />
           <span className="text-muted-foreground">
             {parsed.examples.length} ready{unlabeled ? ` (${unlabeled} unlabeled)` : ""}
-            {parsed.errors.length ? ` · ${parsed.errors.length} skipped` : ""}
+            {parsed.errors.length ? `, ${parsed.errors.length} skipped` : ""}
           </span>
         </div>
         {parsed.errors.length > 0 && (

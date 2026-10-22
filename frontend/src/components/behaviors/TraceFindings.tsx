@@ -25,8 +25,8 @@ export function BehaviorMarks({ hits, total, selectedId, numberOf, onChoose }: {
       const left = (hit.start_idx / total) * 100;
       const width = Math.max(0.6, ((hit.end_idx - hit.start_idx + 1) / total) * 100);
       const selected = hit.id === selectedId;
-      return <button key={hit.id} type="button" onClick={() => onChoose(hit)} aria-label={`${hit.behavior_name ?? "Behavior"} · ${stepRange(hit.start_idx, hit.end_idx, numberOf)}`}
-        title={`${hit.behavior_name ?? "Behavior"} · ${stepRange(hit.start_idx, hit.end_idx, numberOf)}`}
+      return <button key={hit.id} type="button" onClick={() => onChoose(hit)} aria-label={`${hit.behavior_name ?? "Behavior"}, ${stepRange(hit.start_idx, hit.end_idx, numberOf)}`}
+        title={`${hit.behavior_name ?? "Behavior"}, ${stepRange(hit.start_idx, hit.end_idx, numberOf)}`}
         className={cn("absolute inset-y-0 min-w-[3px] rounded-[2px] opacity-80 hover:opacity-100", selected && "opacity-100 ring-2 ring-foreground/60")}
         style={{ left: `${left}%`, width: `${width}%`, background: ACTOR_COLOR[hit.actor ?? "agent"].hex }} />;
     })}
@@ -90,7 +90,7 @@ export default function TraceFindings({ traceId, steps, numberOf, onReveal, onJu
   const headline = latest ? judgeHeadline(latest) : null;
   const summary = [
     hits.length ? `${byBehavior.size} behavior${byBehavior.size === 1 ? "" : "s"}` : null,
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean).join(", ");
 
   async function check() {
     const id = await judge.check();
@@ -103,7 +103,7 @@ export default function TraceFindings({ traceId, steps, numberOf, onReveal, onJu
         {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}Findings
       </button>
       <BehaviorMarks hits={hits} total={steps.length ? Math.max(...steps.map((s) => s.index)) + 1 : 0} selectedId={selectedId} numberOf={numberOf} onChoose={choose} />
-      <span className="shrink-0 text-[11px] text-muted-foreground">{summary}{summary && headline ? " · " : ""}{headline && <span className={headlineClass(headline.tone)}>{headline.text}</span>}{!summary && !headline && "None yet"}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{summary}{summary && headline ? ", " : ""}{headline && <span className={headlineClass(headline.tone)}>{headline.text}</span>}{!summary && !headline && "None yet"}</span>
       {judge.running && <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />}
       <Button size="xs" variant="outline" className="shrink-0" disabled={judge.starting || judge.running} onClick={() => void check()}><SearchCheck />{judge.starting ? "Starting…" : judge.running ? "Checking…" : "Check claims"}</Button>
       {judge.error && <span role="alert" className="text-[11px] text-destructive">{judge.error}</span>}

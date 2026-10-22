@@ -29,7 +29,7 @@ export default function ExamplesCard() {
     } catch (err) { setError(errorMessage(err)); }
   }
   return (
-    <CardShell icon={Table2} title="Examples" subtitle={examples ? `${examples.length} total · ${examples.filter((e) => e.split === "eval").length} held out · newest first` : "Loading…"}>
+    <CardShell icon={Table2} title="Examples" subtitle={examples ? `${examples.length} total, ${examples.filter((e) => e.split === "eval").length} held out, newest first` : "Loading…"}>
       {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
       <ul className="m-0 max-h-96 list-none space-y-1.5 overflow-y-auto p-0">
         {(examples ?? []).slice(0, 12).map((e) => (

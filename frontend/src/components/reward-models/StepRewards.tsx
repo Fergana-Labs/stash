@@ -39,7 +39,7 @@ export function TaskScoreSummary({ heading, score, firstStep, lastStep }: { head
     <section aria-label={`${heading} score summary`} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-border-subtle py-2">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
         <h3 className="m-0 text-[13px] font-medium text-foreground">{heading}</h3>
-        <span aria-hidden="true" className="text-muted-foreground/50">·</span>
+        
         <p className="m-0 text-[11px] text-muted-foreground">{firstStep === lastStep ? `Step ${firstStep}` : `Steps ${firstStep}–${lastStep}`}</p>
       </div>
       <dl className="m-0 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs">

@@ -81,5 +81,5 @@ export function automaticAnnotationProgress(evaluation: TraceEvaluationResponse 
   else if (queue?.status === "waiting" || (!evaluation.boundary && current?.status !== "completed")) parts.push("Waiting for response completion");
   else if (queue?.status === "queued" && queue.error) parts.push("Retrying annotation update…");
   else if (current?.status !== "completed") parts.push("Updating annotations…");
-  return { label: parts.join(" · "), unscoredReasons };
+  return { label: parts.join(", "), unscoredReasons };
 }

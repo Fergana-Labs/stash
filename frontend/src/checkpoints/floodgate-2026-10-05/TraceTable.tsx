@@ -189,7 +189,7 @@ function TraceRow({
       <td className="px-3 py-2.5 text-right" title="Mean of the shared evaluator’s action rewards, not a whole-trace outcome score">
         {trace.action_credit ? <div className="leading-4">
           <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.action_credit.mean)}</span>
-          <div className="text-[11px] text-muted-foreground">{trace.action_credit.count} actions · Stash v{trace.action_credit.revision}</div>
+          <div className="text-[11px] text-muted-foreground">{trace.action_credit.count} actions, Stash v{trace.action_credit.revision}</div>
         </div> : <span className="text-muted-foreground">—</span>}
       </td>
       <td className="px-3 py-2.5 text-right">

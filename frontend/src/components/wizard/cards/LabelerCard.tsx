@@ -92,12 +92,12 @@ export function Labeler({ which = "needs_review", onDone }: { which?: Which; onD
   const total = queue?.length ?? 0;
   const labeledCount = Object.keys(done).length;
   const options = current?.kind === "pair" ? pairSpace : space;
-  const keysHint = options?.kind === "multi" ? `1–${options.options.length} toggle · 0 none · ↵ save` : `press 1–${options?.options.length ?? 0}`;
+  const keysHint = options?.kind === "multi" ? `1–${options.options.length} toggle, 0 none, ↵ save` : `press 1–${options?.options.length ?? 0}`;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
-        <span>{queue ? (finished ? `Done — ${labeledCount} labeled` : total ? `${Math.min(index + 1, total)} of ${total} · ${keysHint}` : "") : "Loading…"}</span>
+        <span>{queue ? (finished ? `Done — ${labeledCount} labeled` : total ? `${Math.min(index + 1, total)} of ${total}, ${keysHint}` : "") : "Loading…"}</span>
         {!finished && queue && total > 0 && <Button size="xs" variant="ghost" onClick={() => finish(done)}>{labeledCount ? "Done for now" : "Not now"}</Button>}
       </div>
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}

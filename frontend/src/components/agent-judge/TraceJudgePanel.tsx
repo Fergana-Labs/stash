@@ -71,7 +71,7 @@ export function judgeHeadline(report: JudgeReport): { text: string; tone: "bad" 
   if (!claims.length) return { text: "No checkable claims", tone: "neutral" };
   if (contradicted) return { text: `${contradicted} of ${claims.length} claim${claims.length === 1 ? "" : "s"} contradicted`, tone: "bad" };
   if (verified === claims.length) return { text: `All ${claims.length} claim${claims.length === 1 ? "" : "s"} verified`, tone: "good" };
-  return { text: `${verified} of ${claims.length} claims verified · none contradicted`, tone: "neutral" };
+  return { text: `${verified} of ${claims.length} claims verified, none contradicted`, tone: "neutral" };
 }
 
 export const headlineClass = (tone: "bad" | "good" | "neutral") => tone === "bad" ? "text-red-600 dark:text-red-400" : tone === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground";
@@ -119,7 +119,7 @@ export function ClaimsGrid({ claims, quotes, numberOf, onJump }: { claims: Claim
         <div className={cn("rounded border px-2.5 py-1.5 text-[11px]", c.status === "contradicted" ? "border-red-500/40" : c.status === "verified" ? "border-emerald-500/40" : " border-border")}>
           {!ev ? <span className="text-muted-foreground">No evidence found</span>
             : ev.idx === null ? <><span className="mr-1 text-[10px] text-muted-foreground">External</span>{ev.text}</>
-            : repeatOf !== undefined ? <span className="text-muted-foreground">Same evidence as claim {repeatOf + 1} · <StepLink index={ev.idx} numberOf={numberOf} onJump={onJump} /></span>
+            : repeatOf !== undefined ? <span className="text-muted-foreground">Same evidence as claim {repeatOf + 1}, <StepLink index={ev.idx} numberOf={numberOf} onJump={onJump} /></span>
             : <><p className="m-0 line-clamp-4 text-muted-foreground">“{quotes.get(ev.idx) ?? ev.text}”</p><StepLink index={ev.idx} numberOf={numberOf} onJump={onJump} /></>}
         </div>
       </div>;
@@ -152,7 +152,7 @@ export function JudgeReadStrip({ steps, cited, numberOf, onJump }: { steps: RmSt
     else runs.push({ kind, first: s, count: 1, cited: isCited });
   }
   return <div aria-label="What the judge read" className="flex flex-wrap gap-1">
-    {runs.map((r) => <button key={r.first.id} type="button" onClick={() => onJump(r.first.index)} title={`step ${numberOf(r.first.index)}${r.count > 1 ? ` + ${r.count - 1} more` : ""}${r.cited ? " · cited" : ""}`}
+    {runs.map((r) => <button key={r.first.id} type="button" onClick={() => onJump(r.first.index)} title={`step ${numberOf(r.first.index)}${r.count > 1 ? ` + ${r.count - 1} more` : ""}${r.cited ? ", cited" : ""}`}
       className={cn("rounded border px-1.5 py-px font-mono text-[10px]", r.cited ? "border-red-500 bg-red-500/12 text-red-600 dark:text-red-400" : "border-border text-muted-foreground hover:text-foreground")}>
       {r.kind}{r.count > 1 && ` ×${r.count}`}
     </button>)}
@@ -187,10 +187,10 @@ export function ReportBody({ report, steps, numberOf, onJump }: { report: JudgeR
     {r.claims.length > 0 && <ClaimsGrid claims={r.claims} quotes={quotes} numberOf={numberOf} onJump={onJump} />}
     <div>
       <button type="button" aria-expanded={investigationOpen} onClick={() => setInvestigationOpen(!investigationOpen)} className="inline-flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">
-        {investigationOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}Investigation · {r.findings.length} findings · {r.usage.workers} workers · {(r.usage.input_tokens + r.usage.output_tokens).toLocaleString()} tokens
+        {investigationOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}Investigation, {r.findings.length} findings, {r.usage.workers} workers, {(r.usage.input_tokens + r.usage.output_tokens).toLocaleString()} tokens
       </button>
       {investigationOpen && <div className="mt-1.5 grid gap-1.5">
-        {steps.length > 0 && <div className="rounded border border-border px-2.5 py-1.5"><p className="m-0 mb-1 text-[10.5px] text-muted-foreground">What the judge read · cited steps in red</p><JudgeReadStrip steps={steps} cited={cited} numberOf={numberOf} onJump={onJump} /></div>}
+        {steps.length > 0 && <div className="rounded border border-border px-2.5 py-1.5"><p className="m-0 mb-1 text-[10.5px] text-muted-foreground">What the judge read, cited steps in red</p><JudgeReadStrip steps={steps} cited={cited} numberOf={numberOf} onJump={onJump} /></div>}
         <ul className="m-0 grid list-none gap-1.5 p-0">
           {r.findings.map((f, i) => <li key={i} className="rounded border border-border px-2.5 py-1.5 text-[11.5px]">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -203,7 +203,7 @@ export function ReportBody({ report, steps, numberOf, onJump }: { report: JudgeR
             {f.finding.summary && <p className="m-0 mt-0.5">{f.finding.summary}</p>}
             {citations(f.finding.evidence)}
           </li>)}
-          <li className="text-[11px] text-muted-foreground">Usage: {r.usage.worker_calls} worker calls · {r.usage.input_tokens.toLocaleString()} in / {r.usage.output_tokens.toLocaleString()} out tokens · {r.usage.tool_calls.length} tool calls · {r.usage.forks} forks</li>
+          <li className="text-[11px] text-muted-foreground">Usage: {r.usage.worker_calls} worker calls, {r.usage.input_tokens.toLocaleString()} in / {r.usage.output_tokens.toLocaleString()} out tokens, {r.usage.tool_calls.length} tool calls, {r.usage.forks} forks</li>
         </ul>
       </div>}
     </div>
@@ -220,8 +220,8 @@ export function JudgeReports({ reports, selected, onSelect, steps, numberOf, onJ
   return <div className="grid gap-2.5">
     {reports.length > 1 ? <div className="flex flex-wrap gap-1">{reports.map((r) => <button key={r.id} type="button" aria-pressed={r.id === current.id} onClick={() => onSelect(r.id)}
       className={cn("rounded-md px-2 py-0.5 text-[11px]", r.id === current.id ? "bg-surface font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-      {label(r)} · {relativeTime(r.created_at)}{r.status !== "done" && ` · ${humanize(r.status)}`}</button>)}</div>
-      : <p className="m-0 text-[11px] text-muted-foreground">{label(current)} · {relativeTime(current.created_at)}</p>}
+      {label(r)}, {relativeTime(r.created_at)}{r.status !== "done" && `, ${humanize(r.status)}`}</button>)}</div>
+      : <p className="m-0 text-[11px] text-muted-foreground">{label(current)}, {relativeTime(current.created_at)}</p>}
     <ReportBody key={current.id} report={current} steps={steps} numberOf={numberOf} onJump={onJump} />
   </div>;
 }

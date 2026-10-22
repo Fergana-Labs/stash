@@ -61,7 +61,7 @@ export default function PlaygroundCard({ item: initialItem, prediction: initialP
       {error && <p role="alert" className="m-0 mt-2 text-[11.5px] text-destructive">{error}</p>}
       {prediction && served && (
         <div className="mt-3 space-y-3 border-t border-border pt-3">
-          <p className="m-0 text-[13px]"><span className="font-semibold">{showLabel(prediction.label, space?.kind)}</span> <span className="text-muted-foreground">· {pct(prediction.confidence)} confident</span></p>
+          <p className="m-0 text-[13px]"><span className="font-semibold">{showLabel(prediction.label, space?.kind)}</span> <span className="text-muted-foreground">{pct(prediction.confidence)} confident</span></p>
           {multi && <p className="m-0 text-[11px] text-muted-foreground">Each bar is the chance that issue applies, judged independently.</p>}
           <ProbabilityBars probabilities={prediction.probabilities} highlight={multi ? undefined : prediction.label} />
           <div>

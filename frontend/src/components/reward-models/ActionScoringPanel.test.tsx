@@ -104,7 +104,7 @@ it("uses the shared default without requiring personal training and explicitly s
   const onReload = vi.fn().mockResolvedValue(undefined);
   const shared = { ...trace, default_evaluator: { id: "model1", name: "Stash", revision: 3, updated_at: "today" } };
   renderPanel(<ActionScoringPanel trace={shared} selectedModelId="default" onModelChange={vi.fn()} onReload={onReload} />);
-  expect(screen.getByText("Stash evaluator · v3")).toBeVisible();
+  expect(screen.getByText("Stash evaluator, v3")).toBeVisible();
   expect(screen.getByText("1 / 2 actions scored")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Score again" }));
   await waitFor(() => expect(rmScoreTrace).toHaveBeenCalledWith("trace", undefined));

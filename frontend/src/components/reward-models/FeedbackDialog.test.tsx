@@ -38,7 +38,7 @@ it("identifies autonomous assessments as AI judgments", async () => {
   } as RmRewardModelDetail);
   render(<FeedbackDialog modelId="model" />);
   fireEvent.click(screen.getByRole("button", { name: "View learning" }));
-  expect(await screen.findByText("AI judgment · negative")).toBeVisible();
+  expect(await screen.findByText("AI judgment, negative")).toBeVisible();
   expect(screen.getByText(/Included in training data/)).toBeVisible();
 });
 

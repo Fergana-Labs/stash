@@ -24,7 +24,7 @@ it("starts against the selected reward model without business measurements or ex
   expect(screen.queryByLabelText("Agent")).not.toBeInTheDocument();
   expect(screen.getByRole("combobox",{name:"Reward model or eval to optimize against"})).toHaveValue("rm:truck");
   fireEvent.click(screen.getByRole("button",{name:"Start optimization"}));
-  await waitFor(() => expect(api.create).toHaveBeenCalledWith({name:"heavi-chat · Truck reward",reward_model_id:"truck",agent:"heavi-chat",scope:"default",initial_prompt:"",runs_per_arm:20,max_rounds:10}));
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({name:"heavi-chat, Truck reward",reward_model_id:"truck",agent:"heavi-chat",scope:"default",initial_prompt:"",runs_per_arm:20,max_rounds:10}));
   expect(api.push).toHaveBeenCalledWith("/reward-models/optimization/optimization");
 });
 
@@ -59,6 +59,6 @@ it("scores runs with a saved eval and the decision that counts as success",async
   fireEvent.change(success,{target:{value:"rewrite"}});
   expect(screen.getByText(/“Reply quality” eval \(its saved version, pinned\) scores each run by how likely it decides “rewrite”/)).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:"Start optimization"}));
-  await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ eval_id:"reply-eval", target_label:"rewrite", name:"support · Reply quality" })));
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ eval_id:"reply-eval", target_label:"rewrite", name:"support, Reply quality" })));
   expect(api.create.mock.calls[0][0]).not.toHaveProperty("reward_model_id");
 });

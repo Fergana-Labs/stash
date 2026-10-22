@@ -59,7 +59,7 @@ export default function HillClimbingPage() {
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 id="trend-heading" className="m-0 text-[14px] font-medium">Reward over time</h2>
-            <span className="text-[12px] text-muted-foreground">All agents <span className="font-mono text-foreground tabular-nums">{fmt(fleetSummary.end)}</span> last {COMPARE_DAYS} days · <TrendText change={fleetSummary.change} suffix={`since ${rangeStart}`} /> · {fleetSummary.runs.toLocaleString()} runs</span>
+            <span className="text-[12px] text-muted-foreground">All agents <span className="font-mono text-foreground tabular-nums">{fmt(fleetSummary.end)}</span> last {COMPARE_DAYS} days, <TrendText change={fleetSummary.change} suffix={`since ${rangeStart}`} />, {fleetSummary.runs.toLocaleString()} runs</span>
           </div>
           <Legend selected={selected} />
         </div>
@@ -89,7 +89,7 @@ export default function HillClimbingPage() {
                     <td className="text-right"><span className="inline-flex items-center gap-2"><Sparkline daily={r.agent.daily.slice(from, to)} trend={r.trend} /><span className="w-12 font-mono tabular-nums">{signed(r.change)}</span></span></td>
                     <td><TrendBadge trend={r.trend} /></td>
                     <td className="text-right tabular-nums text-muted-foreground">{r.runs.toLocaleString()}</td>
-                    <td className="text-right text-muted-foreground" title={latest ? `v${latest.version}: ${latest.note}` : "Original prompt"}>v{(latest?.version ?? 1)}{latest && latest.day >= from && <span className="text-[11px]"> · {shortDate(data.dayStarts[latest.day])}</span>}</td>
+                    <td className="text-right text-muted-foreground" title={latest ? `v${latest.version}: ${latest.note}` : "Original prompt"}>v{(latest?.version ?? 1)}{latest && latest.day >= from && <span className="text-[11px]">, {shortDate(data.dayStarts[latest.day])}</span>}</td>
                   </tr>
                 );
               })}
@@ -100,7 +100,7 @@ export default function HillClimbingPage() {
 
       <section aria-labelledby="runs-heading" className="mt-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="runs-heading" className="m-0 text-[14px] font-medium">Recent runs{selected && <span className="font-normal text-muted-foreground"> · {selected.name}</span>}</h2>
+          <h2 id="runs-heading" className="m-0 text-[14px] font-medium">Recent runs{selected && <span className="font-normal text-muted-foreground">, {selected.name}</span>}</h2>
           <div className="flex items-center gap-3 text-[12px]">
             {selected && <button type="button" onClick={() => setSelectedId(null)} className="cursor-pointer text-muted-foreground hover:text-foreground hover:underline">Show all agents</button>}
             <label className="flex cursor-pointer items-center gap-1.5 text-muted-foreground"><input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} className="accent-brand-500" />Reward below 0.50 only</label>

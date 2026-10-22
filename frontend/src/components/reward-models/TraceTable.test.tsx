@@ -154,7 +154,7 @@ it("filters by source and date, and renames a source without changing its ID", a
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(rename).toHaveBeenCalledWith("codex", "Henry’s Codex");
-  expect(screen.getByRole("cell", { name: "Henry’s Codex" })).toHaveAttribute("title", "Henry’s Codex · Source ID: codex");
+  expect(screen.getByRole("cell", { name: "Henry’s Codex" })).toHaveAttribute("title", "Henry’s Codex, Source ID: codex");
   expect(screen.getByRole("combobox", { name: "Filter by source" })).toHaveTextContent("Henry’s Codex");
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   expect(screen.getAllByRole("link")).toHaveLength(3);
@@ -218,5 +218,5 @@ it("shows search matches in relevance order with their quote and behavior chips"
   expect(within(rows[0]).getByText("steps 3–4")).toBeVisible();
   expect(within(rows[0]).getByText("Tool error")).toBeVisible();
   expect(within(rows[0]).getByText("Error")).toBeVisible();
-  expect(screen.getByText("2 traces · semantic")).toBeVisible();
+  expect(screen.getByText("2 traces, semantic")).toBeVisible();
 });

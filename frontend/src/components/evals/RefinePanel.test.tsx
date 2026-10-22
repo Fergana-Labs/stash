@@ -11,8 +11,8 @@ it("names each pass by its edit and marks a plateau", () => {
   expect(gainsExhausted(curve, false)).toBe(false);
   const { container } = render(<RefineCurve curve={curve} finished />);
   const titles = [...container.querySelectorAll("title")].map((t) => t.textContent);
-  expect(titles).toContain("Pass 1 · Added criterion · accuracy 70% · kept");
-  expect(titles).toContain("Pass 2 · Tightened wording · accuracy 68% · rejected");
+  expect(titles).toContain("Pass 1, Added criterion, accuracy 70%, kept");
+  expect(titles).toContain("Pass 2, Tightened wording, accuracy 68%, rejected");
   expect(screen.getByText("Gains exhausted")).toBeInTheDocument();
 });
 

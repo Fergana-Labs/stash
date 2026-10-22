@@ -243,7 +243,7 @@ export function QuestionPreview({ q, className }: { q: RubricQuestion; className
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 text-[12.5px] leading-snug text-foreground">{q.prompt}</span>
         <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
-          {q.id} · {q.type === "noul" ? "yes/no" : q.type}
+          {q.id}, {q.type === "noul" ? "yes/no" : q.type}
         </span>
       </div>
       <ul className="m-0 mt-1 list-none space-y-0.5 p-0 text-[11.5px] text-muted-foreground">

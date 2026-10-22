@@ -80,7 +80,7 @@ function JudgeProviderPicker({ id, detail, onSaved }: { id: string; detail: Mode
       <p className="m-0 text-[11px] text-muted-foreground">
         {current === "agent_judge" ? "Investigates each trace with sub-agents, verifies claims step by step and keeps a report per verdict. Slower and costlier." : "Answers each criterion in one model call."}
         {" "}Switching judges re-grades every example and needs a retrain.
-        {status?.[current]?.model && <span className="font-mono"> · {status[current].model}</span>}
+        {status?.[current]?.model && <span className="font-mono">, {status[current].model}</span>}
       </p>
       {error && <p role="alert" className="m-0 mt-1 text-[11.5px] text-destructive">{error}</p>}
     </section>
@@ -174,7 +174,7 @@ export default function JudgeWorkspace({ id }: { id: string }) {
                 <h1 className="m-0 text-lg font-semibold tracking-tight">{detail.model.name}</h1>
                 <p className="m-0 mt-0.5 text-[12.5px] text-muted-foreground">
                   <span className={cn("mr-1.5 inline-block size-1.5 rounded-full align-middle", live ? "bg-emerald-500" : "bg-muted-foreground/50")} />
-                  {live ? `Live v${live.number}` : "Not live yet"} · {headline}
+                  {live ? `Live v${live.number}` : "Not live yet"}, {headline}
                 </p>
               </div>
               <div className="flex items-center gap-2">

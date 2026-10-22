@@ -15,11 +15,11 @@ it("displays signed action credit separately from confidence and exposes saved e
   const jump = vi.fn();
   render(<TraceEvaluationPanel traceId="trace-1" onJump={jump} viewerId="owner" />);
   expect(await screen.findByText("failure")).toBeVisible();
-  expect(screen.getByText("-2 · strongly negative")).toBeVisible();
+  expect(screen.getByText("-2, strongly negative")).toBeVisible();
   expect(screen.getByText("91%")).toBeVisible();
   expect(screen.getByText("Confidence: 93%")).toBeVisible();
   expect(screen.queryByRole("link", { name: /configure.*grader/i })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Step 3 · response" }));
+  fireEvent.click(screen.getByRole("button", { name: "Step 3, response" }));
   expect(jump).toHaveBeenCalledWith("claim");
   fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
   expect(screen.getByText(/Some recorded context was omitted/)).toBeVisible();

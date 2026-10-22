@@ -31,7 +31,7 @@ const REVIEW_TABS: { value: ReviewFilter; label: string }[] = [
 ];
 const RANGES = [{ value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }];
 const pct = (v: number | null | undefined) => v == null ? "—" : `${Math.round(v * 100)}%`;
-const detectorLabel = (b: Behavior) => b.detector === "rule" ? "Built-in" : b.detector === "agent_judge" ? "Described in words · each hit verified by the Agent Judge" : "Described in words";
+const detectorLabel = (b: Behavior) => b.detector === "rule" ? "Built-in" : b.detector === "agent_judge" ? "Described in words, each hit verified by the Agent Judge" : "Described in words";
 
 export default function BehaviorClient({ id }: { id: string }) {
   const router = useRouter();
@@ -148,7 +148,7 @@ export default function BehaviorClient({ id }: { id: string }) {
       <header className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">{total} hit{total === 1 ? "" : "s"} {hourly ? "by hour" : "by day"}</h2>
-          {trend && <p className="mt-0.5 text-xs text-muted-foreground">In {pct(scanned ? withHit / scanned : null)} of scanned traces ({withHit} of {scanned}) · {trend.last_7_days} hits in the last 7 days</p>}
+          {trend && <p className="mt-0.5 text-xs text-muted-foreground">In {pct(scanned ? withHit / scanned : null)} of scanned traces ({withHit} of {scanned}), {trend.last_7_days} hits in the last 7 days</p>}
         </div>
         <Select aria-label="Time range" value={String(days)} onChange={(v) => setDays(Number(v))} options={RANGES} className="h-8 w-36 px-2 text-xs" />
       </header>
@@ -187,13 +187,13 @@ function CompareCard({ behaviorId, releases, onReleased }: { behaviorId: string;
   const side = (label: string, w: ReleaseComparison["before"]) => <div className="rounded border border-border px-3 py-2">
     <div className="text-[11px] text-muted-foreground">{label}</div>
     <div className="text-lg font-semibold tabular-nums">{pct(w.rate)}</div>
-    <div className="text-[11px] text-muted-foreground">{w.with_hit} of {w.traces} traces{w.ci ? ` · 95% CI ${pct(w.ci[0])}–${pct(w.ci[1])}` : ""}</div>
+    <div className="text-[11px] text-muted-foreground">{w.with_hit} of {w.traces} traces{w.ci ? `, 95% CI ${pct(w.ci[0])}–${pct(w.ci[1])}` : ""}</div>
   </div>;
 
   return <section aria-label="Compare around a release" className="rounded border border-border p-4">
     <header className="mb-3 flex items-center justify-between gap-2">
       <h2 className="text-sm font-semibold">Compare around a release</h2>
-      {sorted.length > 0 && <Select aria-label="Release" value={chosen} onChange={setReleaseId} options={sorted.map((r) => ({ value: r.id, label: `${r.label}${r.agent ? ` · ${r.agent}` : ""}` }))} className="h-7 w-48 px-2 text-xs" />}
+      {sorted.length > 0 && <Select aria-label="Release" value={chosen} onChange={setReleaseId} options={sorted.map((r) => ({ value: r.id, label: `${r.label}${r.agent ? `, ${r.agent}` : ""}` }))} className="h-7 w-48 px-2 text-xs" />}
     </header>
     {!sorted.length ? <p className="text-xs text-muted-foreground">No releases marked yet. <button type="button" className="underline" onClick={() => setMarking(true)}>Add a release marker</button> to compare this behavior’s rate before and after a change.</p>
       : error ? <p role="alert" className="text-xs text-destructive">{error}</p>
@@ -201,7 +201,7 @@ function CompareCard({ behaviorId, releases, onReleased }: { behaviorId: string;
       : <div className="grid gap-2">
         <div className="grid grid-cols-2 gap-2">{side(`${data.window_days} days before`, data.before)}{side(`${data.window_days} days after`, data.after)}</div>
         <p className="m-0 text-xs">{data.change == null ? "Not enough traces to compare."
-          : <><b className={data.change > 0 ? "text-destructive" : data.change < 0 ? "text-success" : undefined}>{data.change > 0 ? "+" : ""}{Math.round(data.change * 100)} pts</b> after {data.release.label} · {data.significant ? "a real change (statistically significant)" : <span className="text-muted-foreground">within noise (not significant)</span>}</>}</p>
+          : <><b className={data.change > 0 ? "text-destructive" : data.change < 0 ? "text-success" : undefined}>{data.change > 0 ? "+" : ""}{Math.round(data.change * 100)} pts</b> after {data.release.label}, {data.significant ? "a real change (statistically significant)" : <span className="text-muted-foreground">within noise (not significant)</span>}</>}</p>
       </div>}
     <ReleaseDialog open={marking} onOpenChange={setMarking} agents={[]} onCreated={onReleased} />
   </section>;
@@ -242,7 +242,7 @@ function TriageCard({ behaviorId }: { behaviorId: string }) {
         <ol className="m-0 grid list-none gap-1.5 p-0">{result.root_causes.map((c, i) => <li key={i} className="rounded border border-border px-2.5 py-1.5">
           <div className="flex items-baseline gap-2"><span className="font-medium">{c.title}</span>{c.share != null && <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{pct(c.share)} of hits</span>}</div>
           <p className="m-0 mt-0.5 text-muted-foreground">{c.explanation}</p>
-          {c.traces.length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">{c.traces.slice(0, 4).map((t) => <Link key={`${t.trace_id}-${t.step_idx}`} href={traceStepHref(t.trace_id, t.step_idx ?? 0)} className="max-w-56 truncate text-brand-600 hover:underline">{t.title || "Untitled trace"}{t.step_idx != null && ` · step ${t.step_idx + 1}`}</Link>)}</div>}
+          {c.traces.length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">{c.traces.slice(0, 4).map((t) => <Link key={`${t.trace_id}-${t.step_idx}`} href={traceStepHref(t.trace_id, t.step_idx ?? 0)} className="max-w-56 truncate text-brand-600 hover:underline">{t.title || "Untitled trace"}{t.step_idx != null && `, step ${t.step_idx + 1}`}</Link>)}</div>}
         </li>)}</ol>
         {result.suggested_fixes.length > 0 && <div><h3 className="m-0 mb-1 text-[12px] font-semibold">Suggested fixes</h3><ul className="m-0 list-disc space-y-0.5 pl-4">{result.suggested_fixes.map((f, i) => <li key={i}>{f}</li>)}</ul></div>}
         <p className="m-0 text-[11px] text-muted-foreground">Investigated {relativeTime(triage!.created_at)}</p>

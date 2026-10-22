@@ -94,7 +94,7 @@ export const ACTORS: { value: Actor; label: string }[] = [
   { value: "user", label: "User" }, { value: "agent", label: "Agent" }, { value: "environment", label: "Environment" },
 ];
 export const SEVERITIES: Severity[] = ["low", "medium", "high"];
-export const DETECTOR_LABEL: Record<Detector, string> = { llm: "Described in words", rule: "Built-in", agent_judge: "Described in words · verified by the Agent Judge" };
+export const DETECTOR_LABEL: Record<Detector, string> = { llm: "Described in words", rule: "Built-in", agent_judge: "Described in words, verified by the Agent Judge" };
 
 /** "partial_answer" → "Partial answer". Enum values never reach the screen raw. */
 export const humanize = (value: string) => {

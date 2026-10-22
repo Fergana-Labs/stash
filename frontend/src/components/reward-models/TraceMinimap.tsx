@@ -48,7 +48,7 @@ function StepPreview({ step, number, score, status }: { step: RmStep; number: nu
       {time && Number.isFinite(time.getTime()) && <time dateTime={timestamp as string}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>}
     </span>
     <span className="min-w-0 flex-1 truncate">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</span>
-    {(score || status) && <span className="max-w-40 shrink-0 truncate text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? " · previous annotation" : ""}` : status}</span>}
+    {(score || status) && <span className="max-w-40 shrink-0 truncate text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : status}</span>}
   </>;
 }
 

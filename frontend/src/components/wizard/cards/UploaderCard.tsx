@@ -114,7 +114,7 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
       >
         <FileUp className="size-5 text-muted-foreground" />
         <p className="m-0 text-[12.5px]">Drop files here or <span className="underline">browse</span></p>
-        <p className="m-0 text-[11px] text-muted-foreground">Images, PDFs, slides, docs, text, CSV/JSONL · up to 2 MB each</p>
+        <p className="m-0 text-[11px] text-muted-foreground">Images, PDFs, slides, docs, text, CSV/JSONL, up to 2 MB each</p>
         <input ref={input} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
       </div>
       {files.length > 0 && (
@@ -144,8 +144,8 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
           </select>
         </label>
         <span className="flex-1 text-[11.5px] text-muted-foreground">
-          {files.length + pasted.length ? `${files.length + pasted.length} ready${pasted.some((p) => p.label) ? ` · ${pasted.filter((p) => p.label).length} with labels` : ""}` : ""}
-          {outputType === "preference" && " · labels are good / bad"}
+          {files.length + pasted.length ? `${files.length + pasted.length} ready${pasted.some((p) => p.label) ? `, ${pasted.filter((p) => p.label).length} with labels` : ""}` : ""}
+          {outputType === "preference" && ", labels are good / bad"}
         </span>
         <Button size="sm" disabled={busy || !(files.length + pasted.length)} onClick={() => void submit()}>{busy ? "Adding…" : "Add examples"}</Button>
       </div>

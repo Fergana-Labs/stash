@@ -19,7 +19,7 @@ export default function AssessmentInspector({ traceId, steps, onJump }: { traceI
 
   return <section aria-label="Earlier rubric assessments" className="my-5 rounded-lg border border-border bg-surface/30">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-      <div><h2 className="m-0 text-[14px] font-medium">Earlier rubric assessments</h2><p className="m-0 mt-1 text-[11.5px] text-muted-foreground">{loading ? "Loading assessments…" : `${data?.coverage.assessed_actions ?? 0} / ${data?.coverage.total_actions ?? 0} actions assessed · ${completed} assessments${failed ? ` · ${failed} failed` : ""} · ${data?.coverage.pending ?? 0} pending`}</p></div>
+      <div><h2 className="m-0 text-[14px] font-medium">Earlier rubric assessments</h2><p className="m-0 mt-1 text-[11.5px] text-muted-foreground">{loading ? "Loading assessments…" : `${data?.coverage.assessed_actions ?? 0} / ${data?.coverage.total_actions ?? 0} actions assessed, ${completed} assessments${failed ? `, ${failed} failed` : ""}, ${data?.coverage.pending ?? 0} pending`}</p></div>
 
     </div>
     <div className="p-4"><ErrorNotice error={error} onRetry={() => void reload()} />
@@ -45,7 +45,7 @@ export function AssessmentDetail({ assessment: a, steps, onJump, feedback = [] }
   const contextIds = Array.isArray(snapshot?.context_events) ? snapshot.context_events.map((event) => event.id) : [];
   function eventLink(id: string, target = false) {
     const step = stepMap.get(id);
-    return step ? <button type="button" onClick={() => onJump(id)} className="text-[12px] text-brand-600 underline underline-offset-2">{target ? "Target: " : ""}Step {step.index + 1} · {step.role}{step.tool_name ? ` · ${step.tool_name}` : ""}</button> : <span className="text-[12px] text-muted-foreground">Captured event {id} is unavailable</span>;
+    return step ? <button type="button" onClick={() => onJump(id)} className="text-[12px] text-brand-600 underline underline-offset-2">{target ? "Target: " : ""}Step {step.index + 1}, {step.role}{step.tool_name ? `, ${step.tool_name}` : ""}</button> : <span className="text-[12px] text-muted-foreground">Captured event {id} is unavailable</span>;
   }
   return <div className="min-w-0 space-y-3">
     <div className="flex flex-wrap items-center gap-2"><RecordBadge value={a.verdict ?? a.status} /><span className="text-[11px] text-muted-foreground">Grader version {a.grader_version_id}</span>{a.mode && <RecordBadge value={a.mode} />}</div>

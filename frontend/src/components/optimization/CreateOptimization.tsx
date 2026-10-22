@@ -47,7 +47,7 @@ export default function CreateOptimization({ initialModelId = "", initialAgent =
   async function start(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(null);
     try {
-      const result = await createOptimization({ name: name.trim() || `${agent.trim()} · ${scorer}`.slice(0, 160), ...(evalId ? { eval_id: evalId, target_label: target } : { reward_model_id: modelId }), agent: agent.trim(), scope: scope.trim() || "default", initial_prompt: prompt, runs_per_arm: runs, max_rounds: rounds });
+      const result = await createOptimization({ name: name.trim() || `${agent.trim()}, ${scorer}`.slice(0, 160), ...(evalId ? { eval_id: evalId, target_label: target } : { reward_model_id: modelId }), agent: agent.trim(), scope: scope.trim() || "default", initial_prompt: prompt, runs_per_arm: runs, max_rounds: rounds });
       router.push(`/reward-models/optimization/${result.id}`);
     } catch (e) { setError(errorMessage(e)); setBusy(false); }
   }
@@ -63,7 +63,7 @@ export default function CreateOptimization({ initialModelId = "", initialAgent =
     <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Optional settings</summary><div className="mt-3 space-y-3">
       <Field label="Current prompt"><textarea rows={4} maxLength={12000} className={fieldClass} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Leave empty to start from the agent’s existing instructions" /></Field>
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Name"><input maxLength={160} className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${agent || "Agent"} · ${scorer ?? "reward model"}`} /></Field>
+        <Field label="Name"><input maxLength={160} className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${agent || "Agent"}, ${scorer ?? "reward model"}`} /></Field>
         <Field label="Workload" hint="Use this identifier when connecting the agent. Defaults to “default”."><input maxLength={2000} className={fieldClass} value={scope} onChange={(e) => setScope(e.target.value)} placeholder="default" /></Field>
         <Field label="Runs per prompt"><input required type="number" min={5} max={500} className={fieldClass} value={runs} onChange={(e) => setRuns(Number(e.target.value))} /></Field>
         <Field label="Maximum rounds"><input required type="number" min={1} max={100} className={fieldClass} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} /></Field>

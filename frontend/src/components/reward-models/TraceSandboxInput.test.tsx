@@ -91,7 +91,7 @@ it("appends pages on scroll and resets them when searching", async () => {
 it("continues past pages containing traces this user cannot score", async () => {
   vi.mocked(rmListTraces).mockImplementation(async (_limit, offset) => ({ traces: (offset ? [{ id: "owned", title: "Owned task", step_count: 1, can_score: true }] : Array.from({ length: 25 }, (_, i) => ({ id: `shared${i}`, title: `Shared ${i}`, can_score: false }))) as never, total: 26 }));
   render(<TraceSandboxInput selectionOnly scoreableOnly onChange={vi.fn()} />);
-  await waitFor(() => expect(screen.getByText("0 of 26 traces · Scroll for more")).toBeVisible());
+  await waitFor(() => expect(screen.getByText("0 of 26 traces, Scroll for more")).toBeVisible());
   expect(screen.queryByText(/No traces found/)).not.toBeInTheDocument();
   fireEvent.scroll(screen.getByRole("region", { name: "Available traces" }));
   expect(await screen.findByRole("button", { name: "Choose Owned task" })).toBeVisible();

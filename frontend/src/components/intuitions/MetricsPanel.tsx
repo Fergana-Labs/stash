@@ -77,8 +77,8 @@ export default function MetricsPanel({
       </MetricGrid>
       {opts && (
         <p className="m-0 font-mono text-[11px] text-muted-foreground">
-          fit on {opts.rows} rows · {opts.train_on === "all" ? "all data" : "train split"} · l2 {opts.l2} · {opts.sources ? opts.sources.join("+") : "all sources"}
-          {opts.calibrate ? " · calibrated" : ""}
+          fit on {opts.rows} rows, {opts.train_on === "all" ? "all data" : "train split"}, l2 {opts.l2}, {opts.sources ? opts.sources.join("+") : "all sources"}
+          {opts.calibrate ? ", calibrated" : ""}
         </p>
       )}
       {held.n === 0 ? (
@@ -108,7 +108,7 @@ export default function MetricsPanel({
         </div>
       )}
       {mistakes.length > 0 && (
-        <Panel title={`Held-out mistakes · ${mistakes.length}`} description="Most confidently wrong first. Open one to relabel it, or use it to write a sharper question.">
+        <Panel title={`Held-out mistakes, ${mistakes.length}`} description="Most confidently wrong first. Open one to relabel it, or use it to write a sharper question.">
           <ul className="m-0 -my-1 list-none divide-y divide-border-subtle p-0">
             {mistakes.slice(0, 12).map((r) => {
               const e = byId.get(r.example_id);

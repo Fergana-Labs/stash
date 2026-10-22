@@ -21,7 +21,7 @@ it("shows saved input separately from citations and keeps the prediction when sa
   expect(screen.queryByText("Cited evidence")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Selected context (2 events)"));
   expect(screen.getByText(/not model-generated citations/)).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: /Step 2 · tool/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Step 2, tool/ }));
   expect(jump).toHaveBeenCalledWith("result");
   expect(screen.getByText(/1 recorded omission/)).toBeVisible();
   fireEvent.click(screen.getByText("Correct this assessment or agent behavior"));

@@ -80,11 +80,11 @@ function optionLabel(question: RubricQuestion | null, option: string | null): st
   if (question.type === "score" && Array.isArray(question.criteria)) {
     const level = Number(option);
     const text = question.criteria[level];
-    return text ? `${level} · ${text}` : `level ${option}`;
+    return text ? `${level}, ${text}` : `level ${option}`;
   }
   if (!Array.isArray(question.criteria)) {
     const text = question.criteria[option];
-    return text ? `${option} · ${text}` : option;
+    return text ? `${option}, ${text}` : option;
   }
   return option;
 }
@@ -111,7 +111,7 @@ export function groupFeatures(featureNames: string[], rubric: RubricQuestion[]):
 export function questionOptions(question: RubricQuestion): { key: string; label: string }[] {
   if (question.type === "noul") return [{ key: "true", label: "yes" }, { key: "false", label: "no" }];
   if (Array.isArray(question.criteria)) return question.criteria.map((text, i) => ({ key: String(i), label: text }));
-  return Object.entries(question.criteria).map(([key, text]) => ({ key, label: text ? `${key} · ${text}` : key }));
+  return Object.entries(question.criteria).map(([key, text]) => ({ key, label: text ? `${key}, ${text}` : key }));
 }
 
 /** P(yes) for a yes/no answer distribution; providers key it "true". */
@@ -189,7 +189,7 @@ export function itemSummary(item: Item): string {
   if (typeof item === "string") return item;
   return Object.entries(item)
     .map(([k, v]) => `${k}: ${fieldText(v)}`)
-    .join(" · ");
+    .join(", ");
 }
 
 /** Parse raw JSON input into an item; a JSON string literal or bare text becomes a string item. */
