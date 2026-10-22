@@ -6,12 +6,12 @@ import * as api from "@/lib/image-eval-api";
 
 vi.mock("@/lib/image-eval-api", async (original) => ({
   ...(await original<typeof import("@/lib/image-eval-api")>()),
-  imageEvalGet: vi.fn(), imageEvalUploadExamples: vi.fn(), imageEvalExamples: vi.fn(),
+  imageEvalGet: vi.fn(), imageEvalUploadExamples: vi.fn(), imageEvalExamples: vi.fn(), imageEvalInterview: vi.fn(), imageEvalAnswer: vi.fn(),
 }));
 vi.mock("@/components/image-eval/ImageEvalImage", () => ({ default: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 
 const detail = (liked: number) => ({
-  id: "e1", model_id: "m1", name: "Yoko", description: "", style_brief: "", build: null, trained: false, trained_at: null,
+  id: "e1", model_id: "m1", name: "Yoko", description: "", style_brief: "", interview: null as null | api.ImageEvalInterview, build: null, trained: false, trained_at: null,
   heldout_accuracy: null, heldout_balanced_accuracy: null, heldout_method: null, liked: null, disliked: null,
   created_at: "2026-10-22T06:00:00Z", updated_at: "2026-10-22T06:00:00Z",
   examples: { liked, disliked: 0, imitations: 0 }, calls: 0, needs_training: true,
@@ -37,11 +37,11 @@ describe("ImageEvalCard examples", () => {
 
     expect(await screen.findByRole("progressbar", { name: "Uploading images" })).toBeInTheDocument();
     expect(container.querySelectorAll("img")).toHaveLength(12);
-    expect(screen.getByRole("button", { name: "Build it" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
     // 12 images go up as batches of 10 and 2.
     await act(async () => { while (waiting.length) { waiting.shift()!(); await Promise.resolve(); } });
 
-    const build = await screen.findByRole("button", { name: "Build it" });
+    const build = await screen.findByRole("button", { name: "Continue" });
     await waitFor(() => expect(build).toBeEnabled());
     fireEvent.click(build);
     expect(send).toHaveBeenCalledWith("I added 12 images in the style.", "event");
@@ -67,5 +67,38 @@ describe("ImageEvalCard progress", () => {
     expect(screen.getByText("wobbly near-black crayon")).toBeInTheDocument();
     expect(await screen.findByText("Near-miss: a cat in a box")).toBeInTheDocument();
     expect(screen.getByText("Near-miss: a mug")).toBeInTheDocument();
+  });
+});
+
+describe("ImageEvalCard questions", () => {
+  it("asks what only the person knows, then sends their answers and the images to leave out", async () => {
+    vi.mocked(api.imageEvalGet).mockResolvedValue(detail(34));
+    vi.mocked(api.imageEvalInterview).mockResolvedValue({
+      questions: [
+        { question: "Is the offset tan fill essential?", why: "decides color fixes", options: ["Essential", "Incidental"] },
+        { question: "What do imitators get wrong?", why: "", options: ["Line weight", "Faces"] },
+      ],
+      outliers: ["x9"], answers: [], left_out: [], done: false,
+    });
+    vi.mocked(api.imageEvalAnswer).mockResolvedValue(detail(33));
+    const send = vi.fn();
+    render(<WizardProvider value={{ modelId: "m1", send, refresh: () => {}, version: 0, busy: false }}><ImageEvalCard section="questions" evalId="e1" /></WizardProvider>);
+
+    expect(await screen.findByText("A few questions only you can answer")).toBeInTheDocument();
+    const build = screen.getByRole("button", { name: "Build it" });
+    expect(build).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: "Essential" }));
+    fireEvent.change(screen.getByLabelText("Your answer: What do imitators get wrong?"), { target: { value: "They draw hair as one outline" } });
+    fireEvent.click(screen.getByRole("button", { name: "Keep; tap to leave out" }));
+    fireEvent.click(build);
+
+    await waitFor(() => expect(send).toHaveBeenCalledWith("I answered 2 questions and left out 1 image.", "event"));
+    expect(api.imageEvalAnswer).toHaveBeenCalledWith("e1", {
+      answers: [
+        { question: "Is the offset tan fill essential?", answer: "Essential" },
+        { question: "What do imitators get wrong?", answer: "They draw hair as one outline" },
+      ],
+      leave_out: ["x9"], skipped: false,
+    });
   });
 });

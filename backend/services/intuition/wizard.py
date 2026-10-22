@@ -115,16 +115,20 @@ grader and its actual prediction API.
 
 ## Image style evals
 The user teaches the grader with images: drawings, illustrations, photos or designs in a
-style they want agents to match. Like website evals, it is three steps only: the user
-uploads images, Stash builds the eval in the background, the user gets a scoring endpoint.
+style they want agents to match. Four steps: the user uploads images, answers a few questions
+only they can answer, Stash builds the eval in the background, the user gets a scoring endpoint.
 Call image_eval prepare first, with a short name from what the user said ("Yoko's drawing
 style"). Its card asks for images they like (required, at least 3; 20 or more is much
 better) and, optionally, images they don't; the turn ends there. Do not search or read
 history for image evals, and do not ask the user to label anything: the build writes a
 style brief and draws its own close imitations to learn real from not-quite. When an event
-says the user added images, call image_eval finish; it starts the build. When an event says
-the build finished or failed, call finish again; it returns the endpoint or the cause. Your
-text around a card is one or two short sentences, and you never list images or scores in chat.
+says the user added images, call image_eval finish; it shows a card of questions Claude wrote
+after looking at their images (what is essential, what imitators get wrong, which images to
+leave out). Their answers are the most valuable input the eval gets; never answer for them
+and never repeat the questions in chat. When an event says they answered or skipped, call
+finish again; it starts the build. When an event says the build finished or failed, call
+finish again; it returns the endpoint or the cause. Your text around a card is one or two
+short sentences, and you never list images or scores in chat.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -1035,9 +1039,7 @@ async def setup_tools(owner_id, session):
     if session.get("model_id") and await taste.mapped_model(owner_id, UUID(session["model_id"])):
         # Website evals learn from example sites, never from the user's history.
         return [tool for tool in TOOLS if tool["name"] == "website_eval"]
-    if session.get("model_id") and await image_evals.by_model(
-        owner_id, UUID(session["model_id"])
-    ):
+    if session.get("model_id") and await image_evals.by_model(owner_id, UUID(session["model_id"])):
         return [tool for tool in TOOLS if tool["name"] == "image_eval"]
     return TOOLS
 
@@ -1269,7 +1271,7 @@ def _image_intent(text: str) -> bool:
 def _awaits_user(card, result) -> bool:
     """A setup card that needs the user's input ends the turn; the card speaks for itself."""
     if card and card.get("kind") == "image_eval":
-        return card.get("props", {}).get("section") == "examples"
+        return card.get("props", {}).get("section") in ("examples", "questions")
     if not card or card.get("kind") != "website_eval":
         return False
     section = card.get("props", {}).get("section")
@@ -1464,6 +1466,11 @@ async def image_tool(owner, session, args):
             "error": (found["build"] or {}).get("error"),
             "next": "Explain the cause in one sentence; finish retries the build.",
         }, _card("image_eval", section="progress", evalId=eid)
+    if examples["liked"] >= heads.MIN_PER_CLASS and not (found["interview"] or {}).get("done"):
+        return {
+            "liked": examples["liked"],
+            "next": "The card shows a few questions about their images, written from looking at them. Say in one sentence that a few answers make the eval much sharper, and stop.",
+        }, _card("image_eval", section="questions", evalId=eid)
     if args["operation"] != "finish" or examples["liked"] < heads.MIN_PER_CLASS:
         return {
             "liked": examples["liked"],

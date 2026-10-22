@@ -102,6 +102,7 @@ def _summary(row) -> dict:
         "description": row["description"],
         "embed_model": row["embed_model"],
         "style_brief": row["style_brief"],
+        "interview": row["interview"],
         "build": row["build"],
         "trained": row["head"] is not None,
         "trained_at": row["trained_at"],
@@ -124,9 +125,7 @@ async def _owned(owner: UUID, classifier_id: UUID):
     return row
 
 
-async def create(
-    owner: UUID, name: str, description: str, model_id: UUID | None = None
-) -> dict:
+async def create(owner: UUID, name: str, description: str, model_id: UUID | None = None) -> dict:
     row = await get_pool().fetchrow(
         """INSERT INTO image_evals (owner_user_id, name, description, embed_model, model_id)
         VALUES ($1,$2,$3,$4,$5) RETURNING *""",
@@ -263,9 +262,7 @@ async def add_examples(
             ctype,
         )
         out.append(dict(row))
-    await get_pool().execute(
-        "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-    )
+    await get_pool().execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
     return out
 
 
@@ -297,9 +294,7 @@ async def delete_example(owner: UUID, classifier_id: UUID, example_id: UUID) -> 
     )
     if deleted is None:
         raise NotFound("Example not found")
-    await get_pool().execute(
-        "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-    )
+    await get_pool().execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
 
 
 async def example_image(owner: UUID, classifier_id: UUID, example_id: UUID) -> tuple[bytes, str]:
@@ -459,7 +454,5 @@ async def label_call(
                 call["content_type"],
                 call["embedding"],
             )
-        await conn.execute(
-            "UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id
-        )
+        await conn.execute("UPDATE image_evals SET updated_at=now() WHERE id=$1", classifier_id)
     return {"call_id": call_id, "feedback_label": label, "feedback_note": note if label else None}

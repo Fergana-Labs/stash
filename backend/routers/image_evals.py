@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
-from ..services.image_eval import embedder, service
+from ..services.image_eval import embedder, interview, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -45,6 +45,17 @@ class ScoreJson(Body):
     caller: str = Field(default="", max_length=100)
     task: str = Field(default="", max_length=500)
     comments: bool = True
+
+
+class Answer(Body):
+    question: str = Field(max_length=300)
+    answer: str = Field(max_length=1000)
+
+
+class Answers(Body):
+    answers: list[Answer] = Field(default_factory=list, max_length=8)
+    leave_out: list[UUID] = Field(default_factory=list, max_length=200)
+    skipped: bool = False
 
 
 class LabelCall(Body):
@@ -136,6 +147,25 @@ async def delete_example(classifier_id: UUID, example_id: UUID, user: User) -> N
 async def example_image(classifier_id: UUID, example_id: UUID, user: User):
     return _image_response(
         *await checked(service.example_image(user["id"], classifier_id, example_id))
+    )
+
+
+@router.post("/{classifier_id}/interview")
+async def ask(classifier_id: UUID, user: User):
+    """The questions Claude asks after looking at the examples (written once, then kept)."""
+    return await checked(interview.questions(user["id"], classifier_id))
+
+
+@router.put("/{classifier_id}/interview")
+async def answer(classifier_id: UUID, body: Answers, user: User):
+    return await checked(
+        interview.answer(
+            user["id"],
+            classifier_id,
+            [a.model_dump() for a in body.answers],
+            body.leave_out,
+            body.skipped,
+        )
     )
 
 
