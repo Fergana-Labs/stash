@@ -10,7 +10,7 @@ import type { EndUser } from "@/lib/types";
 export default function UserTable({ users, onChanged }: { users: EndUser[]; onChanged: () => void }) {
   if (users.length === 0) {
     return (
-      <p className="rounded border border-dashed border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
+      <p className="rounded border border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
         No users yet. Users appear automatically the first time your backend uploads a session
         with a new <Code>user_id</Code>.
       </p>

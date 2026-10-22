@@ -1293,7 +1293,7 @@ function TableEditorPageInner({
         onDrop={handleFileDrop}
       >
         {dropping && (
-          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand">
+          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/10 border-2 border-brand">
             <div className="rounded-lg bg-surface/95 px-6 py-3 text-sm font-medium text-brand shadow-lg">
               Drop a CSV to append rows
             </div>

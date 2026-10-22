@@ -636,7 +636,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       }}
     >
       {dropActive && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/40 bg-base/80">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-foreground/40 bg-base/80">
           <div className="rounded-lg border border-border bg-raised px-4 py-2 text-[13px] font-medium text-foreground shadow-lg">
             Drop to upload
             {contents?.folder ? ` into “${contents.folder.name}”` : ""}

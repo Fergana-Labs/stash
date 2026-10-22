@@ -112,7 +112,7 @@ function PromptSection({
                 aria-label="API key"
                 spellCheck={false}
                 autoComplete="off"
-                className="min-w-64 flex-1 rounded-sm border border-dashed border-border bg-base px-2 py-0.5 font-mono text-[12.5px] text-foreground placeholder:text-muted-foreground focus:border-solid focus:border-brand-500 focus:outline-none"
+                className="min-w-64 flex-1 rounded-sm border border-border bg-base px-2 py-0.5 font-mono text-[12.5px] text-foreground placeholder:text-muted-foreground focus:border-solid focus:border-brand-500 focus:outline-none"
               />
             </div>
             <pre className="m-0 whitespace-pre-wrap">

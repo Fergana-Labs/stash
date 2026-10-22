@@ -339,7 +339,7 @@ function SkillPageBody({
             </section>
           ))}
           {rows.length === 0 && !intro && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted-foreground">
+            <div className="rounded-lg border border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted-foreground">
               Nothing here yet.
             </div>
           )}

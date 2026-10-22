@@ -205,7 +205,7 @@ export function HomeSkeleton() {
         <SkeletonLine className="h-4 w-full" />
         <SkeletonLine className="h-4 w-4/5" />
       </div>
-      <SkeletonCard className="border-dashed p-4">
+      <SkeletonCard className=" p-4">
         <SkeletonLine className="h-5 w-32" />
         <SkeletonBlock className="mt-4 h-9 w-36" />
       </SkeletonCard>

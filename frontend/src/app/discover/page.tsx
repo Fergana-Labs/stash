@@ -193,7 +193,7 @@ function GitHubSourceGlyph({ href }: { href: string }) {
 
 function EmptyState() {
   return (
-    <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
+    <section className="mt-12 rounded-lg border border-border bg-base px-6 py-12 text-center">
       <h2 className="font-display text-[20px] font-bold text-foreground">
         No public Skills yet.
       </h2>

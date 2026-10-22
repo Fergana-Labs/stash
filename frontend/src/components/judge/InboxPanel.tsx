@@ -114,7 +114,7 @@ export default function InboxPanel({ compact = false }: { compact?: boolean }) {
       )}
       {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
       {rows === null && <p role="status" className="m-0 text-[12px] text-muted-foreground">Loading…</p>}
-      {rows && rows.length === 0 && <p className="m-0 rounded-lg border border-dashed border-border p-6 text-center text-[12.5px] text-muted-foreground">{reviewed ? "All caught up." : "Nothing to review yet. Decisions from the API, MCP and Try it land here."}</p>}
+      {rows && rows.length === 0 && <p className="m-0 rounded-lg border border-border p-6 text-center text-[12.5px] text-muted-foreground">{reviewed ? "All caught up." : "Nothing to review yet. Decisions from the API, MCP and Try it land here."}</p>}
       <ul className="m-0 list-none space-y-2 p-0">
         {shown.map((row) => (
           <ItemRow

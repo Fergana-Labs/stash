@@ -178,7 +178,7 @@ function Legend({ selected }: { selected: ClimbAgent | null }) {
   return (
     <div className="flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground">
       {selected && <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-[#2a78d6] dark:bg-[#3987e5]" />{selected.name}</span>}
-      <span className="inline-flex items-center gap-1.5"><span className={cn("h-0.5 w-4", selected ? "border-t-2 border-dashed border-foreground/70" : "bg-foreground/70")} />All agents (run-weighted)</span>
+      <span className="inline-flex items-center gap-1.5"><span className={cn("h-0.5 w-4", selected ? "border-t-2 border-foreground/70" : "bg-foreground/70")} />All agents (run-weighted)</span>
       <span className="inline-flex items-center gap-1.5"><span className="h-px w-4 bg-muted-foreground/40" />Each agent</span>
     </div>
   );

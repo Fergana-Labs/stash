@@ -80,7 +80,7 @@ export default function MonitorsSection({ trends, error, onReload, focusedId, on
     {error && <p role="alert" className="mb-2 text-xs text-destructive">{error} <button className="underline" onClick={onReload}>Retry</button></p>}
     {!collapsed && <>
       {!trends && !error && <p role="status" className="py-2 text-xs text-muted-foreground">Loading behaviors…</p>}
-      {trends && !trends.length && <p className="rounded border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">No behaviors yet. Add the starter set (frustration, tool errors, repeated calls…) or define your own.</p>}
+      {trends && !trends.length && <p className="rounded border border-border px-3 py-4 text-xs text-muted-foreground">No behaviors yet. Add the starter set (frustration, tool errors, repeated calls…) or define your own.</p>}
       {sorted.length > 0 && <div className="grid gap-x-4 rounded border border-border px-1 py-1 sm:grid-cols-2 xl:grid-cols-3">
         {sorted.map((t) => {
           const active = t.behavior.id === focusedId;
