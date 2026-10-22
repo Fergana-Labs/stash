@@ -69,7 +69,7 @@ export default function UseIt({ detail, onShipped }: { detail: ModelDetail; onSh
         <div className="absolute right-0 z-30 mt-1.5 w-[min(30rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-border bg-background p-3.5 shadow-lg">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1 text-[12.5px]">
-              {detail.active ? <>Live: <b>v{detail.active.number}</b>{shippable && <span className="text-muted-foreground"> · a newer trained version is ready</span>}</> : shippable ? "Trained, not live yet." : "Train it first, then ship."}
+              {detail.active ? <>Live: <b>v{detail.active.number}</b>{shippable && <span className="text-muted-foreground">, a newer trained version is ready</span>}</> : shippable ? "Trained, not live yet." : "Train it first, then ship."}
             </div>
             {shippable && <Button size="sm" variant={gatePassed ? "default" : "outline"} disabled={busy} onClick={() => void ship()} title={gatePassed ? "Make the trained version live" : "The gate has blocking checks; ship anyway"}>{busy ? "Shipping…" : gatePassed ? `Ship v${draft?.number}` : "Ship anyway"}</Button>}
           </div>

@@ -287,7 +287,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       if (!selectedHit || !inSelectedHit(step)) return null;
       const row = rows.find((r) => r.key === step.id);
       const first = (row ? rowSteps(row) : [step]).some((s) => s.id === firstMarkedId);
-      return { label: first ? `${selectedHit.behavior_name ?? "Behavior"} · ${stepRange(selectedHit.start_idx, selectedHit.end_idx, numberOfIndex)}` : null, color: ACTOR_COLOR[selectedHit.actor ?? "agent"].hex };
+      return { label: first ? `${selectedHit.behavior_name ?? "Behavior"}, ${stepRange(selectedHit.start_idx, selectedHit.end_idx, numberOfIndex)}` : null, color: ACTOR_COLOR[selectedHit.actor ?? "agent"].hex };
     },
     contextHref: (step) => `/reward-models/traces/${traceId}/context?step=${encodeURIComponent(step.id)}`,
     stepNumber: (step) => presentation.labelById.get(step.id),

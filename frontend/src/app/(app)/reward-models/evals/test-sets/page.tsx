@@ -37,7 +37,7 @@ export default function TestSetsPage() {
           }}>
             <td><Link href={setHref(s.id)} className="block py-2 font-medium">{s.name}</Link>{s.description && <div className="-mt-1.5 pb-2 text-muted-foreground line-clamp-1">{s.description}</div>}</td>
             <td className="text-right tabular-nums">{s.case_count}</td>
-            <td className="text-muted-foreground">{run ? <>{run.label || "Unlabeled"} · {relativeTime(run.created_at)}</> : "Never run"}</td>
+            <td className="text-muted-foreground">{run ? <>{run.label || "Unlabeled"}, {relativeTime(run.created_at)}</> : "Never run"}</td>
             <td className="text-right tabular-nums">{run?.status === "scoring" ? <span className="text-muted-foreground">Scoring…</span>
               : run?.summary ? <>{pct(run.summary.pass_rate)}{broke > 0 && <span className="ml-2 text-destructive">{broke} broke</span>}</> : "—"}</td>
             <td>{run?.summary && run.summary.baseline ? <GateBadge gate={run.summary.gate} /> : <span className="text-muted-foreground">—</span>}</td>

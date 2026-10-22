@@ -41,7 +41,7 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
           </div>
           <ul className="m-0 mt-4 list-none space-y-2.5 p-0">
             <Step done label="Goal and labels" />
-            <Step done={(counts?.labeled ?? 0) >= 6} label="Labeled examples" detail={`${counts?.labeled ?? 0} labeled${counts?.needs_review ? ` · ${counts.needs_review} waiting` : ""}`} />
+            <Step done={(counts?.labeled ?? 0) >= 6} label="Labeled examples" detail={`${counts?.labeled ?? 0} labeled${counts?.needs_review ? `, ${counts.needs_review} waiting` : ""}`} />
             <Step done={criteria.length > 0} label="Criteria" detail={criteria.length ? `${criteria.length}: ${criteria.map((q) => q.prompt).join("; ")}` : undefined} />
             <Step done={!!report} label="Trained" detail={report ? `${pct(report.holdout.accuracy)} held-out on ${report.holdout.n}` : undefined} />
             <Step done={!!detail.active} label="Live" detail={detail.active ? `version ${detail.active.number}` : undefined} />

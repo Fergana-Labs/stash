@@ -228,7 +228,7 @@ function LatestTraceTable({
 
       {(mode === "picker" || selected.size > 0) && <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
         <Button variant="outline" size="xs" disabled={selectionDisabled || searching || !!searchError || visibleIds.length === 0} onClick={() => { onSelectedChange(new Set(visibleIds)); anchor.current = null; }}>Select only shown</Button>
-        <span>{selectedVisible} shown selected{hiddenSelected > 0 && ` · ${hiddenSelected} selected outside these filters`}</span>
+        <span>{selectedVisible} shown selected{hiddenSelected > 0 && `, ${hiddenSelected} selected outside these filters`}</span>
       </div>}
       {invalidDates && <p role="alert" className="mb-3 text-xs text-red-600">The end date must be on or after the start date.</p>}
       {searchError && <p role="alert" className="mb-3 text-sm text-red-600">{searchError}</p>}
@@ -272,7 +272,7 @@ function LatestTraceTable({
           </thead>
           <tbody>
             {groups.map((group, gi) => <Fragment key={group.session ? `session-${group.session}` : `rows-${gi}`}>
-              {group.session && <tr className="h-7 border-b border-border-subtle bg-surface/40"><td colSpan={COLUMNS.length + 3} className="px-3 text-[11px] text-muted-foreground">Session <span className="font-mono">{group.session.slice(0, 8)}</span> · {group.rows.length} traces</td></tr>}
+              {group.session && <tr className="h-7 border-b border-border-subtle bg-surface/40"><td colSpan={COLUMNS.length + 3} className="px-3 text-[11px] text-muted-foreground">Session <span className="font-mono">{group.session.slice(0, 8)}</span>, {group.rows.length} traces</td></tr>}
               {group.rows.map((trace) => <TraceRow
                 key={trace.id}
                 trace={trace}
@@ -294,7 +294,7 @@ function LatestTraceTable({
         )}
       </div>
         <p className="m-0 mt-1.5 text-right text-[11px] text-muted-foreground tabular-nums">
-          {searching ? "Searching…" : `${visible.length} trace${visible.length === 1 ? "" : "s"}${matches?.mode === "semantic" ? " · semantic" : matches?.mode === "text" ? " · text match" : ""}`}
+          {searching ? "Searching…" : `${visible.length} trace${visible.length === 1 ? "" : "s"}${matches?.mode === "semantic" ? ", semantic" : matches?.mode === "text" ? ", text match" : ""}`}
         </p>
     </div>
   );
@@ -367,7 +367,7 @@ function TraceRow({
         )}
         {segment && quote && <p className="m-0 mb-1 line-clamp-2 text-[11px] text-muted-foreground"><QuoteSnippet text={quote} query={query} /> <Link href={traceStepHref(trace.id, segment.start_idx)} className="whitespace-nowrap text-[10.5px] text-brand-600 hover:underline">{stepWindow(segment.start_idx, segment.end_idx)}</Link></p>}
       </td>
-      <td className="px-3 py-1.5 text-[12px] text-muted-foreground" title={`${traceSourceName(trace)} · Source ID: ${traceSourceId(trace)}`}><span className="block truncate">{traceSourceName(trace)}</span></td>
+      <td className="px-3 py-1.5 text-[12px] text-muted-foreground" title={`${traceSourceName(trace)}, Source ID: ${traceSourceId(trace)}`}><span className="block truncate">{traceSourceName(trace)}</span></td>
       {mode === "browse" && (
         <td className="px-3 py-1">
           {info && (info.outcome || info.behaviors.length > 0) && <div className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap">

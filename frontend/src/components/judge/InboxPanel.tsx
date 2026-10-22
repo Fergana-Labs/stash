@@ -105,7 +105,7 @@ export default function InboxPanel({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div className="flex flex-wrap items-center gap-2">
           {topics.length > 0 && (
-            <FilterChips value={topic} onChange={(t) => { setTopic(t); setRows(null); }} options={[{ id: "all", label: "All" }, ...topics.map((t) => ({ id: t.id, label: t.name, count: t.unreviewed, title: `${t.description}${t.reviewed ? ` · overruled ${t.overturned} of ${t.reviewed} reviewed` : ""}` }))]} />
+            <FilterChips value={topic} onChange={(t) => { setTopic(t); setRows(null); }} options={[{ id: "all", label: "All" }, ...topics.map((t) => ({ id: t.id, label: t.name, count: t.unreviewed, title: `${t.description}${t.reviewed ? `, overruled ${t.overturned} of ${t.reviewed} reviewed` : ""}` }))]} />
           )}
           <Button size="xs" variant="ghost" disabled={grouping} onClick={() => void group()} title="Group similar inputs into topics, so you can review one kind at a time and see where it gets overruled">
             <Layers />{grouping ? "Grouping…" : topics.length ? "Regroup by topic" : "Group by topic"}

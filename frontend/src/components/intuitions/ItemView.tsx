@@ -100,7 +100,7 @@ export default function ItemView({ item: raw, clamp = true, className }: { item:
     return <div className={cn("min-w-0 space-y-3", className)}>
       <div className="border-b border-border pb-2">
         <p className="m-0 text-xs font-medium text-foreground">{typeof source.title === "string" ? source.title : "Past session"}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">{source.kind === "local" ? "Local Codex session" : "Recorded session"} · Excerpt{typeof item.offset === "number" && typeof item.end_offset === "number" ? ` · turns ${item.offset + 1}–${item.end_offset}` : ""}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{source.kind === "local" ? "Local Codex session" : "Recorded session"}, Excerpt{typeof item.offset === "number" && typeof item.end_offset === "number" ? `, turns ${item.offset + 1}–${item.end_offset}` : ""}</p>
         {url && <a className="text-[11px] text-muted-foreground underline" href={url}>Open session</a>}
       </div>
       <div className="max-h-[460px] space-y-2 overflow-y-auto">

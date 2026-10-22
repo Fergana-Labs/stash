@@ -68,7 +68,7 @@ export default function MonitorsSection({ trends, error, onReload, focusedId, on
     <header className="mb-2 flex flex-wrap items-center gap-2">
       <button type="button" onClick={toggleCollapsed} aria-expanded={!collapsed} className="inline-flex items-center gap-1 text-[13px] font-semibold text-foreground">
         {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}Monitors
-        {trends && <span className="font-normal text-muted-foreground tabular-nums">· {trends.length}</span>}
+        {trends && <span className="font-normal text-muted-foreground tabular-nums">{trends.length}</span>}
       </button>
       <div className="ml-auto flex flex-wrap justify-end gap-1.5">
         {actions}
@@ -112,7 +112,7 @@ function FocusedBehavior({ trend, releases, onClose }: { trend: BehaviorTrend; r
         {b.definition && <p className="mt-0.5 line-clamp-2 max-w-3xl text-xs text-muted-foreground">{b.definition}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-muted-foreground">
           <SeverityTag severity={b.severity} /><span>{DETECTOR_LABEL[b.detector]}</span>
-          <span className="tabular-nums">{total} hit{total === 1 ? "" : "s"} in {trend.series.length} days · {trend.last_7_days} in the last 7</span>
+          <span className="tabular-nums">{total} hit{total === 1 ? "" : "s"} in {trend.series.length} days, {trend.last_7_days} in the last 7</span>
         </p>
       </div>
       <Button asChild size="xs" variant="outline"><Link href={`/reward-models/behaviors/${b.id}`}>Open<ArrowUpRight /></Link></Button>

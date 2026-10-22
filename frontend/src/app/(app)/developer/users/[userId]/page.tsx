@@ -167,7 +167,7 @@ function UserDetail() {
                     {s.title || s.session_id}
                   </span>
                   <span className="mt-0.5 block font-mono text-[12px] text-muted-foreground">
-                    {s.agent_name || "agent"} · {s.event_count} event
+                    {s.agent_name || "agent"}, {s.event_count} event
                     {s.event_count === 1 ? "" : "s"}
                   </span>
                 </span>
@@ -205,7 +205,7 @@ function UserDetail() {
                   {f.name}
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-                  {formatBytes(f.size_bytes)} · {formatDate(f.created_at)}
+                  {formatBytes(f.size_bytes)}, {formatDate(f.created_at)}
                 </span>
               </Link>
             ))}
@@ -240,7 +240,7 @@ function UserDetail() {
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
                   {source.type}
-                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
+                  {source.last_synced_at ? `, synced ${formatDate(source.last_synced_at)}` : ""}
                 </span>
               </Link>
             ))}

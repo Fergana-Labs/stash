@@ -29,10 +29,10 @@ export default function UserTable({ users, onChanged }: { users: EndUser[]; onCh
               {user.name}
             </span>
             <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">
-              {user.external_id} · {user.session_count} session
+              {user.external_id}, {user.session_count} session
               {user.session_count === 1 ? "" : "s"}
               {user.last_session_at &&
-                ` · last ${new Date(user.last_session_at).toLocaleDateString()}`}
+                `, last ${new Date(user.last_session_at).toLocaleDateString()}`}
             </span>
           </span>
           <WikiToggle user={user} onChanged={onChanged} />

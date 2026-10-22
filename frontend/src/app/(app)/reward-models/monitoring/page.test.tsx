@@ -65,7 +65,7 @@ it("shows accepted and rejected trials, baseline diffs, outcomes, and prompt usa
   expect(screen.getByText("Reward improved and business guardrail passed")).toBeVisible();
   expect(screen.getByText("Reward did not improve")).toBeVisible();
   expect(screen.getByText("99% interval 0.150 to 0.450")).toBeVisible();
-  expect(screen.getByText("60 assigned runs · 55 scored runs · mean reward 0.400")).toBeInTheDocument();
+  expect(screen.getByText("60 assigned runs, 55 scored runs, mean reward 0.400")).toBeInTheDocument();
   expect(screen.getByText("Changes from baseline v1")).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "Reward model" })).toBeDisabled();
   expect(api.history).toHaveBeenCalledWith("codex", "one", 20, "program");

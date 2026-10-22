@@ -141,7 +141,7 @@ it.each(["call1", null])("offers keyboard-accessible tool disclosure and groups 
 it("labels a separate tool result as output even when collapsed", () => {
   const result = { ...step(0, "Part found", "tool"), tool_name: "find_parts_for_vehicle" };
   render(<TraceTimeline rows={buildRows([result])} ann={ann} isExpanded={() => false} onToggle={vi.fn()} />);
-  expect(screen.getByRole("button", { name: "Expand Find parts for vehicle tool result" })).toHaveTextContent("Output · Find parts for vehicle");
+  expect(screen.getByRole("button", { name: "Expand Find parts for vehicle tool result" })).toHaveTextContent("Output, Find parts for vehicle");
 });
 
 it("shows the recorded action and exposes tool help and exact inputs on focus", async () => {

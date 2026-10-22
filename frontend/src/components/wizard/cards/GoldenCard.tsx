@@ -30,7 +30,7 @@ function PairRow({ pair, examples, labels, kind, onChanged }: { pair: SimilarPai
           </div>
         ))}
       </div>
-      <p className="m-0 mt-1.5 text-[11px] text-muted-foreground">{Math.round(pair.similarity * 100)}% similar{kind === "lookalike" ? " · labeled differently: is one of them wrong, or is there a difference a criterion should capture?" : " · keep one"}</p>
+      <p className="m-0 mt-1.5 text-[11px] text-muted-foreground">{Math.round(pair.similarity * 100)}% similar{kind === "lookalike" ? ", labeled differently: is one of them wrong, or is there a difference a criterion should capture?" : ", keep one"}</p>
       {error && <p role="alert" className="m-0 text-[11px] text-destructive">{error}</p>}
     </li>
   );
@@ -63,7 +63,7 @@ export default function GoldenCard() {
     <CardShell
       icon={Award}
       title="Golden set"
-      subtitle={health ? `${health.labeled} labeled · ${health.pinned} pinned · ${health.calibration} in calibration` : "Loading…"}
+      subtitle={health ? `${health.labeled} labeled, ${health.pinned} pinned, ${health.calibration} in calibration` : "Loading…"}
       actions={health && health.needs_label > 0 ? <Button size="xs" variant="ghost" onClick={() => send("Open the labeler for the examples that still need labels.")}>{health.needs_label} need labels</Button> : undefined}
     >
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
@@ -79,7 +79,7 @@ export default function GoldenCard() {
                     <div className="h-full bg-brand-500" style={{ width: `${((c.total - c.held_out) / max) * 100}%` }} />
                     <div className="h-full bg-brand-500/40" style={{ width: `${(c.held_out / max) * 100}%` }} />
                   </div>
-                  <span className="text-right tabular-nums text-muted-foreground">{c.total} · {c.held_out} held out · {c.pinned} pinned</span>
+                  <span className="text-right tabular-nums text-muted-foreground">{c.total}, {c.held_out} held out, {c.pinned} pinned</span>
                 </div>
               ))}
             </div>

@@ -48,7 +48,7 @@ export function RefineCurve({ curve, finished = false }: { curve: RefinePoint[];
       {exhausted && end && <line x1={x(end.pass)} x2={x(last)} y1={y(end.cv_accuracy!)} y2={y(end.cv_accuracy!)} stroke={ACCURACY} strokeDasharray="3 3" strokeWidth={1.25} opacity={0.6} />}
       {curve.filter((p) => p.cv_accuracy != null).map((p) => <g key={p.pass}>
         <circle cx={x(p.pass)} cy={y(p.cv_accuracy!)} r={p.accepted ? 3.5 : 3} fill={p.accepted ? ACCURACY : undefined} stroke={p.accepted ? ACCURACY : "currentColor"} strokeWidth={1.25} className={p.accepted ? undefined : "fill-background text-muted-foreground/60"}>
-          <title>{`${p.pass === 0 ? "Baseline" : `Pass ${p.pass}`} · ${passLabel(p)} · accuracy ${percent(p.cv_accuracy)} · ${p.pass === 0 ? "starting point" : p.accepted ? "kept" : "rejected"}`}</title>
+          <title>{`${p.pass === 0 ? "Baseline" : `Pass ${p.pass}`}, ${passLabel(p)}, accuracy ${percent(p.cv_accuracy)}, ${p.pass === 0 ? "starting point" : p.accepted ? "kept" : "rejected"}`}</title>
         </circle>
       </g>)}
       {exhausted && end && <text x={x(last)} y={y(end.cv_accuracy!) - 7} textAnchor="end" className="fill-muted-foreground text-[8.5px] font-medium">Gains exhausted</text>}
@@ -56,7 +56,7 @@ export function RefineCurve({ curve, finished = false }: { curve: RefinePoint[];
     </svg>
     <figcaption className="mt-1 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-3" style={{ background: ACCURACY }} />Cross-validated accuracy of the kept rubric</span>
-      <span>● kept · ○ rejected</span>
+      <span>● kept, ○ rejected</span>
     </figcaption>
   </figure>;
 }
@@ -116,7 +116,7 @@ export default function RefinePanel({ id, detail, examples = [], busy = false, o
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{p.pass === 0 ? "Baseline" : `Pass ${p.pass}`}</span>
           {p.pass > 0 && <span className={cn("rounded px-1.5 py-px text-[10.5px] font-medium", p.accepted ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>{p.accepted ? "Kept" : "Rejected"}</span>}
-          <span className="tabular-nums text-muted-foreground">accuracy {percent(p.cv_accuracy)}{p.cv_log_loss != null ? ` · log loss ${p.cv_log_loss.toFixed(3)}` : ""} · {p.questions} questions</span>
+          <span className="tabular-nums text-muted-foreground">accuracy {percent(p.cv_accuracy)}{p.cv_log_loss != null ? `, log loss ${p.cv_log_loss.toFixed(3)}` : ""}, {p.questions} questions</span>
         </div>
         {p.edits.length > 0 && <ul className="mt-1 list-none space-y-0.5 p-0">{p.edits.map((e, i) => <li key={i} className="flex gap-1.5"><span className="shrink-0 self-start rounded border border-border px-1 text-[10px] text-muted-foreground">{editLabel(e.kind)}</span><span className="min-w-0 text-muted-foreground">{e.rationale}</span></li>)}</ul>}
         {p.note && <p className="mt-1 text-[11px] text-muted-foreground">{p.note}</p>}
@@ -124,9 +124,9 @@ export default function RefinePanel({ id, detail, examples = [], busy = false, o
     </ol>}
 
     {result && <div className="space-y-2 text-xs">
-      <p className="text-[11px] text-muted-foreground">Signals used: {result.signals.examples} examples · {result.signals.production_disagreements} production disagreements · {result.signals.contradicted_claims} contradicted claims.</p>
+      <p className="text-[11px] text-muted-foreground">Signals used: {result.signals.examples} examples, {result.signals.production_disagreements} production disagreements, {result.signals.contradicted_claims} contradicted claims.</p>
       {!result.changed ? <p>Gains exhausted: no pass beat the saved criteria (v{result.base_version}), so nothing changed.</p> : <>
-        <p>The draft was updated with the improved rubric{result.held_out ? `: ${percent(result.held_out.accuracy)} on ${result.held_out.n} held-out examples` : ""}{result.gate ? ` · gate ${result.gate.passed ? "passes" : "blocks"}` : ""}.</p>
+        <p>The draft was updated with the improved rubric{result.held_out ? `: ${percent(result.held_out.accuracy)} on ${result.held_out.n} held-out examples` : ""}{result.gate ? `, gate ${result.gate.passed ? "passes" : "blocks"}` : ""}.</p>
         {result.gate && !result.gate.passed && <ul className="list-none space-y-0.5 p-0 text-[11px]">{result.gate.checks.filter((c) => !c.passed).map((c) => <li key={c.name} className={c.blocking === false ? "text-muted-foreground" : "text-destructive"}>{c.detail}</li>)}</ul>}
         {pending && !blocked && <Button size="sm" disabled={busy || working} onClick={() => void apply(false)}>{working ? "Applying…" : "Apply improved rubric"}</Button>}
         {!pending && <p className="text-muted-foreground">Applied or replaced by later edits.</p>}

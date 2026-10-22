@@ -55,13 +55,13 @@ export default function TestSetClient({ id }: { id: string }) {
   if (!set) return <EvalPageFrame>{error ? <p role="alert" className="text-xs text-destructive">{error} <button className="underline" onClick={() => void load()}>Retry</button></p> : <p role="status" className="text-xs text-muted-foreground">Loading test set…</p>}</EvalPageFrame>;
 
   const evalName = (evalId: string) => evals.find((m) => m.id === evalId)?.name ?? "Eval";
-  const scoredBy = set.scorers.map((s) => s.type === "expected" ? "Expected answer" : `${evalName(s.eval_id)} (passes: ${s.pass_labels.join(", ")})`).join(" · ");
+  const scoredBy = set.scorers.map((s) => s.type === "expected" ? "Expected answer" : `${evalName(s.eval_id)} (passes: ${s.pass_labels.join(", ")})`).join(", ");
 
   return <EvalPageFrame title={set.name} description={set.description || undefined}
     actions={<div className="flex shrink-0 items-center gap-2"><Link href="/reward-models/evals/test-sets" className="text-xs text-muted-foreground hover:text-foreground hover:underline">← Test sets</Link>
       <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void remove()}><Trash2 />Delete</Button></div>}>
     <p className="-mt-3 mb-6 text-xs text-muted-foreground">
-      Scored by: <span className="text-foreground">{scoredBy}</span> · Allowed regressions: <span className="text-foreground tabular-nums">{set.max_regressions}</span>
+      Scored by: <span className="text-foreground">{scoredBy}</span>, Allowed regressions: <span className="text-foreground tabular-nums">{set.max_regressions}</span>
       <button type="button" className="ml-2 underline hover:text-foreground" onClick={() => setEditing(true)}>Edit</button>
     </p>
     <RunsSection set={set} onBaseline={(runId) => void patch({ baseline_run_id: runId }, runId ? "Baseline set" : "Baseline unpinned")} />

@@ -159,7 +159,7 @@ function AnnotationCard({
           )}
         </div>
         <span className="shrink-0 font-mono text-[10.5px] tracking-wide text-muted-foreground uppercase">
-          {selectedSteps?.length ? selectedSteps[0] === selectedSteps.at(-1) ? `Step ${selectedSteps[0] + 1}` : `Steps ${selectedSteps[0] + 1}–${selectedSteps.at(-1)! + 1}` : target === null ? "Trace" : target.index < 0 ? "Instructions" : `Step ${target.index + 1}${target.role === "tool" ? " · output" : ""}`}
+          {selectedSteps?.length ? selectedSteps[0] === selectedSteps.at(-1) ? `Step ${selectedSteps[0] + 1}` : `Steps ${selectedSteps[0] + 1}–${selectedSteps.at(-1)! + 1}` : target === null ? "Trace" : target.index < 0 ? "Instructions" : `Step ${target.index + 1}${target.role === "tool" ? ", output" : ""}`}
         </span>
       </div>
 

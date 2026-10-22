@@ -74,7 +74,7 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
     <Popover.Root>
       <Popover.Trigger asChild>
         <button type="button" aria-label="Action credit" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground">
-          Credit{active || pending ? " · scoring…" : scored ? ` · ${scored}/${eligible.length}` : selectedModelId === null ? " · hidden" : " · unscored"}
+          Credit{active || pending ? ", scoring…" : scored ? `, ${scored}/${eligible.length}` : selectedModelId === null ? ", hidden" : ", unscored"}
           <ChevronDown className="size-3" />
         </button>
       </Popover.Trigger>
@@ -82,7 +82,7 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
       <Popover.Content aria-label="Action credit settings" align="end" sideOffset={6} className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-[12px] text-popover-foreground shadow-md">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Action credit</span>
-        <span className="text-muted-foreground">{usesShared ? `Stash evaluator · v${trace.default_evaluator!.revision}` : savedModelName ?? models?.find((m) => m.id === effectiveModelId)?.name ?? "Stash evaluator"}</span>
+        <span className="text-muted-foreground">{usesShared ? `Stash evaluator, v${trace.default_evaluator!.revision}` : savedModelName ?? models?.find((m) => m.id === effectiveModelId)?.name ?? "Stash evaluator"}</span>
         {effectiveModelId && <>
           <span className="text-muted-foreground">{scored} / {eligible.length} actions scored</span>
           <button type="button" onClick={() => void score()} disabled={requesting || active || !eligible.length}

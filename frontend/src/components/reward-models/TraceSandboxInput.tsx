@@ -155,12 +155,12 @@ export default function TraceSandboxInput({ disabled, label = "Trace", onChange,
       <div ref={sentinel} className="h-1" />
       {loading && traces.length > 0 && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">Loading more traces…</p>}
     </div>}
-    {(!item || selectionOnly) && total > 25 && <p className="text-[11px] text-muted-foreground">{traces.length} of {total} traces{hasMore ? " · Scroll for more" : ""}</p>}
+    {(!item || selectionOnly) && total > 25 && <p className="text-[11px] text-muted-foreground">{traces.length} of {total} traces{hasMore ? ", Scroll for more" : ""}</p>}
     {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     {!loading && !hasMore && !busy && !item && !traces.length && <p className="text-xs text-muted-foreground">No traces found. Upload one from the trace options menu.</p>}
     {selectionOnly && item && !traces.some((trace) => trace.id === selectedId) && <p className="text-xs text-muted-foreground">Selected: {name}</p>}
     {item && !selectionOnly && <div className="max-h-[420px] overflow-auto border-y border-border" aria-label="Trace preview">
-      {steps ? <div className="divide-y divide-border">{steps.map((step, index) => <article key={index} className="py-3"><p className="mb-2 text-[11px] font-medium text-muted-foreground">{index + 1} · {String(step.role ?? "message")}{step.tool_name ? ` → ${step.tool_name}` : ""}</p><p className="whitespace-pre-wrap break-words text-xs leading-relaxed">{String(step.content ?? "")}</p>{Boolean(step.tool_input) && <pre className="mt-2 whitespace-pre-wrap break-all text-[11px] text-muted-foreground">{JSON.stringify(step.tool_input, null, 2)}</pre>}</article>)}</div> : <pre className="py-3 whitespace-pre-wrap break-words text-xs">{typeof item === "string" ? item : JSON.stringify(item, null, 2)}</pre>}
+      {steps ? <div className="divide-y divide-border">{steps.map((step, index) => <article key={index} className="py-3"><p className="mb-2 text-[11px] font-medium text-muted-foreground">{index + 1}, {String(step.role ?? "message")}{step.tool_name ? ` → ${step.tool_name}` : ""}</p><p className="whitespace-pre-wrap break-words text-xs leading-relaxed">{String(step.content ?? "")}</p>{Boolean(step.tool_input) && <pre className="mt-2 whitespace-pre-wrap break-all text-[11px] text-muted-foreground">{JSON.stringify(step.tool_input, null, 2)}</pre>}</article>)}</div> : <pre className="py-3 whitespace-pre-wrap break-words text-xs">{typeof item === "string" ? item : JSON.stringify(item, null, 2)}</pre>}
     </div>}
   </section>;
 }

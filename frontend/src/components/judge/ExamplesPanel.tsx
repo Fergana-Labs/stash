@@ -134,7 +134,7 @@ export default function ExamplesPanel({ onTry }: { onTry?: (item: Item) => void 
               <td className="w-full min-w-48 max-w-xl px-3 py-2 align-top">
                 <button type="button" className="flex w-full items-start gap-2 text-left" aria-label={`Inspect example ${index + 1}`} aria-expanded={open === e.id} aria-controls={`example-${e.id}`} onClick={() => setOpen(open === e.id ? null : e.id)}>
                   <ChevronDown className={`mt-0.5 size-3 shrink-0 transition-transform ${open === e.id ? "rotate-180" : ""}`} />
-                  <span className="line-clamp-2 leading-5">{e.item_b ? `A: ${examplePreview(e.item)} · B: ${examplePreview(e.item_b)}` : examplePreview(e.item)}</span>
+                  <span className="line-clamp-2 leading-5">{e.item_b ? `A: ${examplePreview(e.item)}, B: ${examplePreview(e.item_b)}` : examplePreview(e.item)}</span>
                 </button>
                 {e.pinned && <span className="ml-5"><Badge tone="brand">pinned</Badge></span>}
               </td>

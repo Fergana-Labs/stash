@@ -145,7 +145,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="mr-1 text-[11px] text-muted-foreground">
-              Recorded agent run · eval v{demo.model_version}
+              Recorded agent run, eval v{demo.model_version}
             </span>
             <Button size="xs" variant="outline" asChild>
               <Link href={sourceLink}>
@@ -235,7 +235,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                   The setup conversation
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Sample setup · saved eval · {demo.reference_count} visual
+                  Sample setup, saved eval, {demo.reference_count} visual
                   examples
                 </p>
               </header>
@@ -358,8 +358,8 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                           ? "Baseline"
                           : a.accepted
                             ? "Improved the incumbent"
-                            : "Rejected · incumbent retained"}
-                        {a.iteration === best.iteration ? " · selected" : ""}
+                            : "Rejected, incumbent retained"}
+                        {a.iteration === best.iteration ? ", selected" : ""}
                       </p>
                     </div>
                     <span className="font-mono text-xs">{pct(a.score)}</span>
@@ -414,7 +414,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                 </summary>
                 <div className="space-y-3 border-t border-border p-3">
                   <p className="break-all font-mono text-[10px] text-muted-foreground">
-                    Prediction {candidate.prediction_id} · eval v
+                    Prediction {candidate.prediction_id}, eval v
                     {demo.model_version}
                   </p>
                   <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[10px] leading-4">
@@ -444,7 +444,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
                   {pct(best.score)}
                 </p>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  P(liked) · selected revision {best.iteration}
+                  P(liked), selected revision {best.iteration}
                 </p>
               </div>
             </div>
@@ -476,7 +476,7 @@ export default function WebsiteDemo({ traceId }: { traceId: string }) {
         >
           <DialogContent className="max-h-[94vh] overflow-y-auto rounded-[4px] p-3 sm:max-w-[1400px]">
             <DialogTitle className="text-xs text-foreground">
-              Gather · revision {enlarged?.iteration}
+              Gather, revision {enlarged?.iteration}
             </DialogTitle>
             {enlarged && (
               <>

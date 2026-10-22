@@ -130,12 +130,12 @@ export function HitsChart({ buckets, releases = [], unit }: { buckets: HitBucket
       {ticks.map((tick) => <g key={tick}><line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="currentColor" opacity={0.08} /><text x={left - 6} y={y(tick) + 4} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{tick}</text></g>)}
       {buckets.map((b) => <g key={b.start}>
         {b.hits > 0 && <rect x={x(b.start) + bw * 0.12} width={Math.max(1, bw * 0.76)} y={y(b.hits)} height={bottom - y(b.hits)} rx={Math.min(2, bw / 4)} className="fill-brand-500/75" />}
-        <rect x={x(b.start)} width={bw} y={t} height={bottom - t} fill="transparent"><title>{fmt(b.start)} · {b.hits} hit{b.hits === 1 ? "" : "s"}{b.detail ? ` in ${b.detail}` : ""}</title></rect>
+        <rect x={x(b.start)} width={bw} y={t} height={bottom - t} fill="transparent"><title>{fmt(b.start)}, {b.hits} hit{b.hits === 1 ? "" : "s"}{b.detail ? ` in ${b.detail}` : ""}</title></rect>
       </g>)}
       {marks.map((r) => { const mx = x(new Date(r.released_at).getTime()); return <g key={r.id} data-release-marker>
         <line x1={mx} x2={mx} y1={t - 6} y2={bottom} stroke="currentColor" strokeDasharray="3 3" opacity={0.6} />
         <text x={mx > right - 160 ? mx - 3 : mx + 3} y={t - 8} fontSize={10} textAnchor={mx > right - 160 ? "end" : "start"} fill="currentColor" opacity={0.8}>{r.label}</text>
-        <title>{r.label}{r.agent ? ` · ${r.agent}` : ""} · {new Date(r.released_at).toLocaleString()}{r.note ? `\n${r.note}` : ""}</title>
+        <title>{r.label}{r.agent ? `, ${r.agent}` : ""}, {new Date(r.released_at).toLocaleString()}{r.note ? `\n${r.note}` : ""}</title>
       </g>; })}
       <text x={left} y={178} fontSize={10} fill="currentColor" opacity={0.55}>{fmt(from)}</text>
       <text x={right} y={178} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{fmt(buckets.at(-1)!.start)}</text>
@@ -271,7 +271,7 @@ export function NewBehaviorDialog({ open, onOpenChange, onCreated }: { open: boo
       <ul className="m-0 grid max-h-56 list-none grid-cols-1 gap-1 overflow-x-hidden overflow-y-auto p-0">{templates.map((t) => <li key={t.slug} className="min-w-0">
         <button type="button" disabled={!!saving} onClick={() => void fromTemplate(t)} className="flex w-full items-start gap-2 rounded border border-border px-2.5 py-1.5 text-left text-xs hover:border-foreground/30 disabled:opacity-60">
           <span className={cn("mt-1 size-1.5 shrink-0 rounded-full", ACTOR_COLOR[t.actor].dot)} />
-          <span className="min-w-0 flex-1"><span className="block truncate font-medium">{t.name}{t.verify && <span className="ml-1.5 text-[10.5px] font-normal text-muted-foreground">· verified by the Agent Judge</span>}</span>
+          <span className="min-w-0 flex-1"><span className="block truncate font-medium">{t.name}{t.verify && <span className="ml-1.5 text-[10.5px] font-normal text-muted-foreground">verified by the Agent Judge</span>}</span>
             <span className="block truncate text-[11px] text-muted-foreground">{t.definition}</span></span>
           {saving === t.slug && <span className="text-[11px] text-muted-foreground">Adding…</span>}
         </button>

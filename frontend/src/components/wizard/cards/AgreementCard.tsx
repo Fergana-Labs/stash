@@ -53,13 +53,13 @@ export default function AgreementCard({ invited }: { invited?: string }) {
   const run = (fn: () => Promise<unknown>) => fn().then(load).catch((e) => setError(errorMessage(e)));
 
   return (
-    <CardShell icon={Scale} title="Agreement" subtitle={data ? `${data.calibration_items} calibration examples · ${links.length} reviewer${links.length === 1 ? "" : "s"}` : "Loading…"}>
+    <CardShell icon={Scale} title="Agreement" subtitle={data ? `${data.calibration_items} calibration examples, ${links.length} reviewer${links.length === 1 ? "" : "s"}` : "Loading…"}>
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
       {data && (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-2">
-            <Stat label="Judge vs. you" value={pct(data.judge?.agreement)} hint={data.judge ? `${data.judge.n} held-out · ${kappa(data.judge.kappa)}` : "train first"} />
-            <Stat label="People vs. each other" value={pct(data.human?.agreement)} hint={data.human ? `${data.human.n} shared · ${kappa(data.human.kappa)}` : "invite a reviewer"} />
+            <Stat label="Judge vs. you" value={pct(data.judge?.agreement)} hint={data.judge ? `${data.judge.n} held-out, ${kappa(data.judge.kappa)}` : "train first"} />
+            <Stat label="People vs. each other" value={pct(data.human?.agreement)} hint={data.human ? `${data.human.n} shared, ${kappa(data.human.kappa)}` : "invite a reviewer"} />
           </div>
           {data.verdict && <p className="m-0 text-[12.5px]">{data.verdict}</p>}
           {!data.human && <p className="m-0 text-[12px] text-muted-foreground">People rarely agree 100%. Ask someone who makes this call to label the calibration set; their agreement with you is the most the judge can reach.</p>}

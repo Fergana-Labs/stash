@@ -22,8 +22,8 @@ const rubric: RubricQuestion[] = [
 describe("describeFeature", () => {
   it("maps yes/no, choice, and score features to their question and option", () => {
     expect(describeFeature("answers_question", rubric)).toMatchObject({ questionId: "answers_question", option: null, optionLabel: "yes" });
-    expect(describeFeature("tone=warm", rubric)).toMatchObject({ questionId: "tone", option: "warm", optionLabel: "warm · Friendly" });
-    expect(describeFeature("length=2", rubric)).toMatchObject({ questionId: "length", option: "2", optionLabel: "2 · Too long" });
+    expect(describeFeature("tone=warm", rubric)).toMatchObject({ questionId: "tone", option: "warm", optionLabel: "warm, Friendly" });
+    expect(describeFeature("length=2", rubric)).toMatchObject({ questionId: "length", option: "2", optionLabel: "2, Too long" });
   });
 
   it("keeps unknown features readable", () => {

@@ -78,12 +78,12 @@ function BuildStatus({ data, building }: { data: Eval; building: boolean }) {
   if (build.stage === "failed") return <p role="alert" className="rounded border border-destructive/40 px-4 py-3 text-sm text-destructive">Build failed: {build.error || "unknown error"}</p>;
   if (building) {
     const progress = build.stage === "checking" && build.total ? ` ${build.done ?? 0}/${build.total}` : "";
-    return <p role="status" className="flex items-center gap-2 rounded border border-border px-4 py-3 text-sm"><Loader2 className="size-4 animate-spin" />Building your eval API endpoint<span className="text-muted-foreground">· {STAGE_TEXT[build.stage]}{progress}</span></p>;
+    return <p role="status" className="flex items-center gap-2 rounded border border-border px-4 py-3 text-sm"><Loader2 className="size-4 animate-spin" />Building your eval API endpoint<span className="text-muted-foreground">({STAGE_TEXT[build.stage]}{progress})</span></p>;
   }
   const m = build.metrics;
   return <p className="rounded border border-border px-4 py-3 text-sm">
-    <b>Ready</b> · {data.examples.good} good, {data.examples.bad} bad
-    {m && m.agreement != null && <> · agrees with your labels {Math.round(m.agreement * 100)}%</>}
+    <b>Ready</b>, {data.examples.good} good and {data.examples.bad} bad examples
+    {m && m.agreement != null && <>, agrees with your labels {Math.round(m.agreement * 100)}%</>}
   </p>;
 }
 
@@ -144,7 +144,7 @@ function CallRow({ id, call, onLabel }: { id: string; call: EvalCall; onLabel: (
   return <div className="grid gap-4 px-4 py-3 md:grid-cols-[200px_1fr_220px]">
     <ItemPreview item={call.input} path={(i) => evalCallFilePath(id, call.id, i)} />
     <div className="min-w-0 text-[13px]">
-      <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)} · {call.caller || "unknown caller"}</div>
+      <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)}, {call.caller || "unknown caller"}</div>
       <div className="mt-1 text-[22px] font-semibold tabular-nums">{call.score.toFixed(2)}</div>
       {call.explanation && <p className="mt-1">{call.explanation}</p>}
       <div className="mt-1 flex flex-wrap gap-1">{call.traits.map((t) => <span key={t.trait} title={t.why} className="rounded border border-border px-1.5 py-0.5 text-[11px]">{t.trait} <b>{t.score.toFixed(2)}</b></span>)}</div>

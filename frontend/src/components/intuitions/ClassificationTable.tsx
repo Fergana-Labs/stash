@@ -36,7 +36,7 @@ export default function ClassificationTable({ classification }: { classification
     <div className="space-y-1.5">
       <p className="m-0 text-[12px]">
         Macro F1 <b className="font-mono tabular-nums">{fmt(classification.macro_f1)}</b>
-        <span className="mx-2 text-muted-foreground">·</span>
+        
         <span title="Agreement beyond chance (Cohen's kappa)">κ <b className="font-mono tabular-nums">{fmt(classification.kappa)}</b></span>
       </p>
       <div className="overflow-x-auto">

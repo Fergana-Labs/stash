@@ -43,7 +43,7 @@ export default function FeedbackDialog({ modelId }: { modelId: string }) {
             {model.feedback.map((item) => (
               <li key={`${item.trace_id}:${item.step_index}`} className="py-4 first:pt-0">
                 <div className="flex items-baseline justify-between gap-4 text-sm">
-                  <span className="font-medium">{item.source === "ai_judgment" ? "AI judgment" : "User feedback"} · {item.label}</span>
+                  <span className="font-medium">{item.source === "ai_judgment" ? "AI judgment" : "User feedback"}, {item.label}</span>
                   <Link href={`/reward-models/traces/${item.trace_id}`} className="text-muted-foreground underline underline-offset-2">
                     {item.tool_name ? "Tool call" : "Response"} at step {item.step_index + 1}
                   </Link>
@@ -52,8 +52,8 @@ export default function FeedbackDialog({ modelId }: { modelId: string }) {
                 <p className="m-0 text-sm">{item.reason}</p>
                 <p className="mb-0 mt-2 text-xs text-muted-foreground">
                   {item.included_in_training ? "Included in training data" : "Excluded from training"}
-                  {" · "}{item.confidence === "high" ? "High" : "Low"} assessment confidence
-                  {" · "}{item.classifier_model}
+                  {", "}{item.confidence === "high" ? "High" : "Low"} assessment confidence
+                  {", "}{item.classifier_model}
                 </p>
               </li>
             ))}

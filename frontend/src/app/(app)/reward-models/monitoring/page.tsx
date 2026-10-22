@@ -38,15 +38,15 @@ function AgentDetail({ agent, overview }: { agent: MonitoredAgent; overview: Mon
   const change = fullWindows && history.current_mean != null && history.previous_mean != null ? history.current_mean - history.previous_mean : null;
   return <section aria-label={`${agent.display_name} monitoring`} className="px-6 py-4">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-3">
-      {!!programs.length && <Select aria-label="Workload" value={selectedProgram} onChange={setProgram} options={[{ value: "recorded", label: "All recorded runs" }, ...programs.map((p) => ({ value: p.id, label: `${p.name} · ${p.scope}` }))]} className="h-9 max-w-lg px-3 text-xs" />}
-      <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && modelId && !overview.models.some((m) => m.id === modelId) ? [{ value: modelId, label: program.reward_model_name ?? `Eval · ${program.eval_name ?? ""}` }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
+      {!!programs.length && <Select aria-label="Workload" value={selectedProgram} onChange={setProgram} options={[{ value: "recorded", label: "All recorded runs" }, ...programs.map((p) => ({ value: p.id, label: `${p.name}, ${p.scope}` }))]} className="h-9 max-w-lg px-3 text-xs" />}
+      <Select aria-label="Reward model" value={modelId} onChange={setModel} disabled={!!program} options={[...overview.models.map((m) => ({ value: m.id, label: m.name })), ...(program && modelId && !overview.models.some((m) => m.id === modelId) ? [{ value: modelId, label: program.reward_model_name ?? `Eval, ${program.eval_name ?? ""}` }] : [])]} className="h-9 min-w-48 px-3 text-xs" />
       {program && <RecordBadge value={program.status === "active" ? "optimizing" : program.status} />}
     </div><Button size="sm" variant="outline" onClick={() => setCreating(!creating)}>{creating ? "Cancel" : "Optimize prompt"}</Button></div>
     {creating && <div className="mb-5"><CreateOptimization initialModelId={modelId} initialAgent={agent.agent} /></div>}
     <ErrorNotice error={error ?? detailError} onRetry={() => { void reload(); void reloadDetail(); }} />
     {!overview.models.length && !program ? <p className="text-sm text-muted-foreground">Choose a <Link className="underline" href="/reward-models/models">reward model</Link> once it is ready to monitor agent performance.</p> : !history ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading agent rewards…</p> : <>
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Metric label="Average reward" content={value(history.current_mean)} hint={`${history.current_n} recent scored runs${program ? ` · current prompt v${program.active_version}` : ""}`} />
+        <Metric label="Average reward" content={value(history.current_mean)} hint={`${history.current_n} recent scored runs${program ? `, current prompt v${program.active_version}` : ""}`} />
         <Metric label="Change from previous average" content={change == null ? "—" : signed(change)} hint={change == null ? `Needs ${history.window * 2} scored runs${program ? " on the current prompt" : ""}` : "Observed change in reward units"} />
         <Metric label="Accepted prompt changes" content={program ? String(program.accepted_count) : programs.length ? "—" : "0"} hint={program ? `${program.run_count} runs assigned to this workload` : "No workload selected"} />
         <Metric label="Current prompt" content={program ? `v${program.active_version}` : "Not tracked"} hint={program ? "Current supplementary instructions" : "Connect a prompt experiment to track revisions"} />

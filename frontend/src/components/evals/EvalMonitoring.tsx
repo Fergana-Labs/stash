@@ -94,7 +94,7 @@ function AgreementAlert({ id }: { id: string }) {
     <input type="number" min={1} max={100} aria-label="Agreement threshold" value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-7 w-14 rounded-md border border-border bg-transparent px-1.5 text-right tabular-nums" />%
     <Button size="xs" variant="outline" disabled={saving || !valid} onClick={() => void save(true)}>{saved && saved !== "off" ? "Update" : "Set alert"}</Button>
     {saved && saved !== "off" && <Button size="xs" variant="ghost" disabled={saving} onClick={() => void save(false)}>Turn off</Button>}
-    {saved && <span className="text-muted-foreground">{saved === "off" ? "Off" : `On · below ${saved}% · Slack and email`}</span>}
+    {saved && <span className="text-muted-foreground">{saved === "off" ? "Off" : `On, below ${saved}%, Slack and email`}</span>}
   </div>;
 }
 
@@ -120,7 +120,7 @@ function DailyBars({ data }: { data: Monitoring }) {
       {[0, max].map((tick) => <g key={tick}><line x1={L} x2={W - R} y1={y(tick)} y2={y(tick)} stroke="currentColor" opacity={0.1} /><text x={L - 6} y={y(tick) + 4} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{tick}</text></g>)}
       {days.map((d, i) => { const x = L + i * slot + (slot - bar) / 2; return <g key={d.date}>
         <rect x={x} y={y(d.calls)} width={bar} height={Math.max(0, y(0) - y(d.calls))} rx={Math.min(4, bar / 2)} className="fill-primary" opacity={0.8} />
-        <rect x={L + i * slot} y={T} width={slot} height={H - B - T} fill="transparent"><title>{date(d.date)} · {d.calls} calls · {d.errors} failed · {d.with_feedback} with feedback</title></rect>
+        <rect x={L + i * slot} y={T} width={slot} height={H - B - T} fill="transparent"><title>{date(d.date)}, {d.calls} calls, {d.errors} failed, {d.with_feedback} with feedback</title></rect>
       </g>; })}
       <text x={L} y={H - 6} fontSize={10} fill="currentColor" opacity={0.55}>{date(days[0].date)}</text>
       <text x={W - R} y={H - 6} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{date(days.at(-1)!.date)}</text>
@@ -137,7 +137,7 @@ function DailyAccuracy({ data }: { data: Monitoring }) {
       <svg viewBox={`0 0 ${W} ${H}`} className="h-40 w-full" role="img" aria-label="Accuracy per day">
         {[0, 0.5, 1].map((tick) => <g key={tick}><line x1={L} x2={W - R} y1={y(tick)} y2={y(tick)} stroke="currentColor" opacity={0.1} /><text x={L - 6} y={y(tick) + 4} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{percent(tick)}</text></g>)}
         <polyline points={days.map((d, i) => `${xAt(i, days.length)},${y(d.accuracy!)}`).join(" ")} className="stroke-primary" strokeWidth={2} fill="none" />
-        {days.map((d, i) => <g key={d.date}><circle cx={xAt(i, days.length)} cy={y(d.accuracy!)} r={4} className="fill-primary stroke-background" strokeWidth={2} /><circle cx={xAt(i, days.length)} cy={y(d.accuracy!)} r={12} fill="transparent"><title>{date(d.date)} · {percent(d.accuracy)} of {d.with_feedback} calls</title></circle></g>)}
+        {days.map((d, i) => <g key={d.date}><circle cx={xAt(i, days.length)} cy={y(d.accuracy!)} r={4} className="fill-primary stroke-background" strokeWidth={2} /><circle cx={xAt(i, days.length)} cy={y(d.accuracy!)} r={12} fill="transparent"><title>{date(d.date)}, {percent(d.accuracy)} of {d.with_feedback} calls</title></circle></g>)}
         <text x={L} y={H - 6} fontSize={10} fill="currentColor" opacity={0.55}>{date(days[0].date)}</text>
         <text x={W - R} y={H - 6} fontSize={10} textAnchor="end" fill="currentColor" opacity={0.55}>{date(days.at(-1)!.date)}</text>
       </svg>}
@@ -154,7 +154,7 @@ function Reliability({ bins }: { bins: Monitoring["summary"]["reliability"] }) {
       <svg viewBox={`0 0 ${S} ${S}`} className="h-40 w-40 shrink-0" role="img" aria-label="Confidence versus observed accuracy">
         <rect x={at(0)} y={atY(1)} width={at(1) - at(0)} height={atY(0) - atY(1)} fill="none" stroke="currentColor" opacity={0.15} />
         <line x1={at(0)} y1={atY(0)} x2={at(1)} y2={atY(1)} stroke="currentColor" opacity={0.3} strokeDasharray="3 3" />
-        {bins.map((b) => <circle key={b.bin} cx={at(b.confidence)} cy={atY(b.accuracy)} r={Math.min(9, 3 + Math.sqrt(b.n))} className="fill-primary stroke-background" strokeWidth={2} opacity={0.85}><title>{percent(b.confidence)} confident · {percent(b.accuracy)} correct · {b.n} calls</title></circle>)}
+        {bins.map((b) => <circle key={b.bin} cx={at(b.confidence)} cy={atY(b.accuracy)} r={Math.min(9, 3 + Math.sqrt(b.n))} className="fill-primary stroke-background" strokeWidth={2} opacity={0.85}><title>{percent(b.confidence)} confident, {percent(b.accuracy)} correct, {b.n} calls</title></circle>)}
         <text x={at(0.5)} y={S - 6} fontSize={9} textAnchor="middle" fill="currentColor" opacity={0.55}>Confidence</text>
         <text x={8} y={atY(0.5)} fontSize={9} textAnchor="middle" fill="currentColor" opacity={0.55} transform={`rotate(-90 8 ${atY(0.5)})`}>Correct</text>
       </svg>
@@ -196,7 +196,7 @@ function Disagreements({ data, onOpenCall }: { data: Monitoring; onOpenCall?: (p
       <ul className="divide-y divide-border border-t border-border">{data.disagreements.map((d) => <li key={d.prediction_id}>
         <button className="grid w-full gap-1 px-4 py-2.5 text-left text-xs hover:bg-surface disabled:cursor-default" disabled={!onOpenCall} onClick={() => onOpenCall?.(d.prediction_id)}>
           <span className="line-clamp-1">{d.preview}</span>
-          <span className="flex flex-wrap gap-3 text-muted-foreground"><span>Eval: <strong className="text-foreground">{d.predicted}</strong> ({percent(d.confidence)})</span><span>Feedback: <strong className="text-foreground">{d.truth}</strong> from {d.truth_source}</span>{d.top_feature && <span>Driven by {d.top_feature.feature}</span>}{d.ref && <span>ref {d.ref}</span>}<span>v{d.version} · {new Date(d.created_at).toLocaleString()}</span></span>
+          <span className="flex flex-wrap gap-3 text-muted-foreground"><span>Eval: <strong className="text-foreground">{d.predicted}</strong> ({percent(d.confidence)})</span><span>Feedback: <strong className="text-foreground">{d.truth}</strong> from {d.truth_source}</span>{d.top_feature && <span>Driven by {d.top_feature.feature}</span>}{d.ref && <span>ref {d.ref}</span>}<span>v{d.version}, {new Date(d.created_at).toLocaleString()}</span></span>
         </button>
       </li>)}</ul>}
   </section>;

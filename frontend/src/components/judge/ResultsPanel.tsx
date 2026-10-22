@@ -137,7 +137,7 @@ export default function ResultsPanel() {
             {per.map((p) => (
               <div key={p.id} className="grid grid-cols-[7rem_1fr_4.5rem] items-center gap-2.5 text-[12px]">
                 <span className="truncate font-mono">{p.id}</span><Bar value={p.accuracy} strong />
-                <span className="text-right tabular-nums text-muted-foreground">{p.n ? `${pct(p.accuracy)} · ${p.n}` : "no data"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{p.n ? `${pct(p.accuracy)}, ${p.n}` : "no data"}</span>
               </div>
             ))}
           </div>

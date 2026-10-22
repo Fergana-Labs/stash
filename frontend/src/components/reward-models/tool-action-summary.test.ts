@@ -11,7 +11,7 @@ describe("tool action summaries", () => {
 
   it("summarizes wrapped calls in order and groups repeated actions", () => {
     const input = 'await Promise.all([tools.exec_command({cmd:"cat settings.json"}), tools.exec_command({cmd:"cat README.md"}), tools.exec_command({cmd:"rg notifications"})]);';
-    expect(summary("exec", { input })).toBe("Read files · Search files");
+    expect(summary("exec", { input })).toBe("Read files, Search files");
     expect(summary("exec", { input: 'text(await tools.web__run({open:[{ref_id:"https://docs.github.com/en/integrations"}]}));' })).toBe("Read docs.github.com");
     expect(summary("exec", { input: 'await tools.mcp__apps__slack__slack_search_channels({keywords:["notifications"]});' })).toBe("Find Slack channels");
   });

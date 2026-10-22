@@ -73,7 +73,7 @@ export default function BriefCard() {
     <CardShell
       icon={ClipboardList}
       title="Eval brief"
-      subtitle={state ? (state.complete ? `Ready · ${filled} of ${ORDER.length} filled${state.optional_missing.length ? ", the rest optional" : ""}` : `Missing: ${state.missing.map((k) => TITLES[k].toLowerCase()).join(", ")}`) : "Loading…"}
+      subtitle={state ? (state.complete ? `Ready, ${filled} of ${ORDER.length} filled${state.optional_missing.length ? ", the rest optional" : ""}` : `Missing: ${state.missing.map((k) => TITLES[k].toLowerCase()).join(", ")}`) : "Loading…"}
       actions={draft ? undefined : <Button size="xs" variant="ghost" onClick={edit}><Pencil />Edit</Button>}
     >
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}

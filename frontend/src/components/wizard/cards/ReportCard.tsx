@@ -91,7 +91,7 @@ export default function ReportCard() {
     <CardShell
       icon={BarChart3}
       title="Training report"
-      subtitle={report ? `Version ${report.version}${report.is_live ? " (live)" : ""} · ${report.counts.train} training, ${report.counts.held_out} held-out` : undefined}
+      subtitle={report ? `Version ${report.version}${report.is_live ? " (live)" : ""}, ${report.counts.train} training, ${report.counts.held_out} held-out` : undefined}
       actions={<Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void retrain()}><RefreshCw className={cn(busy === "train" && "animate-spin")} />{busy === "train" ? "Training…" : "Retrain"}</Button>}
     >
       {error && <p role="alert" className="m-0 mb-2 text-[11.5px] text-destructive">{error}</p>}
@@ -137,7 +137,7 @@ export default function ReportCard() {
               <LearningCurve curve={report.learning_curve} baseline={zeroShot} />
             </section>
             <section>
-              <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Calibration <span className="font-normal normal-case">· error {pct(report.holdout.ece, 1)}</span></h4>
+              <h4 className="m-0 mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Calibration <span className="font-normal normal-case">error {pct(report.holdout.ece, 1)}</span></h4>
               {report.holdout.reliability.length ? <ReliabilityChart bins={report.holdout.reliability} /> : <p className="m-0 text-[12px] text-muted-foreground">No held-out predictions yet.</p>}
             </section>
           </div>
