@@ -277,7 +277,7 @@ export default function TrashPage() {
             />
           ))}
           {total === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-8 text-center text-[12.5px] text-muted-foreground">
+            <div className="rounded-lg border border-border bg-surface/30 px-4 py-8 text-center text-[12.5px] text-muted-foreground">
               Nothing in trash.
             </div>
           )}

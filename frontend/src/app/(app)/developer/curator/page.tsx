@@ -329,7 +329,7 @@ function Runs({ runs, onStarted }: { runs: CuratorRun[]; onStarted: () => void }
       </p>
       {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}
       {runs.length === 0 ? (
-        <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
+        <p className="mt-4 rounded border border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
           It hasn&apos;t run yet. The first run happens on the next nightly tick, once there
           are sessions to read — or run it now.
         </p>

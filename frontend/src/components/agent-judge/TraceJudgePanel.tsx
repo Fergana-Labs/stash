@@ -116,7 +116,7 @@ export function ClaimsGrid({ claims, quotes, numberOf, onJump }: { claims: Claim
           {c.step_idx != null && <StepLink index={c.step_idx} numberOf={numberOf} onJump={onJump} />}
         </div>
         <div className="flex justify-center"><span role="img" aria-label={s.label} title={s.label} className={cn("inline-flex size-6 items-center justify-center rounded-full border", s.ring)}><Icon className="size-3.5" /></span></div>
-        <div className={cn("rounded border px-2.5 py-1.5 text-[11px]", c.status === "contradicted" ? "border-red-500/40" : c.status === "verified" ? "border-emerald-500/40" : "border-dashed border-border")}>
+        <div className={cn("rounded border px-2.5 py-1.5 text-[11px]", c.status === "contradicted" ? "border-red-500/40" : c.status === "verified" ? "border-emerald-500/40" : " border-border")}>
           {!ev ? <span className="text-muted-foreground">No evidence found</span>
             : ev.idx === null ? <><span className="mr-1 text-[10px] text-muted-foreground">External</span>{ev.text}</>
             : repeatOf !== undefined ? <span className="text-muted-foreground">Same evidence as claim {repeatOf + 1} · <StepLink index={ev.idx} numberOf={numberOf} onJump={onJump} /></span>

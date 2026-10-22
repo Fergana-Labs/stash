@@ -380,7 +380,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 </div>
               )}
               {!error && totalTurns === 0 && (
-                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                <div className="rounded-lg border border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
                   No transcript events yet.
                 </div>
               )}

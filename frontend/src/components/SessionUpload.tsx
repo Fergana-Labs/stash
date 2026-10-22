@@ -87,7 +87,7 @@ export default function SessionUpload({ onUploaded }: SessionUploadProps) {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       className={
-        "rounded-lg border border-dashed px-3 py-2 transition-colors " +
+        "rounded-lg border px-3 py-2 transition-colors " +
         (dragActive
           ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)]"
           : "border-border bg-surface/40")

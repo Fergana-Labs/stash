@@ -117,7 +117,7 @@ export default function ExamplesPanel({ onTry }: { onTry?: (item: Item) => void 
       <FilterChips value={filter} onChange={setFilter} options={options} />
       {error && <p role="alert" className="m-0 text-[11.5px] text-destructive">{error}</p>}
       {examples === null && <p role="status" className="m-0 text-[12px] text-muted-foreground">Loading…</p>}
-      {examples && visible.length === 0 && <p className="m-0 rounded-lg border border-dashed border-border p-6 text-center text-[12.5px] text-muted-foreground">{examples.length ? "Nothing matches this filter." : "No examples yet. Add real ones, or generate a few to label."}</p>}
+      {examples && visible.length === 0 && <p className="m-0 rounded-lg border border-border p-6 text-center text-[12.5px] text-muted-foreground">{examples.length ? "Nothing matches this filter." : "No examples yet. Add real ones, or generate a few to label."}</p>}
       {visible.length > 0 && <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-left text-xs" aria-label="Golden set examples">
           <thead className="bg-surface/50 text-[11px] text-muted-foreground"><tr className="border-b border-border">

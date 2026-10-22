@@ -63,7 +63,7 @@ export function isActiveJob(status: RmJobStatus): boolean {
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-surface/40 px-6 py-10 text-center">
+    <div className="rounded-lg border border-border bg-surface/40 px-6 py-10 text-center">
       <p className="m-0 text-[13.5px] font-medium text-foreground">{title}</p>
       {children && <div className="mt-1.5 text-[12.5px] text-muted-foreground">{children}</div>}
     </div>

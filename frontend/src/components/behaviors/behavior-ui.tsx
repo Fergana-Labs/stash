@@ -55,7 +55,7 @@ export function BehaviorChips({ traceId, behaviors, max = 3, className }: { trac
     {shown.map(({ first, windows }) => <Link key={first.behavior_id} className="flex min-w-0" href={traceStepHref(traceId, first.start_idx)} title={windows.map((w) => stepWindow(w.start_idx, w.end_idx)).join(", ")}>
       <BehaviorChip name={first.name} actor={first.actor} count={windows.length} />
     </Link>)}
-    {rest.length > 0 && <span title={rest.map((r) => r.first.name).join(", ")} className="inline-flex shrink-0 items-center rounded border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">+{rest.length}</span>}
+    {rest.length > 0 && <span title={rest.map((r) => r.first.name).join(", ")} className="inline-flex shrink-0 items-center rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">+{rest.length}</span>}
   </div>;
 }
 

@@ -110,7 +110,7 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
-        className={cn("grid cursor-pointer place-items-center gap-1 rounded-md border border-dashed border-border px-4 py-5 text-center transition-colors hover:bg-surface/60", drag && "border-brand-500 bg-brand-500/5")}
+        className={cn("grid cursor-pointer place-items-center gap-1 rounded-md border border-border px-4 py-5 text-center transition-colors hover:bg-surface/60", drag && "border-brand-500 bg-brand-500/5")}
       >
         <FileUp className="size-5 text-muted-foreground" />
         <p className="m-0 text-[12.5px]">Drop files here or <span className="underline">browse</span></p>

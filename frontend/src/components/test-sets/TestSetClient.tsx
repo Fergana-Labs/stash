@@ -76,7 +76,7 @@ function RunsSection({ set, onBaseline }: { set: TestSet; onBaseline: (runId: st
   const baseline = effectiveBaseline(set);
   return <section aria-label="Runs" className="mb-8">
     <h2 className="mb-2 text-sm font-semibold">Runs</h2>
-    {!set.runs.length ? <p className="rounded border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">No runs yet. Run the set from CI (below) to record your agent’s answers; each run is compared with the last run that passed.</p>
+    {!set.runs.length ? <p className="rounded border border-border px-3 py-6 text-xs text-muted-foreground">No runs yet. Run the set from CI (below) to record your agent’s answers; each run is compared with the last run that passed.</p>
       : <div className="overflow-x-auto rounded border border-border"><table aria-label="Runs" className="w-full min-w-[720px] text-left text-xs">
         <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th>Run</th><th>When</th><th className="text-right">Passed</th><th className="text-right">Broke</th><th className="text-right">Fixed</th><th>Gate</th><th className="w-36" /></tr></thead>
         <tbody>{set.runs.map((r) => {
@@ -156,7 +156,7 @@ function CasesSection({ set, onChanged }: { set: TestSet; onChanged: () => void 
       </div>
     </div>
     {adding && <AddCaseForm setId={set.id} onClose={() => setAdding(false)} onAdded={onChanged} />}
-    {!set.cases.length ? <p className="rounded border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">
+    {!set.cases.length ? <p className="rounded border border-border px-3 py-6 text-xs text-muted-foreground">
       No cases yet. Open a production trace and choose <span className="text-foreground">Add to test set</span>, add one by hand, or import a JSONL file with one <code className="text-[11px]">{"{\"name\", \"input\", \"expected\"}"}</code> per line.
     </p> : <div className="overflow-x-auto rounded border border-border"><table aria-label="Cases" className="w-full min-w-[760px] table-fixed text-left text-xs">
       <thead className="border-b border-border bg-surface/60 text-muted-foreground"><tr className="h-8 [&>th]:px-3 [&>th]:font-medium"><th className="w-48">Case</th><th>Input</th><th>Expected answer</th><th className="w-24" /></tr></thead>

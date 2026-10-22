@@ -34,7 +34,7 @@ export default function FolderItemGrid({
   if (items.length === 0) {
     return (
       <div className="flex items-center justify-center bg-base p-12">
-        <div className="rounded-lg border border-dashed border-border bg-surface/30 px-6 py-10 text-center text-[12.5px] text-muted-foreground">
+        <div className="rounded-lg border border-border bg-surface/30 px-6 py-10 text-center text-[12.5px] text-muted-foreground">
           Empty folder. Add a page, upload a file, or create a subfolder.
         </div>
       </div>
