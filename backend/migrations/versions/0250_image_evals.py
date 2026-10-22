@@ -56,7 +56,9 @@ def upgrade() -> None:
         trained_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now()
     )""")
-    op.execute("CREATE INDEX image_eval_calls_classifier ON image_eval_calls(classifier_id, created_at DESC)")
+    op.execute(
+        "CREATE INDEX image_eval_calls_classifier ON image_eval_calls(classifier_id, created_at DESC)"
+    )
     op.execute("""CREATE TABLE image_eval_examples (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         classifier_id uuid NOT NULL REFERENCES image_evals(id) ON DELETE CASCADE,
