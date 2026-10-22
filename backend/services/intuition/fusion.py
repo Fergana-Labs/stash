@@ -414,12 +414,6 @@ async def train(
     owner_id: UUID, model_id: UUID, progress: Progress = _quiet, *, preserve_splits: bool = False
 ) -> dict:
     """Fit the fused model on the current labels and return a held-out report."""
-    from .. import taste
-
-    if await taste.mapped_model(owner_id, model_id):
-        raise service.Conflict(
-            "This eval uses a frozen vision-language model and linear probe. Build it through the eval wizard's website_eval tool."
-        )
     progress("preparing", "Reserving held-out examples", 0, 0)
     if not preserve_splits:
         await plan_holdout(owner_id, model_id)

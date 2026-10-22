@@ -920,68 +920,6 @@ class StashClient:
     def delete_mcp_server(self, server_id: str) -> None:
         self._delete(f"/api/v1/me/mcp-servers/{server_id}")
 
-    # --- Image evals ---
-
-    def image_eval_list(self) -> list:
-        return self._list("/api/v1/image-evals", "classifiers")
-
-    def image_eval_create(self, name: str, description: str = "") -> dict:
-        return self._post("/api/v1/image-evals", json={"name": name, "description": description})
-
-    def image_eval_add_examples(self, classifier_id: str, label: str, paths: list[str]) -> dict:
-        handles = [open(p, "rb") for p in paths]
-        try:
-            files = [
-                (
-                    "files",
-                    (
-                        os.path.basename(p),
-                        h,
-                        mimetypes.guess_type(p)[0] or "application/octet-stream",
-                    ),
-                )
-                for p, h in zip(paths, handles, strict=True)
-            ]
-            resp = self._request(
-                "POST",
-                f"/api/v1/image-evals/{classifier_id}/examples",
-                files=files,
-                data={"label": label},
-                timeout=600,
-            )
-        finally:
-            for h in handles:
-                h.close()
-        return resp.json()
-
-    def image_eval_train(self, classifier_id: str) -> dict:
-        return self._post(f"/api/v1/image-evals/{classifier_id}/train")
-
-    def image_eval_score(
-        self,
-        classifier_id: str,
-        image_path: str,
-        caller: str = "",
-        task: str = "",
-        comments: bool = True,
-    ) -> dict:
-        filename = os.path.basename(image_path)
-        with open(image_path, "rb") as f:
-            resp = self._request(
-                "POST",
-                f"/api/v1/image-evals/{classifier_id}/score",
-                files={
-                    "file": (
-                        filename,
-                        f,
-                        mimetypes.guess_type(filename)[0] or "application/octet-stream",
-                    )
-                },
-                data={"caller": caller, "task": task, "comments": str(comments).lower()},
-                timeout=300,
-            )
-        return resp.json()
-
     # --- Trash ---
 
     def get_trash(self) -> dict:

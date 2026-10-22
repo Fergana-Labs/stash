@@ -4,11 +4,10 @@ import type { WizardEvent } from "@/lib/wizard-api";
 import WizardChat from "./WizardChat";
 import { stageWizardMessage } from "./wizard-navigation";
 
-const api = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), draft: vi.fn(), stream: vi.fn(), taste: vi.fn(), reset: vi.fn(), upload: vi.fn(), router: { replace: vi.fn() } }));
+const api = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), draft: vi.fn(), stream: vi.fn(), router: { replace: vi.fn() } }));
 vi.mock("@/lib/wizard-api", async () => ({
   ...await vi.importActual("@/lib/wizard-api"), wzGet: api.get, wzCreate: api.create, wzSaveDraft: api.draft, streamWizard: api.stream,
 }));
-vi.mock("@/lib/taste-api", () => ({tasteGet: api.taste, tasteReset: api.reset, tasteUploadTraces: api.upload}));
 vi.mock("next/navigation", () => ({ useRouter: () => api.router }));
 vi.mock("./ModelPanel", () => ({ default: () => null }));
 
@@ -17,8 +16,6 @@ beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   api.draft.mockResolvedValue({ saved: true });
-  api.taste.mockResolvedValue(null);
-  api.reset.mockResolvedValue({ session_id: "clean-session", archived: true });
   api.create.mockResolvedValue({ id: "fresh-session" });
   api.get.mockResolvedValue({ id: "session", model_id: "eval", title: "Slide quality", transcript: [] });
   api.stream.mockImplementation(async (_id: string, _text: string, _kind: string, event: (e: WizardEvent) => void) => {
@@ -117,29 +114,6 @@ it("waits for an in-flight wizard response before allowing restart", async () =>
 });
 
 
-it("resets the website demo's learned state after preserving the unsent draft", async () => {
-  api.taste.mockResolvedValue({model_id: "eval"});
-  render(<WizardChat sessionId="session" />);
-  await screen.findByRole("button", {name: "Reset demo"});
-  fireEvent.change(screen.getByRole("textbox", {name: "Message the wizard"}), {target: {value: "Unsent thought"}});
-  fireEvent.click(screen.getByRole("button", {name: "Reset demo"}));
-  await waitFor(() => expect(api.reset).toHaveBeenCalledExactlyOnceWith("session"));
-  expect(api.draft).toHaveBeenCalledWith("session", "Unsent thought");
-  await waitFor(() => expect(api.router.replace).toHaveBeenCalledWith("/reward-models/wizard/clean-session"));
-  expect(api.create).not.toHaveBeenCalled();
-  expect(api.stream).not.toHaveBeenCalled();
-});
-
-it("preserves the current demo when reset is blocked by active work", async () => {
-  api.taste.mockResolvedValue({model_id: "eval"});
-  api.reset.mockRejectedValue(new Error("The demo is still working"));
-  render(<WizardChat sessionId="session" />);
-  fireEvent.click(await screen.findByRole("button", {name: "Reset demo"}));
-  expect(await screen.findByRole("alert")).toHaveTextContent("The demo is still working");
-  expect(api.router.replace).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", {name: "Reset demo"})).toBeEnabled();
-});
-
 it("redirects archived demo chats to their fresh replacement", async () => {
   api.get.mockResolvedValue({id: "session", model_id: "eval", reset_to: "clean-session", transcript: []});
   render(<WizardChat sessionId="session" />);
@@ -154,5 +128,4 @@ it("does not upload session traces from the composer", async () => {
   const file = new File(["{}"], "history.jsonl", {type:"application/jsonl"});
   fireEvent.change(container.querySelector('input[type="file"]')!,{target:{files:[file]}});
   expect(await screen.findByRole("alert")).toHaveTextContent("Describe what you want to judge first.");
-  expect(api.upload).not.toHaveBeenCalled();
 });

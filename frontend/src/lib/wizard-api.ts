@@ -5,7 +5,7 @@ import type { Evaluation, Example, Gate, Item, LoggedPrediction, Prediction, Rub
 /** Client for /api/v1/model-wizard (backend/routers/model_wizard.py). */
 const MW = "/api/v1/model-wizard";
 
-export type CardKind = "website_eval" | "image_eval" | "choices" | "uploader" | "labeler" | "criteria" | "report" | "playground" | "review" | "robustness" | "examples" | "brief" | "inbox" | "golden" | "agreement" | "topics";
+export type CardKind = "choices" | "uploader" | "labeler" | "criteria" | "report" | "playground" | "review" | "robustness" | "examples" | "brief" | "inbox" | "golden" | "agreement" | "topics";
 export interface Card { id: string; kind: CardKind; props: Record<string, unknown> }
 export interface Activity { id: string; tool: string; label: string; status: "running" | "done" | "error"; error?: string | null; progress?: string }
 export type AssistantPart = ({ type: "text"; text: string }) | ({ type: "card" } & Card) | ({ type: "activity" } & Activity);

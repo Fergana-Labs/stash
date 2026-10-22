@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import uuid
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -42,8 +41,6 @@ MAX_RESULT_CHARS = 12000
 MAX_HISTORY_MESSAGES = 80
 
 CARD_KINDS = (
-    "website_eval",
-    "image_eval",
     "choices",
     "uploader",
     "labeler",
@@ -93,38 +90,6 @@ many there are and next to zero-shot Jev. Fewer than ~20 held out is an early es
 is the best a judge can do. When people disagree, fix the label definitions, not the judge.
 10. This wizard is one-time setup. After the first trained version is saved, the user's own agent \
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
-
-## Website and UI preference evals
-The user teaches the grader with contrastive examples: websites they like and ones they
-don't (URLs, HTML files, or screenshots). The experience has three steps only: supply
-examples, answer a clarification IF genuinely needed, receive a working grading endpoint.
-Call website_eval prepare first. On a new eval it shows a card where the user adds example
-sites; the turn ends there. Do not search or read history for website evals. When an event
-says the user added example sites, answered open questions, or that background work
-finished, call website_eval finish; if the work failed, explain the cause plainly. After a
-job completes, call finish again; it either continues building or returns the endpoint.
-Do not offer a menu of actions. Never mention GEPA, weight refinement, skills, experiment
-arms, train/dev/test splits, probe architecture, research blockers or optimization in setup.
-Show what you learned with website_eval review: its card lists each preference with the
-example it came from, and asks about unclear examples with buttons. Never list preferences,
-examples, labels, or open questions in chat text; the card is where the user sees and
-answers them. Your text around a card is one or two short sentences. Two liked and two
-disliked examples are enough for the initial endpoint. NEVER invent labels or examples.
-Never promise a capability or action the tool cannot perform. Completion means a built
-grader and its actual prediction API.
-
-## Image style evals
-The user teaches the grader with images: drawings, illustrations, photos or designs in a
-style they want agents to match. Like website evals, it is three steps only: the user
-uploads images, Stash builds the eval in the background, the user gets a scoring endpoint.
-Call image_eval prepare first, with a short name from what the user said ("Yoko's drawing
-style"). Its card asks for images they like (required, at least 3; 20 or more is much
-better) and, optionally, images they don't; the turn ends there. Do not search or read
-history for image evals, and do not ask the user to label anything: the build writes a
-style brief and draws its own close imitations to learn real from not-quite. When an event
-says the user added images, call image_eval finish; it starts the build. When an event says
-the build finished or failed, call finish again; it returns the endpoint or the cause. Your
-text around a card is one or two short sentences, and you never list images or scores in chat.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
 questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
@@ -296,50 +261,6 @@ BRIEF_SCHEMA = {
 }
 
 TOOLS = [
-    _tool(
-        "image_eval",
-        "Turn example images of a style the user likes into a scoring API: prepare shows the upload card, finish builds it and returns the endpoint.",
-        {
-            "operation": {"type": "string", "enum": ["prepare", "status", "finish"]},
-            "name": {"type": "string", "maxLength": 160},
-        },
-        ["operation"],
-    ),
-    _tool(
-        "website_eval",
-        "Turn supplied website-design traces into a grading API. Gather evidence automatically, ask only essential clarifications, finish with the endpoint.",
-        {
-            "operation": {
-                "type": "string",
-                "enum": [
-                    "prepare",
-                    "learn",
-                    "extract_labels",
-                    "review",
-                    "status",
-                    "wait",
-                    "finish",
-                ],
-            },
-            "name": {"type": "string", "maxLength": 160},
-            "selections": {
-                "type": "array",
-                "maxItems": 10,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "kind": {"type": "string", "enum": ["local", "session", "trace"]},
-                        "id": {"type": "string"},
-                        "match_offset": {"type": "integer", "minimum": 0},
-                    },
-                    "required": ["kind", "id"],
-                },
-            },
-            "job_id": {"type": "string"},
-            "example_ids": {"type": "array", "maxItems": 6, "items": {"type": "string"}},
-        },
-        ["operation"],
-    ),
     _tool(
         "search_history",
         "Search the user's recorded Stash sessions/traces and connected local Codex history. No import required. Works before creating a model. Empty query browses recent sessions.",
@@ -600,32 +521,22 @@ def _session(row) -> dict:
 
 
 async def create_session(owner_id: UUID, model_id: UUID | None = None) -> dict:
-    mapped = None
     if model_id is not None:
         model = await service._model(owner_id, model_id)
-        from .. import taste
-
-        mapped = await taste.mapped_model(owner_id, model_id)
-        if model["active_version_id"] or (mapped and mapped["config"].get("published")):
+        if model["active_version_id"]:
             raise service.Conflict("Setup is complete. Edit this eval through MCP.")
     row = await get_pool().fetchrow(
         "INSERT INTO intuition_wizard_sessions (owner_user_id, model_id) VALUES ($1, $2) RETURNING *",
         owner_id,
         model_id,
     )
-    if mapped:
-        await get_pool().execute(
-            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
-            mapped["id"],
-            {"wizard_session_id": str(row["id"])},
-        )
     return await get_session(owner_id, row["id"])
 
 
 async def list_sessions(owner_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         """SELECT s.id, s.model_id, s.title, s.created_at, s.updated_at, m.name AS model_name,
-                  CASE WHEN m.active_version_id IS NOT NULL OR EXISTS(SELECT 1 FROM taste_workspaces t WHERE t.owner_user_id=s.owner_user_id AND t.config->>'model_id'=s.model_id::text AND t.config->>'published'='true') THEN 'saved' ELSE 'draft' END AS status,
+                  CASE WHEN m.active_version_id IS NOT NULL THEN 'saved' ELSE 'draft' END AS status,
                   s.draft_input
              FROM intuition_wizard_sessions s
              LEFT JOIN intuition_models m ON m.id = s.model_id
@@ -638,7 +549,7 @@ async def list_sessions(owner_id: UUID) -> list[dict]:
 async def get_session(owner_id: UUID, session_id: UUID) -> dict:
     row = await get_pool().fetchrow(
         """SELECT s.*, m.name AS model_name,
-                  CASE WHEN m.active_version_id IS NOT NULL OR EXISTS(SELECT 1 FROM taste_workspaces t WHERE t.owner_user_id=s.owner_user_id AND t.config->>'model_id'=s.model_id::text AND t.config->>'published'='true') THEN 'saved' ELSE 'draft' END AS status
+                  CASE WHEN m.active_version_id IS NOT NULL THEN 'saved' ELSE 'draft' END AS status
              FROM intuition_wizard_sessions s LEFT JOIN intuition_models m ON m.id = s.model_id
             WHERE s.id = $1 AND s.owner_user_id = $2""",
         session_id,
@@ -694,21 +605,6 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
             "note": "No model yet: save_brief holds what you learn and it is saved with the model.",
             "judge": providers.status(),
             "embeddings": probes.embeddings.is_configured(),
-        }
-    from .. import taste
-
-    website = await taste.wizard_state(owner_id, model_id)
-    if website:
-        return {
-            "model": {
-                "id": model_id,
-                "name": website["name"],
-                "output_type": "choice",
-                "labels": [{"id": "liked"}, {"id": "disliked"}],
-                "api_ready": website["endpoint"]["ready"],
-            },
-            "website_eval": website,
-            "note": "Use website_eval for this frozen multimodal probe, not generic train/promote. The user supplies traces through the upload card or picks connected history; after that, history discovery is your job. Never ask them to type search queries.",
         }
     detail = await service.get_detail(owner_id, UUID(model_id))
     version = detail["draft"] or detail["active"]
@@ -800,10 +696,6 @@ async def run_tool(
     owner_id: UUID, session: dict, name: str, args: dict, progress
 ) -> tuple[dict, dict | None]:
     """Execute one tool. Returns (result for Claude, card to render or None)."""
-    if name == "website_eval":
-        return await website_tool(owner_id, session, args, progress)
-    if name == "image_eval":
-        return await image_tool(owner_id, session, args)
     if name == "search_history":
         return await history.search(owner_id, **args), None
     if name == "read_history":
@@ -1006,7 +898,6 @@ def _blocks(content) -> list[dict]:
 
 
 ACTIVITY = {
-    "website_eval": "Working on your eval",
     "search_history": "Searching your history",
     "read_history": "Reading a past session",
     "add_history_examples": "Adding history examples for review",
@@ -1029,16 +920,6 @@ ACTIVITY = {
 
 
 async def setup_tools(owner_id, session):
-    from .. import taste
-    from ..image_eval import service as image_evals
-
-    if session.get("model_id") and await taste.mapped_model(owner_id, UUID(session["model_id"])):
-        # Website evals learn from example sites, never from the user's history.
-        return [tool for tool in TOOLS if tool["name"] == "website_eval"]
-    if session.get("model_id") and await image_evals.by_model(
-        owner_id, UUID(session["model_id"])
-    ):
-        return [tool for tool in TOOLS if tool["name"] == "image_eval"]
     return TOOLS
 
 
@@ -1073,18 +954,10 @@ async def stream_turn(
         )
     try:
         client = llm._get_client()
-        # A new website-design eval always starts by asking for traces, not by searching.
-        fresh = kind == "message" and not session["model_id"]
-        force_website = fresh and _website_intent(text)
-        force_image = fresh and not force_website and _image_intent(text)
         for turn in range(MAX_TURNS):
             state = await status(owner_id, session["model_id"], session["brief"])
             system = (
                 SYSTEM + "\n\nCURRENT STATE (authoritative):\n" + json.dumps(state, default=str)
-            )
-            forced = "website_eval" if force_website else "image_eval" if force_image else None
-            extra = (
-                {"tool_choice": {"type": "tool", "name": forced}} if forced and turn == 0 else {}
             )
             async with client.messages.stream(
                 model=settings.ANTHROPIC_MODEL,
@@ -1092,7 +965,6 @@ async def stream_turn(
                 system=system,
                 tools=await setup_tools(owner_id, session),
                 messages=session["messages"],
-                **extra,
             ) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -1106,7 +978,6 @@ async def stream_turn(
             if not uses:
                 break
             results = []
-            background_work = False
             for use in uses:
                 activity = {
                     "type": "activity",
@@ -1151,24 +1022,12 @@ async def stream_turn(
                     if card:
                         parts.append({"type": "card", **card})
                         yield {"type": "card", **card}
-                    if (
-                        use.name in ("create_model", "website_eval", "image_eval")
-                        and session["model_id"]
-                    ):
+                    if use.name == "create_model" and session["model_id"]:
                         yield {
                             "type": "model",
                             "model_id": session["model_id"],
                             "title": session["title"],
                         }
-                    background_work = (
-                        background_work
-                        or (
-                            use.name in ("website_eval", "image_eval")
-                            and isinstance(result, dict)
-                            and result.get("status") == "working"
-                        )
-                        or _awaits_user(card, result)
-                    )
                     content, is_error = json.dumps(result, default=str)[:MAX_RESULT_CHARS], False
                 except (
                     service.NotFound,
@@ -1205,14 +1064,7 @@ async def stream_turn(
                         "is_error": is_error,
                     }
                 )
-                if not is_error and (
-                    use.name == "promote"
-                    or (
-                        use.name in ("website_eval", "image_eval")
-                        and isinstance(result, dict)
-                        and result.get("published") is True
-                    )
-                ):
+                if not is_error and use.name == "promote":
                     # Publishing the first usable version ends the one-time setup.
                     for pending_use in uses[len(results) :]:
                         results.append(
@@ -1228,11 +1080,6 @@ async def stream_turn(
                     yield {"type": "complete", "model_id": session["model_id"]}
                     return
             session["messages"].append({"role": "user", "content": results})
-            if background_work:
-                # A durable job or the user owns the next step; do not spend more
-                # turns polling it or repeat progress cards in the conversation.
-                yield {"type": "done", "model_id": session["model_id"]}
-                return
         yield {"type": "done", "model_id": session["model_id"]}
     except Exception as exc:  # noqa: BLE001
         log.exception("wizard turn failed")
@@ -1246,38 +1093,6 @@ async def stream_turn(
         with CancelScope(shield=True):
             _repair_dangling(session["messages"])
             await _save(session)
-
-
-def _website_intent(text: str) -> bool:
-    return bool(re.search(r"\b(website|web ?site|web page|landing page|UI|design)\b", text, re.I))
-
-
-def _image_intent(text: str) -> bool:
-    """Style matching from example images. Not every mention of an image: "flag which
-    guidelines a product photo breaks" is a multi-issue eval, not a style eval."""
-    return bool(
-        re.search(
-            r"\b(drawing|art|illustration|image|photo|visual|painting) ?style\b"
-            r"|\bstyle of (my|these|her|his|their|our)\b"
-            r"|\b(drawings?|illustrations?|sketches|artwork)\b",
-            text,
-            re.I,
-        )
-    )
-
-
-def _awaits_user(card, result) -> bool:
-    """A setup card that needs the user's input ends the turn; the card speaks for itself."""
-    if card and card.get("kind") == "image_eval":
-        return card.get("props", {}).get("section") == "examples"
-    if not card or card.get("kind") != "website_eval":
-        return False
-    section = card.get("props", {}).get("section")
-    return section == "sources" or (
-        section == "preferences"
-        and isinstance(result, dict)
-        and result.get("needs_your_call", 0) > 0
-    )
 
 
 def _repair_dangling(messages: list[dict]) -> None:
@@ -1302,176 +1117,3 @@ def _repair_dangling(messages: list[dict]) -> None:
                 ],
             }
         )
-
-
-async def website_tool(owner, session, args, progress):
-    from .. import taste
-
-    op = args["operation"]
-    if op == "prepare":
-        binding = await taste.bind_wizard(owner, session, name=args.get("name", "Website design"))
-        state = await taste.detail(owner)
-        if not state["examples"] and not state["jobs"]:
-            return {
-                "eval_id": binding["model_id"],
-                "existing_examples": 0,
-                "next": "The card asks the user for example sites they like and don't. Say so in one sentence and stop.",
-            }, _card("website_eval", section="sources")
-        return {
-            "eval_id": binding["model_id"],
-            "existing_examples": len(state["examples"]),
-            "labels": state["labels"],
-            "history": state["history"],
-            "next": "Call finish now if labels.build_gaps is empty. Otherwise inspect the supplied history for missing feedback, then ask only an essential clarification.",
-        }, _card("website_eval", section="progress")
-    row = await taste.workspace(owner)
-    if not session.get("model_id") or row["config"].get("model_id") != session["model_id"]:
-        raise service.Conflict("Prepare this eval first.")
-    state = await taste.detail(owner)
-    active = next((j for j in state["jobs"] if j["status"] in ("queued", "running")), None)
-    if op in ("finish", "build", "publish", "connect"):
-        if active:
-            return {
-                "status": "working",
-                "job_id": str(active["id"]),
-                "next": "Wait for completion, then call finish.",
-            }, _card("website_eval", section="progress", jobId=str(active["id"]))
-        if state["endpoint"]["ready"]:
-            await get_pool().execute(
-                "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
-                row["id"],
-                {"published": True},
-            )
-            return {
-                "published": True,
-                "eval_id": session["model_id"],
-                "endpoint": state["endpoint"],
-            }, _card("website_eval", section="connect")
-        failed_build = next((j for j in state["jobs"] if j["operation"] == "build"), None)
-        if failed_build and failed_build["status"] == "failed":
-            return {
-                "status": "needs_attention",
-                "error": failed_build["progress"],
-                "next": "Explain that creation failed and its concrete cause. Do not automatically retry paid work or ask the user to manage research settings.",
-            }, _card("website_eval", section="progress", jobId=str(failed_build["id"]))
-        if state["labels"]["build_gaps"]:
-            return {
-                "status": "needs_information",
-                "missing": state["labels"]["build_gaps"],
-                "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
-                "next": "The preferences card shows what is missing and asks the user about unclear examples. Say so in one sentence; do not restate examples or quotes. If no example needs their call, inspect the supplied traces for more feedback. Never invent synthetic human labels.",
-            }, _card("website_eval", section="preferences")
-        operation = "build"
-    elif op in ("status", "wait") and active:
-        return {
-            "status": "working",
-            "job_id": str(active["id"]),
-            "next": "The saved background job continues automatically. Stop here; the card will open the endpoint when ready.",
-        }, _card("website_eval", section="progress", jobId=str(active["id"]))
-    elif op == "learn":
-        if not args.get("selections"):
-            raise ValueError("Read the supplied history and select relevant source IDs first.")
-        await get_pool().execute(
-            "UPDATE taste_workspaces SET config=config || $2::jsonb WHERE id=$1",
-            row["id"],
-            {"sources": args["selections"][:10]},
-        )
-        operation = "collect_all"
-    elif op == "review":
-        return {
-            "labels": state["labels"],
-            "needs_your_call": sum(e["needs_clarification"] for e in state["examples"]),
-            "next": "The card shows the learned preferences and any open questions. Do not restate them in text.",
-        }, _card("website_eval", section="preferences")
-    elif op == "extract_labels":
-        operation = op
-    else:
-        # Persisted older cards/tool calls cannot reopen the research workflow.
-        return {
-            "endpoint": state["endpoint"],
-            "labels": state["labels"],
-            "jobs": state["jobs"][:2],
-            "next": "Call finish to return the API or continue creating it. Do not offer research actions.",
-        }, _card(
-            "website_eval",
-            section="connect" if state["endpoint"]["ready"] else "progress",
-            **({"jobId": str(active["id"])} if active else {}),
-        )
-    queued = await taste.enqueue(owner, operation, {"automatic": True})
-    identity = str(queued["job_id"])
-    progress("website_eval", "Learning from your traces")
-    return {
-        "job_id": identity,
-        "status": "working",
-        "next": "Wait for completion, then call finish. The user does not need to choose the next step.",
-    }, _card("website_eval", section="progress", jobId=identity)
-
-
-IMAGE_BUILDING = ("queued", "brief", "imitations", "training")
-
-
-async def image_tool(owner, session, args):
-    """Image style evals: an image_evals classifier linked to this chat's intuition model."""
-    from ..image_eval import head as heads
-    from ..image_eval import service as image_evals
-
-    found = (
-        await image_evals.by_model(owner, UUID(session["model_id"]))
-        if session.get("model_id")
-        else None
-    )
-    if args["operation"] == "prepare" and found is None:
-        if session.get("model_id"):
-            raise service.Conflict("This chat is already building a different kind of eval.")
-        name = (args.get("name") or "").strip() or "Image style"
-        model = await service.create_model(
-            owner,
-            name=name,
-            output_type="choice",
-            description="Does this image match the style of the images I like?",
-            labels=[
-                {"id": "liked", "description": "Matches the style I like"},
-                {"id": "disliked", "description": "Does not match it"},
-            ],
-            rubric=[],
-        )
-        session["model_id"] = str(model["model"]["id"])
-        session["title"] = name
-        await _save(session)
-        created = await image_evals.create(owner, name, "", model_id=UUID(session["model_id"]))
-        found = await image_evals.get(owner, created["id"])
-    if found is None:
-        raise service.Conflict("Prepare this eval first.")
-    eid = str(found["id"])
-    examples = found["examples"]
-    stage = (found["build"] or {}).get("stage")
-    if stage in IMAGE_BUILDING:
-        return {
-            "status": "working",
-            "stage": stage,
-            "next": "The build continues in the background and the card shows progress. Stop here.",
-        }, _card("image_eval", section="progress", evalId=eid)
-    if found["trained"] and stage == "done":
-        return {
-            "published": True,
-            "eval_id": session["model_id"],
-            "endpoint": f"/api/v1/image-evals/{eid}/score",
-            "heldout_accuracy": found["heldout_accuracy"],
-        }, _card("image_eval", section="connect", evalId=eid)
-    if stage == "failed" and args["operation"] != "finish":
-        return {
-            "status": "needs_attention",
-            "error": (found["build"] or {}).get("error"),
-            "next": "Explain the cause in one sentence; finish retries the build.",
-        }, _card("image_eval", section="progress", evalId=eid)
-    if args["operation"] != "finish" or examples["liked"] < heads.MIN_PER_CLASS:
-        return {
-            "liked": examples["liked"],
-            "disliked": examples["disliked"],
-            "next": f"The card asks for at least {heads.MIN_PER_CLASS} images they like. Say so in one sentence and stop.",
-        }, _card("image_eval", section="examples", evalId=eid)
-    await image_evals.start_build(owner, found["id"])
-    return {
-        "status": "working",
-        "next": "Building takes a few minutes: a style brief, imitations, then training. The card shows progress; stop here.",
-    }, _card("image_eval", section="progress", evalId=eid)

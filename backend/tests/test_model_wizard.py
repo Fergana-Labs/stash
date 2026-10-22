@@ -698,31 +698,3 @@ async def test_publishing_finishes_setup_and_blocks_later_wizard_edits(
             "/api/v1/model-wizard/sessions", headers=auth, json={"model_id": model_id}
         )
     ).status_code == 409
-
-
-async def test_background_setup_stops_polling_until_job_completion(
-    client, scripted_claude, monkeypatch
-):
-    script, seen = scripted_claude
-    auth = await _auth(client)
-    session = (await client.post("/api/v1/model-wizard/sessions", headers=auth, json={})).json()
-
-    async def queued(*args):
-        return {"job_id": "job", "status": "working"}, wizard._card(
-            "website_eval", section="progress", jobId="job"
-        )
-
-    monkeypatch.setattr(wizard, "run_tool", queued)
-    script += [
-        [_use(1, "website_eval", {"operation": "finish"})],
-        [_text("Should never poll again")],
-    ]
-    response = await client.post(
-        f"/api/v1/model-wizard/sessions/{session['id']}/messages",
-        headers=auth,
-        json={"text": "Use my traces and give me the API"},
-    )
-    events = _events(response.text)
-    assert len(seen) == 1
-    assert len([e for e in events if e["type"] == "card"]) == 1
-    assert events[-1]["type"] == "done"
