@@ -53,10 +53,10 @@ export default function NewEvalUpload() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-3">
+    <div className="max-w-xl space-y-3">
       <input value={name} onChange={(e) => setName(e.target.value)} disabled={working} maxLength={160}
-        placeholder="Name it (optional), e.g. Yoko's drawing style" aria-label="Eval name"
-        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        placeholder="Name (optional)" aria-label="Eval name"
+        className="w-full rounded border border-border bg-background px-3 py-2 text-sm" />
       <UploadBox title="Drop examples of good work" disabled={working} onFiles={(f) => void start(f)} />
       {files.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] gap-1.5">
@@ -66,9 +66,7 @@ export default function NewEvalUpload() {
             : <span key={i} title={f.name} className={`flex aspect-square w-full items-center justify-center truncate rounded border border-border px-1 text-[9px] ${f.done ? "" : "animate-pulse opacity-50"}`}>{f.name}</span>)}
         </div>
       )}
-      <p role={error ? "alert" : "status"} className={`text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>
-        {error || status || "Stash learns what good looks like from them and gives your agents an endpoint that scores their work. You can add examples of bad work on the next page."}
-      </p>
+      {(error || status) && <p role={error ? "alert" : "status"} className={`text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>{error || status}</p>}
     </div>
   );
 }
