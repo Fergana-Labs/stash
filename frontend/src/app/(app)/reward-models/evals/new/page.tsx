@@ -1,21 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { errorMessage } from "@/components/reward-models/rm-text";
-import { wzCreate } from "@/lib/wizard-api";
+import { EvalPageFrame } from "@/components/evals/eval-ui";
+import NewEvalUpload from "@/components/evals/judge/NewEvalUpload";
 
-/** Every eval is created through the wizard: start a conversation and open it. */
+/** New eval: drop examples of good work; that's all it needs. */
 export default function NewEvalPage() {
-  const router = useRouter();
-  const [error, setError] = useState("");
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    wzCreate()
-      .then((session) => router.replace(`/reward-models/wizard/${session.id}`))
-      .catch((e) => setError(errorMessage(e)));
-  }, [router]);
-  return <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">{error || "Starting a new eval…"}</p>;
+  return (
+    <EvalPageFrame title="New eval" description="Show it examples of good work. It gives your agents an endpoint that scores theirs.">
+      <NewEvalUpload />
+    </EvalPageFrame>
+  );
 }

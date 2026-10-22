@@ -14,6 +14,7 @@ from backend.tasks.agent_schedules import run_curator_now, run_scheduled_agent
 from backend.tasks.behaviors import scan_models, triage
 from backend.tasks.clips import process_url_imports
 from backend.tasks.drive_extraction import extract_drive_document
+from backend.tasks.evals import build_eval
 from backend.tasks.extraction import extract_file_text
 from backend.tasks.intuitions import improve, refine
 from backend.tasks.optimization import score_run
@@ -47,6 +48,7 @@ HEAVY_TASKS = {
     triage.name,
     investigate.name,
     score_test_run.name,
+    build_eval.name,
 }
 
 

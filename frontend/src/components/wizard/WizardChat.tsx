@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { tasteGet, tasteReset, type TasteWorkspace } from "@/lib/taste-api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, CircleAlert, Loader2, Mic, Paperclip, RotateCcw, Sparkles, Square } from "lucide-react";
 import Markdown from "react-markdown";
@@ -17,8 +16,6 @@ import ModelPanel from "./ModelPanel";
 import { useWizardDraft } from "./useWizardDraft";
 import { useDictation } from "./useDictation";
 import { takeWizardMessage } from "./wizard-navigation";
-import WebsiteEvalCard from "./cards/WebsiteEvalCard";
-import ImageEvalCard from "./cards/ImageEvalCard";
 import AgreementCard from "./cards/AgreementCard";
 import BriefCard from "./cards/BriefCard";
 import ChoicesCard from "./cards/ChoicesCard";
@@ -32,15 +29,6 @@ import ReportCard from "./cards/ReportCard";
 import RobustnessCard from "./cards/RobustnessCard";
 import UploaderCard from "./cards/UploaderCard";
 
-const STARTERS = [
-  "Learn my website taste from examples of good and bad sites",
-  "Learn a drawing style from example images",
-  "Build an eval from my past Codex sessions",
-  "Check my coding agent's PRs before it opens them",
-  "Grade my AI assistant's answers as good or bad",
-  "Flag which brand guidelines a product photo breaks",
-  "Route incoming support tickets to billing, bugs, or how-to",
-];
 const EVAL_STARTERS = [
   "Help me set up this eval.",
   "Find relevant examples in my past Codex sessions",
@@ -48,8 +36,6 @@ const EVAL_STARTERS = [
 ];
 
 const TITLES: Record<Card["kind"], string> = {
-  website_eval: "Your eval",
-  image_eval: "Your eval",
   choices: "Quick choices", uploader: "Add examples", labeler: "Label examples", criteria: "Criteria",
   report: "Training report", playground: "Try it", review: "Review predictions", robustness: "Robustness", examples: "Examples",
   brief: "Eval brief", inbox: "Inbox", golden: "Golden set", agreement: "Agreement", topics: "Topics",
@@ -59,8 +45,6 @@ const TITLES: Record<Card["kind"], string> = {
 function CardView({ card, fresh = false }: { card: Card; fresh?: boolean }) {
   const p = card.props as any;
   switch (card.kind) {
-    case "website_eval": return <WebsiteEvalCard section={p.section} jobId={p.jobId} exampleIds={p.exampleIds} />;
-    case "image_eval": return <ImageEvalCard section={p.section} evalId={p.evalId} />;
     case "choices": return <ChoicesCard question={p.question} options={p.options ?? []} multi={p.multi} />;
     case "uploader": return <UploaderCard prompt={p.prompt} />;
     case "labeler": return <LabelerCard which={p.which} fresh={fresh} />;
@@ -112,8 +96,6 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
   const [title, setTitle] = useState("New eval");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
-  const [website, setWebsite] = useState<TasteWorkspace | null>(null);
-  const [resettingDemo, setResettingDemo] = useState(false);
   const draft = useWizardDraft(sessionId);
   const { input, setInput, load: loadDraft, flush: flushDraft, recover: recoverDraft } = draft;
   const [pending, setPending] = useState<Injected | null>(null);
@@ -156,7 +138,6 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
       setEntries(s.transcript ?? []); setModelId(s.model_id); setTitle(s.model_name || s.title); loadDraft(s.draft_input ?? "");
     }).catch((e) => setError(errorMessage(e)));
   }, [sessionId, loadDraft, router]);
-  useEffect(() => { let live = true; void tasteGet().then((w) => { if (live) setWebsite(w); }).catch(() => {}); return () => { live = false; }; }, [modelId, version, sessionId]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [entries]);
 
   const refresh = useCallback(() => { setVersion((v) => v + 1); onRefresh?.(); }, [onRefresh]);
@@ -209,18 +190,6 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
     } catch (e) { setError(errorMessage(e)); }
     finally { restartingRef.current = false; setRestarting(false); }
   };
-  const resetDemo = async () => {
-    if (entries === null || busyRef.current || submittingRef.current || attaching || restartingRef.current) return;
-    restartingRef.current = true; setRestarting(true); setResettingDemo(true); setError("");
-    if (dictation.listening) dictation.stop();
-    try {
-      if (!await flushDraft()) return;
-      const result = await tasteReset(sessionId);
-      queued.current = [];
-      router.replace(`/reward-models/wizard/${result.session_id}`);
-    } catch (e) { setError(errorMessage(e)); }
-    finally { restartingRef.current = false; setRestarting(false); setResettingDemo(false); }
-  };
   const submit = async () => {
     if (!input.trim() || submittingRef.current || restartingRef.current) return;
     submittingRef.current = true; setSubmitting(true);
@@ -256,7 +225,7 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
 
   const ctx: WizardCtx = { modelId, send, refresh, version, busy, sessionId, adoptModel: setModelId };
   const lastCardIds = new Map<string, string>();
-  for (const entry of entries ?? []) if (entry.role === "assistant") for (const p of entry.parts) if (p.type === "card") { lastCardIds.set(p.kind, p.id); if(p.kind === "website_eval" && p.props.section === "preferences") lastCardIds.set("labeler",p.id); }
+  for (const entry of entries ?? []) if (entry.role === "assistant") for (const p of entry.parts) if (p.type === "card") { lastCardIds.set(p.kind, p.id); }
 
   return (
     <WizardProvider value={ctx}>
@@ -267,9 +236,8 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
               <h1 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">{title === "New model" ? "New eval" : title}</h1>
               <span className="hidden text-[11px] text-muted-foreground sm:inline" role="status">{draft.status === "Saved" ? "All changes saved" : draft.status}</span>
               <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void restart()} title="Start a fresh conversation. Your eval and previous chat are kept.">
-                {restarting && !resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting && !resettingDemo ? "Restarting…" : "Restart"}
+                {restarting ? <Loader2 className="animate-spin" /> : <RotateCcw />} {restarting ? "Restarting…" : "Restart"}
               </Button>
-              {website && (website.demo || (!!modelId && website.model_id === modelId) || (!modelId && website.fresh_start && website.wizard_session_id === sessionId)) && <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={entries === null || busy || submitting || !!attaching || restarting} onClick={() => void resetDemo()} title="Start from scratch: archive this demo's chat, preferences, grader and results. Your original history is kept.">{resettingDemo ? <Loader2 className="animate-spin" /> : <RotateCcw />}{resettingDemo ? "Resetting…" : "Reset demo"}</Button>}
             </header>
           )}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
@@ -278,9 +246,9 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                 <div className="py-10 text-center">
                   <h2 className="m-0 text-lg font-semibold tracking-tight">{modelId ? "How can I help with this eval?" : "What judgment call should it make?"}</h2>
                   <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">{modelId ? "This is a fresh conversation. Your eval’s existing examples, labels, and criteria are saved." : "Describe what you want to judge. The wizard finds relevant examples, learns from your feedback, and asks about anything unclear."}</p>
-                  <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
-                    {(modelId ? EVAL_STARTERS : STARTERS).map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
-                  </div>
+                  {modelId && <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
+                    {EVAL_STARTERS.map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
+                  </div>}
                 </div>
               )}
               {entries?.map((entry, i) => entry.role === "user" ? (

@@ -92,12 +92,6 @@ export default function ItemView({ item: raw, clamp = true, className }: { item:
   if ((item.kind === "image" || item.kind === "document") && Object.keys(item).every((k) => FILE_KEYS.has(k))) {
     return <div className={className}><FileItem item={item} /></div>;
   }
-  if (item.kind === "website" && typeof item.brief === "string" && item.render && typeof item.render === "object" && !Array.isArray(item.render)) {
-    return <div className={cn("min-w-0 space-y-3", className)}>
-      <div><p className="mb-1 text-[11px] font-medium text-muted-foreground">Website brief</p><Clamp text={item.brief} clamp={clamp} /></div>
-      <ItemView item={item.render as Item} clamp={clamp} />
-    </div>;
-  }
   if (item.kind === "history" && item.source && typeof item.source === "object" && Array.isArray(item.events)) {
     const source = item.source as Record<string, unknown>;
     const events = item.events.filter((e): e is { index: number; role: string; content: string; tool_name?: string } =>

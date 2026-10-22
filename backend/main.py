@@ -34,10 +34,10 @@ from .routers import (
     demo,
     developer,
     discover,
+    evals,
     exports,
     files,
     files_tree,
-    image_evals,
     intuition_mcp,
     intuitions,
     machine,
@@ -60,7 +60,6 @@ from .routers import (
     sql,
     tables,
     tasks,
-    taste,
     telegram,
     test_sets,
     transcripts,
@@ -168,8 +167,7 @@ app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(intuitions.router)
-app.include_router(taste.router)
-app.include_router(image_evals.router)
+app.include_router(evals.router)
 app.include_router(behaviors.router)
 app.include_router(agent_judge.router)
 app.include_router(test_sets.router)

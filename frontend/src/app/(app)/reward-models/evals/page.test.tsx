@@ -5,7 +5,6 @@ import EvalsPage from "./page";
 const api = vi.hoisted(() => ({ list: vi.fn(), sessions: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push }) }));
 vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: () => {} }));
-vi.mock("@/lib/taste-api", () => ({ tasteGet: () => Promise.resolve(null) }));
 vi.mock("@/lib/intuition-api", () => ({ imList: api.list }));
 vi.mock("@/lib/wizard-api", async (original) => ({ ...await original<typeof import("@/lib/wizard-api")>(), wzSessions: api.sessions }));
 beforeEach(() => {
