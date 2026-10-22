@@ -138,6 +138,9 @@ export default function WorkspaceShell({
     if (redirectToRewards) router.replace("/reward-models");
   }, [redirectToPlatform, redirectToRewards, router]);
   const scope = useScope();
+  // Below md the rail is a drawer behind the top bar's menu button; it closes on navigation.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [pathname]);
   const routeSection = sectionForPath(pathname);
   const requestedSection = searchParams.get("section");
   const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
@@ -178,6 +181,10 @@ export default function WorkspaceShell({
     );
   }
 
+  const rail = user.reward_models_enabled
+    ? <RewardRail user={user} onLogout={onLogout} />
+    : <Rail user={user} onLogout={onLogout} />;
+
   const contentFrameClass = user.reward_models_enabled && user.product_checkpoint !== "floodgate-2026-10-05"
     ? "rounded-tl-[4px] border-l border-t border-border bg-base"
     : "rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]";
@@ -186,11 +193,15 @@ export default function WorkspaceShell({
     // Chrome surface — the content panel floats on top of it.
     <div className="flex h-screen flex-col overflow-hidden bg-sidebar">
       <Persistence />
-      <Topbar />
+      <Topbar onMenu={() => setNavOpen(true)} />
       <div className="flex min-h-0 flex-1">
-        {user.reward_models_enabled
-          ? <RewardRail user={user} onLogout={onLogout} />
-          : <Rail user={user} onLogout={onLogout} />}
+        <div className="hidden md:flex">{rail}</div>
+        {navOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden">
+            <div className="flex h-full bg-rail shadow-xl">{rail}</div>
+            <button type="button" aria-label="Close navigation" className="flex-1 bg-black/30" onClick={() => setNavOpen(false)} />
+          </div>
+        )}
         <div className="min-w-0 flex-1 pb-0">
           {section && !isFilesHome ? (
             <div className="flex h-full">
