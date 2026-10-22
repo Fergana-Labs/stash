@@ -330,6 +330,8 @@ class Settings:
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    # Scores judge evals (services/evals). The trait-grading judge was benchmarked on Opus.
+    EVAL_JUDGE_MODEL: str = os.getenv("EVAL_JUDGE_MODEL", "claude-opus-5-5")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
     # --- Agent Workbench rubric grading (TypeSafe Jev) ---
