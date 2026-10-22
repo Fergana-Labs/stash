@@ -26,15 +26,14 @@ it("opens the dedicated eval page from the whole row and provides a keyboard-acc
 });
 
 
-it("lists an unfinished wizard as a resumable draft without duplicating a linked eval", async () => {
+it("never links to the eval-building chat: chat drafts are not listed and unfinished evals open their page", async () => {
   api.list.mockResolvedValue({ models: [{ id: "draft-eval", name: "Slide review", active_number: null, examples: 2, active_metrics: null }] });
   api.sessions.mockResolvedValue({ sessions: [
     { id: "setup", model_id: "draft-eval", title: "Slide review", status: "draft" },
     { id: "early", model_id: null, title: "New model", status: "draft", draft_input: "Check refund policy" },
   ] });
   render(<EvalsPage />);
-  expect(await screen.findByRole("link", { name: "Check refund policy" })).toHaveAttribute("href", "/reward-models/wizard/early");
-  expect(screen.getAllByRole("link", { name: "Slide review" })).toHaveLength(1);
-  expect(screen.getByRole("link", { name: "Slide review" })).toHaveAttribute("href", "/reward-models/wizard/setup");
-  expect(screen.getAllByText("Draft", { exact: true })).toHaveLength(2);
+  expect(await screen.findByRole("link", { name: "Slide review" })).toHaveAttribute("href", "/reward-models/evals/draft-eval");
+  expect(screen.queryByText("Check refund policy")).not.toBeInTheDocument();
+  expect(api.sessions).not.toHaveBeenCalled();
 });

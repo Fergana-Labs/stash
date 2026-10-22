@@ -10,7 +10,6 @@ import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { evalList, type Eval } from "@/lib/evals-api";
 import { EvalsViewToggle } from "@/components/test-sets/test-set-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { wizardSessionName, wzSessions, type WizardSession } from "@/lib/wizard-api";
 import { imList, type ModelSummary } from "@/lib/intuition-api";
 
 const actionClass = "h-[26px] gap-1.5 rounded-[4px] px-2 text-[11px] font-normal shadow-none [&_svg]:size-3";
@@ -18,34 +17,28 @@ const actionClass = "h-[26px] gap-1.5 rounded-[4px] px-2 text-[11px] font-normal
 export default function EvalsPage() {
   useBreadcrumbs([{ label: "Evals" }], "evals");
   const [models, setModels] = useState<ModelSummary[] | null>(null);
-  const [sessions, setSessions] = useState<WizardSession[]>([]);
   const [judged, setJudged] = useState<Eval[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const router = useRouter();
   const load = useCallback(async () => {
     try {
-      const [evals, drafts, made] = await Promise.all([imList(), wzSessions(), evalList().catch(() => [] as Eval[])]);
+      const [evals, made] = await Promise.all([imList(), evalList().catch(() => [] as Eval[])]);
       setJudged(made);
-      setModels(evals.models); setSessions(drafts.sessions); setError("");
+      setModels(evals.models); setError("");
     } catch (e) { setError(errorMessage(e)); }
   }, []);
   useEffect(() => { void load(); }, [load]);
   const rows = [
     ...(models ?? []).map((model) => {
-      const session = sessions.find((s) => s.model_id === model.id);
       // Evals made from examples are ready once built and count their own examples.
       const made = judged.find((e) => e.id === model.id);
       if (made) return { id: model.id, name: made.name, draft: !made.ready, href: `/reward-models/evals/${model.id}`,
         description: made.build?.summary ?? made.instructions, examples: made.examples.good + made.examples.bad, metrics: model.active_metrics };
       return { id: model.id, name: model.name, draft: model.active_number == null,
-        href: model.active_number == null && session ? `/reward-models/wizard/${session.id}` : `/reward-models/evals/${model.id}`,
+        href: `/reward-models/evals/${model.id}`,
         description: model.active_description ?? model.draft_description ?? "", examples: model.examples, metrics: model.active_metrics };
     }),
-    ...sessions.filter((s) => !s.model_id).map((session) => ({
-      id: `wizard:${session.id}`, name: wizardSessionName(session), draft: true,
-      href: `/reward-models/wizard/${session.id}`, description: session.draft_input ?? "", examples: 0, metrics: null,
-    })),
   ];
   const visible = rows.filter((row) => `${row.name} ${row.description}`.toLowerCase().includes(query.toLowerCase()));
   return <EvalPageFrame title="Evals" description="Create, test, and review evaluators." actions={<Button size="xs" className={actionClass} asChild><Link href="/reward-models/evals/new"><Plus />New eval</Link></Button>}>
