@@ -59,8 +59,8 @@ export default function EvalsPage() {
       }}>
         <td><div className="flex items-center gap-2"><Link href={model.href} className="block py-2 text-left font-medium">{model.name}</Link>{model.draft && <span className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Draft</span>}</div></td><td className="text-right tabular-nums">{model.examples}</td><td className="text-right tabular-nums">{model.metrics?.eval.accuracy == null ? "—" : `${Math.round(model.metrics.eval.accuracy * 100)}% · ${model.metrics.eval.n} checked`}</td>
       </tr>)}
-      {!models && !error && <tr><td colSpan={3} className="py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
-      {models && !visible.length && <tr><td colSpan={3} className="py-8 text-muted-foreground">{rows.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}
+      {!models && !error && <tr><td colSpan={3} className="px-3 py-6"><span role="status" className="text-muted-foreground">Loading evals…</span></td></tr>}
+      {models && !visible.length && <tr><td colSpan={3} className="px-3 py-8 text-muted-foreground">{rows.length ? "No matching evals." : "Create your first eval from good and bad outputs, notes, or annotated traces."}</td></tr>}
     </tbody></table></div>
   </EvalPageFrame>;
 }
