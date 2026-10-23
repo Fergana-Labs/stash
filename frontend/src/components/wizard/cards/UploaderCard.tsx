@@ -11,6 +11,7 @@ import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
 
 const ACCEPT = ".txt,.md,.json,.jsonl,.ndjson,.csv,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif";
 const MAX_BYTES = 2 * 1024 * 1024;
+const READ_AT_ONCE = 4;
 
 /** Pasted text -> examples. JSONL ({item|text, label}), CSV with a label column, `---` blocks, or one per line. */
 export function parsePasted(text: string, labels: string[]): NewExample[] {
@@ -81,24 +82,35 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
     setBusy(true); setError("");
     try {
       const chosen = labelAll || null;
-      const fromFiles: NewExample[] = [];
+      const read: (NewExample | null)[] = new Array(files.length).fill(null);
       let fromTraces = 0;
       let traces = 0;
-      for (const [i, file] of files.entries()) {
-        if (isTraceFile(file)) {
-          setStatus(`Finding moments to label in ${file.name} (${i + 1}/${files.length})…`);
-          try {
-            fromTraces += (await imTraceExamples(modelId, file)).added;
-            traces += 1;
-            continue;
-          } catch (e) {
-            if (!/not an agent trace/i.test(errorMessage(e))) throw e;
+      let finished = 0;
+      const progress = () => setStatus(`Reading ${files.length} file${files.length === 1 ? "" : "s"}: ${finished} done…`);
+      progress();
+      // Images each take a vision call, so read a few files at a time.
+      let next = 0;
+      const worker = async () => {
+        while (next < files.length) {
+          const i = next++;
+          const file = files[i];
+          let handled = false;
+          if (isTraceFile(file)) {
+            try {
+              fromTraces += (await imTraceExamples(modelId, file)).added;
+              traces += 1;
+              handled = true;
+            } catch (e) {
+              if (!/not an agent trace/i.test(errorMessage(e))) throw e;
+            }
           }
+          if (!handled) read[i] = { item: await evalReadFile(file), label: chosen, needs_review: chosen === null };
+          finished += 1;
+          progress();
         }
-        setStatus(`Reading ${file.name} (${i + 1}/${files.length})${file.type.startsWith("image/") ? " — describing the image" : ""}…`);
-        const item = await evalReadFile(file);
-        fromFiles.push({ item, label: chosen, needs_review: chosen === null });
-      }
+      };
+      await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, files.length) }, worker));
+      const fromFiles = read.filter((r): r is NewExample => r !== null);
       const rows = [...fromFiles, ...pasted.map((e) => (chosen && !e.label ? { ...e, label: chosen, needs_review: false } : e))];
       if (!rows.length && !traces) return;
       if (rows.length) {
