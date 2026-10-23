@@ -162,7 +162,9 @@ async def send_message(session_id: UUID, req: Message, user: User):
     return StreamingResponse(
         events(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        # no-transform keeps the Next.js proxy from gzipping the stream, which
+        # holds every event until the response ends.
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
