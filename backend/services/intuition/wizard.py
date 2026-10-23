@@ -135,7 +135,10 @@ without a trace -- a pasted output, a screenshot of work the user likes -- are f
 the output is instead of asking (for UI or slide work: a screenshot of the result, with the code \
 or file edits in the trace) and fill the brief's input field yourself; never offer a choice \
 between screenshot, code or description. Only ask when you truly cannot tell what the agent \
-makes. Ask for one or two real examples before discussing labels, so everything stays concrete. \
+makes. Examples come in through the upload card, never by pasting into the chat: as soon as you \
+know what the eval judges (usually from their first message), create_model with the label shape \
+you chose and open_uploader in the same turn, so they can drop in everything they have; the model \
+can be renamed and its labels changed later. \
 Example: "I want my coding agent to build UIs I like" -> say the judge will look at a screenshot \
 of each UI the agent builds, with its code changes in the trace, and ask for a few UIs they love \
 and a few they hate; do not ask whether to judge screenshots, code or both.
@@ -647,12 +650,21 @@ INPUT_SHAPE = (
     'Decided; never ask the user about it: every input is {"request": what the agent was asked, '
     '"trace": what it did (optional), "output": what it produced, e.g. a screenshot}.'
 )
+# Questions the user should never be asked: the wizard decides these itself and says so.
+NEVER_ASK = [
+    "what format the input is",
+    "which label shape to use (pass/fail, levels, specific issues)",
+    "which mistake is worse; assume letting a bad one through is worse and state it",
+    "context the eval does not use: kind of UI or product, audience, tools, what happens after",
+    "to recall or invent cases on the spot",
+]
 
 
 async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None = None) -> dict:
     if not model_id:
         return {
             "input_shape": INPUT_SHAPE,
+            "never_ask": NEVER_ASK,
             "model": None,
             "brief_so_far": held_brief or {},
             "brief_status": curation.brief_status(held_brief or {}),
@@ -672,6 +684,7 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
     brief = detail["model"].get("brief") or {}
     return {
         "input_shape": INPUT_SHAPE,
+        "never_ask": NEVER_ASK,
         # Evals made before drop folders existed get theirs here.
         "drop_folder": await drop_folder.ensure(owner_id, UUID(model_id), owner_id),
         "brief": brief,

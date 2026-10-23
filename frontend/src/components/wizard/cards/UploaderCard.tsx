@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileUp, ImageIcon, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { evalReadFile, imAddExamples, imGet, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
+import { evalReadFile, imAddExamples, imDropFolder, imGet, type DropFolder, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
 import { cn } from "@/lib/utils";
 import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
 
@@ -52,6 +53,7 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
+  const [folder, setFolder] = useState<DropFolder | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
       setOutputType(d.model.output_type);
       setLabels(d.model.output_type === "preference" ? ["good", "bad"] : [...(v?.labels ?? []).map((l) => l.id), ...(d.model.output_type === "multi" ? ["none"] : [])]);
     }).catch((e) => setError(errorMessage(e)));
+    imDropFolder(modelId).then((r) => setFolder(r.folder)).catch(() => {});
   }, [modelId]);
 
   const addFiles = useCallback((list: FileList | File[]) => {
@@ -149,6 +152,11 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
         </span>
         <Button size="sm" disabled={busy || !(files.length + pasted.length)} onClick={() => void submit()}>{busy ? "Adding…" : "Add examples"}</Button>
       </div>
+      {folder && (
+        <p className="m-0 mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+          Drop folder <Link href={folder.url} target="_blank" className="text-foreground underline underline-offset-2">{folder.name}</Link>
+        </p>
+      )}
       {status && <p role="status" className="m-0 mt-2 text-[11.5px] text-muted-foreground">{status}</p>}
       {error && <p role="alert" className="m-0 mt-2 text-[11.5px] text-destructive">{error}</p>}
     </CardShell>
