@@ -797,7 +797,14 @@ async def run_tool(
         session["brief"] = {}
         await _save(session)
         folder = await drop_folder.ensure(owner_id, UUID(session["model_id"]), owner_id)
-        return {"created": True, "model_id": session["model_id"], "drop_folder": folder}, None
+        # Examples come next, so the upload card always opens with the model.
+        session["_uploader_open"] = True  # this turn only; not saved
+        return {
+            "created": True,
+            "model_id": session["model_id"],
+            "drop_folder": folder,
+            "note": "The upload card is open below this message; do not open another.",
+        }, _card("uploader", prompt="Drop in what you have: screenshots, agent traces, docs")
     if name == "save_brief":
         if not session["model_id"]:
             # Held on the session and saved with the model when it is created.
@@ -949,6 +956,8 @@ async def run_tool(
     }
     if name in card_tools:
         _need_model(session)
+        if name == "open_uploader" and session.get("_uploader_open"):
+            return {"shown": True, "note": "The upload card is already open in this message."}, None
         kind, props = card_tools[name]
         return {"shown": True, "note": "The user will report back when done."}, _card(kind, **props)
     raise ValueError(f"Unknown tool {name}")

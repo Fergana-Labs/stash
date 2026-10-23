@@ -442,8 +442,11 @@ async def test_wizard_creates_a_model_and_opens_cards(client, fakes, scripted_cl
     events = _events(resp.text)
     kinds = [e["type"] for e in events]
     assert "model" in kinds and kinds[-1] == "done"
-    card = next(e for e in events if e["type"] == "card")
-    assert card["kind"] == "labeler" and card["props"] == {"which": "needs_review"}
+    cards = [e for e in events if e["type"] == "card"]
+    # Creating the model always opens the upload card; the labeler is the one the wizard asked for.
+    assert [c["kind"] for c in cards] == ["uploader", "labeler"]
+    card = cards[1]
+    assert card["props"] == {"which": "needs_review"}
     # The wizard sees the live state on every step.
     assert "Reply triage" in seen[-1]["system"]
     assert seen[-1]["messages"][-1]["content"][0]["type"] == "tool_result"
@@ -453,7 +456,7 @@ async def test_wizard_creates_a_model_and_opens_cards(client, fakes, scripted_cl
     ).json()
     assert stored["model_id"] and stored["title"] == "Reply triage" and "messages" not in stored
     parts = stored["transcript"][1]["parts"]
-    assert [p["type"] for p in parts] == ["text", "activity", "activity", "card", "text"]
+    assert [p["type"] for p in parts] == ["text", "activity", "card", "activity", "card", "text"]
     examples = (
         await client.get(f"/api/v1/intuitions/{stored['model_id']}/examples", headers=auth)
     ).json()

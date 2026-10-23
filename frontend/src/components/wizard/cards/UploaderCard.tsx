@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileUp, ImageIcon, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { evalReadFile, imAddExamples, imDropFolder, imGet, type DropFolder, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
+import { evalReadFile, imAddExamples, imDropFolder, imGet, imTraceExamples, isTraceFile, type DropFolder, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
 import { cn } from "@/lib/utils";
 import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
 
@@ -82,19 +82,36 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
     try {
       const chosen = labelAll || null;
       const fromFiles: NewExample[] = [];
+      let fromTraces = 0;
+      let traces = 0;
       for (const [i, file] of files.entries()) {
+        if (isTraceFile(file)) {
+          setStatus(`Finding moments to label in ${file.name} (${i + 1}/${files.length})…`);
+          try {
+            fromTraces += (await imTraceExamples(modelId, file)).added;
+            traces += 1;
+            continue;
+          } catch (e) {
+            if (!/not an agent trace/i.test(errorMessage(e))) throw e;
+          }
+        }
         setStatus(`Reading ${file.name} (${i + 1}/${files.length})${file.type.startsWith("image/") ? " — describing the image" : ""}…`);
         const item = await evalReadFile(file);
         fromFiles.push({ item, label: chosen, needs_review: chosen === null });
       }
       const rows = [...fromFiles, ...pasted.map((e) => (chosen && !e.label ? { ...e, label: chosen, needs_review: false } : e))];
-      if (!rows.length) return;
-      setStatus("Saving…");
-      await imAddExamples(modelId, rows);
+      if (!rows.length && !traces) return;
+      if (rows.length) {
+        setStatus("Saving…");
+        await imAddExamples(modelId, rows);
+      }
       const images = files.filter((f) => f.type.startsWith("image/")).length;
       const unlabeled = rows.filter((r) => !r.label).length;
       setFiles([]); setText(""); setStatus(""); refresh();
-      send(`Added ${rows.length} example${rows.length === 1 ? "" : "s"}${images ? ` (${images} image${images === 1 ? "" : "s"})` : ""}; ${unlabeled ? `${unlabeled} need labels` : "all labeled"}.`, "event");
+      const parts = [];
+      if (rows.length) parts.push(`Added ${rows.length} example${rows.length === 1 ? "" : "s"}${images ? ` (${images} image${images === 1 ? "" : "s"})` : ""}; ${unlabeled ? `${unlabeled} need labels` : "all labeled"}.`);
+      if (traces) parts.push(`Found ${fromTraces} moment${fromTraces === 1 ? "" : "s"} to label in ${traces} trace${traces === 1 ? "" : "s"}, each with a suggested label to review.`);
+      send(parts.join(" "), "event");
     } catch (e) {
       setError(errorMessage(e)); setStatus("");
     } finally {
