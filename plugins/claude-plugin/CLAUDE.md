@@ -10,6 +10,8 @@ A Skill is **not** a wrapper around every single file you happen to share. One-i
 
 ### Decision rule for sharing
 
+**Sharing is user-initiated only.** Run `stash upload`, `stash share`, or `stash skills create` ONLY when the user explicitly asks you to upload, share, or publish something. Producing a file or an answer is never by itself a reason to put it in Stash — deliver it in the conversation. When the user does ask:
+
 | What you want to do | Command | What you give the user |
 |---|---|---|
 | Share one file (publicly) | `stash upload <path> --json` | the returned `app_url` |
