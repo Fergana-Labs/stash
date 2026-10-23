@@ -49,7 +49,7 @@ CALIBRATION_SET = 12
 # gate "the brief is complete"; the rest make the judge sharper when present.
 BRIEF_FIELDS = {
     "decision": ("What is decided, by whom, and what happens next", True),
-    "input": ("What one input looks like and where it comes from", True),
+    "input": ("What the agent produces and where its requests come from", False),
     "labels": ("Each label: what it means and where its boundary is", True),
     "costly_mistake": ("Which mistake is worse, and why", True),
     "must_never": ("Cases the judge must never get wrong", True),

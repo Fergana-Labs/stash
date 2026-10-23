@@ -83,7 +83,8 @@ to lean when unsure.
 version cannot ship if it gets any of them wrong.
 7. Criteria are observable. Each criterion checks one property visible in the input ("mentions a \
 charge they did not make"), never the verdict itself ("is this fraud?") and never something the \
-judge cannot see.
+judge cannot see. Criteria may check how the agent worked ("changed only what the request \
+asked for"), worded so they can still be answered when an input has no trace.
 8. Measure honestly. Accuracy is always on held-out examples the judge never trained on, with how \
 many there are and next to zero-shot Jev. Fewer than ~20 held out is an early estimate.
 9. People are the ceiling. If two people disagree on 20% of cases, 80% agreement with one of them \
@@ -92,10 +93,20 @@ is the best a judge can do. When people disagree, fix the label definitions, not
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
 
 ## The script (adapt: skip anything the user already told you, never ask more than two short \
-questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
+questions per turn, offer quick picks with show_choices whenever the answer is one of a few, and \
+never ask what format the input is -- see B)
 A. Decision. "What decision should it make, and what happens after?" Who acts on the answer.
-B. Input. "Paste one or two real examples" -- before discussing labels, so everything stays \
-concrete. Note the format (text, JSON fields, images, PDFs; any of them works).
+B. Examples first. The input is fixed, so never ask what format it is: every eval takes a JSON object \
+with "request" (what the agent was asked to do), "trace" (what it did: its steps, tool calls and \
+edits; optional) and "output" (what it produced: text, code, a file, or a screenshot). Examples \
+without a trace -- a pasted output, a screenshot of work the user likes -- are fine. Infer what \
+the output is instead of asking (for UI or slide work: a screenshot of the result, with the code \
+or file edits in the trace) and fill the brief's input field yourself; never offer a choice \
+between screenshot, code or description. Only ask when you truly cannot tell what the agent \
+makes. Ask for one or two real examples before discussing labels, so everything stays concrete. \
+Example: "I want my coding agent to build UIs I like" -> say the judge will look at a screenshot \
+of each UI the agent builds, with its code changes in the trace, and ask for a few UIs they love \
+and a few they hate; do not ask whether to judge screenshots, code or both.
 C. Labels. Propose labels from what you have seen and confirm with show_choices. Then get the \
 boundary: ask for the hardest borderline case between two labels and what the right call is (skip \
 only if the user already gave one) -- this is where most evals go wrong. Then create_model (choice: exactly one of 2-12 labels; multi: any subset of 1-8 issues; \
@@ -220,7 +231,10 @@ BRIEF_SCHEMA = {
         "type": "string",
         "description": "What is decided, by whom, and what happens next",
     },
-    "input": {"type": "string", "description": "What one input looks like and where it comes from"},
+    "input": {
+        "type": "string",
+        "description": "What the agent produces and where its requests come from",
+    },
     "labels": {
         "type": "array",
         "description": "Per label: what it means and its boundary (the nearest thing it is not)",
@@ -595,9 +609,17 @@ async def _save(session: dict) -> None:
 # ── State summary given to the wizard every turn ─────────────────────────
 
 
+# Shown every turn so the wizard treats the input shape as settled rather than asking about it.
+INPUT_SHAPE = (
+    'Decided; never ask the user about it: every input is {"request": what the agent was asked, '
+    '"trace": what it did (optional), "output": what it produced, e.g. a screenshot}.'
+)
+
+
 async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None = None) -> dict:
     if not model_id:
         return {
+            "input_shape": INPUT_SHAPE,
             "model": None,
             "brief_so_far": held_brief or {},
             "brief_status": curation.brief_status(held_brief or {}),
@@ -616,6 +638,7 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
     report = ((version or {}).get("metrics") or {}).get("report")
     brief = detail["model"].get("brief") or {}
     return {
+        "input_shape": INPUT_SHAPE,
         "brief": brief,
         "brief_status": curation.brief_status(brief),
         "inbox": {
