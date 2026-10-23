@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { imGet, type ModelDetail } from "@/lib/intuition-api";
+import { imDropFolder, imGet, type DropFolder, type ModelDetail } from "@/lib/intuition-api";
 import { wzReport, type TrainingReport } from "@/lib/wizard-api";
 import { pct, userCriteria } from "./wizard-ui";
 
@@ -18,10 +19,12 @@ function Step({ done, label, detail }: { done: boolean; label: string; detail?: 
 export default function ModelPanel({ modelId, version }: { modelId: string | null; version: number }) {
   const [detail, setDetail] = useState<ModelDetail | null>(null);
   const [report, setReport] = useState<TrainingReport | null>(null);
+  const [folder, setFolder] = useState<DropFolder | null>(null);
   useEffect(() => {
     if (!modelId) return;
     imGet(modelId).then(setDetail).catch(() => {});
     wzReport(modelId).then((r) => setReport(r.report)).catch(() => {});
+    imDropFolder(modelId).then((r) => setFolder(r.folder)).catch(() => {});
   }, [modelId, version]);
 
   const v = detail?.draft ?? detail?.active;
@@ -46,6 +49,13 @@ export default function ModelPanel({ modelId, version }: { modelId: string | nul
             <Step done={!!report} label="Trained" detail={report ? `${pct(report.holdout.accuracy)} held-out on ${report.holdout.n}` : undefined} />
             <Step done={!!detail.active} label="Live" detail={detail.active ? `version ${detail.active.number}` : undefined} />
           </ul>
+          {folder && (
+            <div className="mt-4 border-t border-border pt-3">
+              <div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Drop folder</div>
+              <Link href={folder.url} className="mt-1 block truncate text-[12px] underline underline-offset-2">{folder.name}</Link>
+              <div className="text-[11px] text-muted-foreground">{folder.imported} added</div>
+            </div>
+          )}
           {!detail.judge.configured && <p className="mt-4 rounded-md border border-yellow-500/30 bg-yellow-500/8 px-2 py-1.5 text-[11px]">The Jev judge isn’t configured on this server (TYPESAFE_API_KEY), so training will fail.</p>}
         </>
       )}

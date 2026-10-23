@@ -15,6 +15,7 @@ from ..auth import get_current_user
 from ..services.intuition import (
     builder,
     demo,
+    drop_folder,
     feedback,
     improve,
     mining,
@@ -359,6 +360,25 @@ async def restore(model_id: UUID, version_id: UUID, user: User):
 @router.get("/{model_id}/examples")
 async def examples(model_id: UUID, user: User):
     return await checked(service.list_examples(user["id"], model_id))
+
+
+@router.get("/{model_id}/drop-folder")
+async def get_drop_folder(model_id: UUID, user: User):
+    """The eval's drop folder: files and pages added there become unlabeled examples."""
+    await checked(service.get_detail(user["id"], model_id))
+    return {"folder": await drop_folder.get(user["id"], model_id)}
+
+
+@router.post("/{model_id}/drop-folder", status_code=201)
+async def create_drop_folder(model_id: UUID, user: User):
+    return {"folder": await checked(drop_folder.ensure(user["id"], model_id, user["id"]))}
+
+
+@router.post("/{model_id}/drop-folder/sync")
+async def sync_drop_folder(model_id: UUID, user: User):
+    """Import what is new in the folder now instead of waiting for the next minute's sweep."""
+    await checked(service.get_detail(user["id"], model_id))
+    return await drop_folder.sync(model_id)
 
 
 @router.post("/{model_id}/examples", status_code=201)

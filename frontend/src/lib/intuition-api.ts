@@ -191,6 +191,9 @@ export const imCreate = (body: { name: string; output_type: OutputType; descript
   post<ModelDetail>(IM, body);
 export const imLoadExample = () => post<ModelDetail>(`${IM}/examples/support-replies`);
 export const imGet = (id: string) => apiFetch<ModelDetail>(`${IM}/${id}`);
+/** The eval's drop folder in Files: what is added there becomes unlabeled examples. */
+export interface DropFolder { id: string; name: string; url: string; imported: number }
+export const imDropFolder = (id: string) => apiFetch<{ folder: DropFolder | null }>(`${IM}/${id}/drop-folder`);
 export const imRename = (id: string, name: string) => apiFetch<ModelDetail>(`${IM}/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
 export const imDelete = (id: string) => apiFetch<void>(`${IM}/${id}`, { method: "DELETE" });
 

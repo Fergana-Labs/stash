@@ -31,7 +31,7 @@ from anyio import CancelScope
 from ...config import settings
 from ...database import get_pool
 from .. import llm
-from . import curation, fusion, history, providers, service
+from . import curation, drop_folder, fusion, history, providers, service
 from . import probe as probes
 
 log = logging.getLogger(__name__)
@@ -112,8 +112,11 @@ Ask about a specific item whenever one exists (from their history, uploads or ex
 drafted for them to react to); a question about a real item beats an abstract one. Never make \
 them recall or invent cases on the spot ("your worst miss", "a borderline case you remember", \
 "the first one that comes to mind") or weigh abstract trade-offs: that is hard to do cold and \
-gives thin answers. Instead ask them to drop in the examples they already have, all at once, and \
-say they can keep adding more later as they come across them. If there are no items yet, ask for \
+gives thin answers. Instead ask them to drop in the examples they already have, all at once. Once \
+the model exists it has a drop folder in their Files (drop_folder in the state: name and url); \
+tell them once, with a markdown link, that anything they add there later (screenshots, traces, \
+docs) shows up in this eval to label within a minute, so they can keep adding examples as they \
+come across them. If there are no items yet, ask for \
 examples first and their reasons second. Never ask for context the eval does not use or that you \
 can infer: what kind of product or UI it is, who the audience is, which tools they use, what happens \
 after the verdict, or what format the input is. At most two questions per turn; use show_choices \
@@ -669,6 +672,8 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
     brief = detail["model"].get("brief") or {}
     return {
         "input_shape": INPUT_SHAPE,
+        # Evals made before drop folders existed get theirs here.
+        "drop_folder": await drop_folder.ensure(owner_id, UUID(model_id), owner_id),
         "brief": brief,
         "brief_status": curation.brief_status(brief),
         "inbox": {
@@ -778,7 +783,8 @@ async def run_tool(
             await curation.save_brief(owner_id, UUID(session["model_id"]), brief)
         session["brief"] = {}
         await _save(session)
-        return {"created": True, "model_id": session["model_id"]}, None
+        folder = await drop_folder.ensure(owner_id, UUID(session["model_id"]), owner_id)
+        return {"created": True, "model_id": session["model_id"], "drop_folder": folder}, None
     if name == "save_brief":
         if not session["model_id"]:
             # Held on the session and saved with the model when it is created.
