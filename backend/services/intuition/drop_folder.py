@@ -12,7 +12,7 @@ from uuid import UUID
 
 from ...database import get_pool
 from .. import files_tree_service, storage_service
-from . import builder, service
+from . import builder, service, trace_examples
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +106,18 @@ async def _item(obj: dict) -> dict:
     )
 
 
+async def _trace_rows(owner_id: UUID, model_id: UUID, obj: dict) -> list[dict] | None:
+    """An agent trace becomes one example per moment the user reacted to, with suggested
+    labels; None when the object is not a trace file."""
+    if obj["object_type"] != "file" or not obj["name"].lower().endswith((".jsonl", ".ndjson")):
+        return None
+    data = await storage_service.download_file(obj["storage_key"])
+    labels, description = await trace_examples.eval_labels(owner_id, model_id)
+    return await trace_examples.examples(
+        description, labels, data.decode("utf-8", errors="replace"), obj["name"]
+    )
+
+
 async def sync(model_id: UUID) -> dict:
     """Import the folder's new files and pages as unlabeled examples."""
     model = await get_pool().fetchrow(
@@ -117,21 +129,23 @@ async def sync(model_id: UUID) -> dict:
     for obj in await _new_objects(model_id, model["drop_folder_id"], MAX_PER_SYNC):
         example_id, error = None, None
         try:
-            item = await _item(obj)
-            created = await service.add_examples(
-                model["owner_user_id"],
-                model_id,
-                [
+            rows = await _trace_rows(model["owner_user_id"], model_id, obj)
+            if rows is None:
+                item = await _item(obj)
+                rows = [
                     {
                         "item": item,
                         "needs_review": True,
                         "note": f"From the drop folder: {obj['name']}",
                     }
-                ],
-                "human",
+                ]
+            created = (
+                await service.add_examples(model["owner_user_id"], model_id, rows, "human")
+                if rows
+                else []
             )
-            example_id = created[0]["id"]
-            added += 1
+            example_id = created[0]["id"] if created else None
+            added += len(created)
         except Exception as exc:  # noqa: BLE001 -- record and move on; one bad file must not block the rest
             log.warning(
                 "drop folder import failed for %s %s: %s", obj["object_type"], obj["id"], exc

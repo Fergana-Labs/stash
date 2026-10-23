@@ -75,6 +75,23 @@ function FileItem({ item }: { item: Record<string, unknown> }) {
   );
 }
 
+/** An agent's steps, collapsed behind their count. */
+function Steps({ steps }: { steps: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="min-w-0">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-[11.5px] text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground">
+        {open ? "Hide" : `${steps.length} agent step${steps.length === 1 ? "" : "s"}`}
+      </button>
+      {open && (
+        <ol className="m-0 mt-1 max-h-72 list-none space-y-1 overflow-y-auto rounded-md border border-border bg-surface/40 px-3 py-2 font-mono text-[11px] leading-relaxed">
+          {steps.map((step, i) => <li key={i} className="break-words whitespace-pre-wrap">{step}</li>)}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /**
  * Read-only rendering of an input, made for people rather than JSON: uploaded
  * files as the file, question/answer-shaped objects as a conversation, chat
@@ -107,6 +124,16 @@ export default function ItemView({ item: raw, clamp = true, className }: { item:
         {events.map((event) => <Bubble key={event.index} who={event.tool_name ?? (event.role === "user" ? "You" : event.role === "tool" ? "Tool result" : "Agent")} side={event.role === "user" ? "out" : "in"}><Clamp text={event.content} clamp={clamp} /></Bubble>)}
       </div>
       {Boolean(item.content_truncated || item.partial_history) && <p className="text-[11px] text-muted-foreground">{item.content_truncated ? "Some long messages are shortened. " : ""}{item.partial_history ? "Earlier resumed turns are unavailable in this excerpt." : ""}</p>}
+    </div>;
+  }
+  if (typeof item.request === "string" && "output" in item) {
+    const output = item.output;
+    const steps = Array.isArray(item.trace) ? item.trace.map((step) => readableText(step)) : [];
+    return <div className={cn("min-w-0 space-y-2", className)}>
+      <Bubble who="Request" side="out"><Clamp text={item.request} clamp={clamp} /></Bubble>
+      {steps.length > 0 && <Steps steps={steps} />}
+      <Bubble who="Agent output" side="in">{output && typeof output === "object" && !Array.isArray(output) && "kind" in output ? <FileItem item={output as Record<string, unknown>} /> : <Clamp text={readableText(output)} clamp={clamp} />}</Bubble>
+      {typeof item.source === "string" && <p className="m-0 text-[11px] text-muted-foreground">{item.source}</p>}
     </div>;
   }
   const messages = Array.isArray(item.messages) ? (item.messages as { role?: string; content?: unknown }[]) : null;

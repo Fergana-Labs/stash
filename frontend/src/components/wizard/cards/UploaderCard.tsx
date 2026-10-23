@@ -5,12 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileUp, ImageIcon, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
-import { evalReadFile, imAddExamples, imDropFolder, imGet, type DropFolder, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
+import { evalReadFile, imAddExamples, imDropFolder, imGet, imTraceExamples, isTraceFile, type DropFolder, type Item, type NewExample, type OutputType } from "@/lib/intuition-api";
 import { cn } from "@/lib/utils";
 import { CardShell, NeedsModel, useWizard } from "../wizard-ui";
 
 const ACCEPT = ".txt,.md,.json,.jsonl,.ndjson,.csv,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif";
 const MAX_BYTES = 2 * 1024 * 1024;
+const READ_AT_ONCE = 4;
 
 /** Pasted text -> examples. JSONL ({item|text, label}), CSV with a label column, `---` blocks, or one per line. */
 export function parsePasted(text: string, labels: string[]): NewExample[] {
@@ -81,20 +82,48 @@ export default function UploaderCard({ prompt }: { prompt?: string }) {
     setBusy(true); setError("");
     try {
       const chosen = labelAll || null;
-      const fromFiles: NewExample[] = [];
-      for (const [i, file] of files.entries()) {
-        setStatus(`Reading ${file.name} (${i + 1}/${files.length})${file.type.startsWith("image/") ? " — describing the image" : ""}…`);
-        const item = await evalReadFile(file);
-        fromFiles.push({ item, label: chosen, needs_review: chosen === null });
-      }
+      const read: (NewExample | null)[] = new Array(files.length).fill(null);
+      let fromTraces = 0;
+      let traces = 0;
+      let finished = 0;
+      const progress = () => setStatus(`Reading ${files.length} file${files.length === 1 ? "" : "s"}: ${finished} done…`);
+      progress();
+      // Images each take a vision call, so read a few files at a time.
+      let next = 0;
+      const worker = async () => {
+        while (next < files.length) {
+          const i = next++;
+          const file = files[i];
+          let handled = false;
+          if (isTraceFile(file)) {
+            try {
+              fromTraces += (await imTraceExamples(modelId, file)).added;
+              traces += 1;
+              handled = true;
+            } catch (e) {
+              if (!/not an agent trace/i.test(errorMessage(e))) throw e;
+            }
+          }
+          if (!handled) read[i] = { item: await evalReadFile(file), label: chosen, needs_review: chosen === null };
+          finished += 1;
+          progress();
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, files.length) }, worker));
+      const fromFiles = read.filter((r): r is NewExample => r !== null);
       const rows = [...fromFiles, ...pasted.map((e) => (chosen && !e.label ? { ...e, label: chosen, needs_review: false } : e))];
-      if (!rows.length) return;
-      setStatus("Saving…");
-      await imAddExamples(modelId, rows);
+      if (!rows.length && !traces) return;
+      if (rows.length) {
+        setStatus("Saving…");
+        await imAddExamples(modelId, rows);
+      }
       const images = files.filter((f) => f.type.startsWith("image/")).length;
       const unlabeled = rows.filter((r) => !r.label).length;
       setFiles([]); setText(""); setStatus(""); refresh();
-      send(`Added ${rows.length} example${rows.length === 1 ? "" : "s"}${images ? ` (${images} image${images === 1 ? "" : "s"})` : ""}; ${unlabeled ? `${unlabeled} need labels` : "all labeled"}.`, "event");
+      const parts = [];
+      if (rows.length) parts.push(`Added ${rows.length} example${rows.length === 1 ? "" : "s"}${images ? ` (${images} image${images === 1 ? "" : "s"})` : ""}; ${unlabeled ? `${unlabeled} need labels` : "all labeled"}.`);
+      if (traces) parts.push(`Found ${fromTraces} moment${fromTraces === 1 ? "" : "s"} to label in ${traces} trace${traces === 1 ? "" : "s"}, each with a suggested label to review.`);
+      send(parts.join(" "), "event");
     } catch (e) {
       setError(errorMessage(e)); setStatus("");
     } finally {

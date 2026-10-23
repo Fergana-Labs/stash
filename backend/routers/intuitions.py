@@ -25,6 +25,7 @@ from ..services.intuition import (
     runs,
     selection,
     service,
+    trace_examples,
 )
 from .reward_models import require_reward_models
 
@@ -360,6 +361,26 @@ async def restore(model_id: UUID, version_id: UUID, user: User):
 @router.get("/{model_id}/examples")
 async def examples(model_id: UUID, user: User):
     return await checked(service.list_examples(user["id"], model_id))
+
+
+@router.post("/{model_id}/trace-examples", status_code=201)
+async def add_trace_examples(model_id: UUID, file: UploadFile, user: User):
+    """Split an agent trace into moments and add the ones the user reacted to, with a
+    suggested label from their reaction; every suggestion still needs review."""
+    data = await file.read(builder.MAX_BYTES + 1)
+    if len(data) > builder.MAX_BYTES:
+        raise HTTPException(422, "Choose a file smaller than 2 MB")
+    labels, description = await checked(trace_examples.eval_labels(user["id"], model_id))
+    found = await checked(
+        trace_examples.examples(
+            description, labels, data.decode("utf-8", errors="replace"), file.filename or "trace"
+        )
+    )
+    if found is None:
+        raise HTTPException(422, "This file is not an agent trace")
+    if found:
+        await checked(service.add_examples(user["id"], model_id, found, "human"))
+    return {"added": len(found)}
 
 
 @router.get("/{model_id}/drop-folder")

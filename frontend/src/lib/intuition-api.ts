@@ -237,6 +237,13 @@ export const imReview = (id: string, predictionId: string, body: { label?: strin
 export const evalAddExamples = (id: string, examples: NewExample[]) => post<Example[]>(`${IM}/${id}/builder/examples`, { examples });
 export const evalAddTrace = (id: string, trace_id: string, label: string, note = "") => post<Example[]>(`${IM}/${id}/builder/trace`, { trace_id, label, note });
 export const evalPrepare = (id: string) => post<ModelDetail>(`${IM}/${id}/builder/prepare`);
+/** An agent trace -> one example per moment the user reacted to, each with a suggested label. */
+export function imTraceExamples(id: string, file: File): Promise<{ added: number }> {
+  const body = new FormData(); body.set("file", file);
+  return apiFetch<{ added: number }>(`${IM}/${id}/trace-examples`, { method: "POST", body });
+}
+export const isTraceFile = (file: File) => /\.(jsonl|ndjson)$/i.test(file.name);
+
 export function evalReadFile(file: File): Promise<Item> {
   const body = new FormData(); body.set("file", file);
   return apiFetch<Item>(`${IM}/inputs`, { method: "POST", body });
