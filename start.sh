@@ -567,6 +567,10 @@ PIDS+=($!)
 # Two workers split by task weight: long-running tasks (renders, extractions,
 # crawls, agent runs) get their own "heavy" pool so every beat sweep and cheap
 # task on "default" stays snappy (see task_routes).
+# billiard >= 4.3 spawns (not forks) pool processes on macOS, and Celery only
+# sets up spawned children's task registry when this is set; without it every
+# task fails with "not enough values to unpack (expected 3, got 0)".
+export FORKED_BY_MULTIPROCESSING=1
 echo "[worker]   Starting celery worker (default queue)..."
 celery -A backend.celery_app worker --loglevel=info --concurrency=4 -Q default &
 PIDS+=($!)

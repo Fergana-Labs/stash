@@ -23,6 +23,9 @@ async def read_input(content: bytes, name: str, content_type: str) -> dict:
     if not content or len(content) > MAX_BYTES:
         raise ValueError("Choose a nonempty file smaller than 2 MB")
     content_type = mimetypes.guess_type(name)[0] or content_type
+    if name.lower().endswith((".jsonl", ".ndjson")):
+        # mimetypes doesn't know JSON Lines, so browsers' octet-stream type would be refused.
+        content_type = "text/plain"
     name = name.replace("\\", "/").rsplit("/", 1)[-1][:200]
     if content_type in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
         encoded = base64.b64encode(content).decode()
