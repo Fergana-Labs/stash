@@ -11,7 +11,7 @@ The rule (mirrors Fleet's resolveUserKey, adapted to per-user sprites):
 Local dev short-circuits to the machine's own harness login (no injection).
 
 Credential injection differs by kind:
-  - api_key → an env var the CLI reads (ANTHROPIC_API_KEY / OPENAI_API_KEY).
+  - api_key → an env var the CLI reads (ANTHROPIC_API_KEY / CODEX_API_KEY).
   - oauth   → a credential FILE the CLI reads, written to the box before the
      turn (Claude: ~/.claude/.credentials.json + CLAUDE_CONFIG_DIR; Codex:
      ~/.codex/auth.json). The OAuth acquisition flow is a separate follow-up;
@@ -178,7 +178,8 @@ async def _managed(user_id: UUID) -> RunAuth:
 def _byo_auth(cred: dict) -> RunAuth:
     harness = _PROVIDER_HARNESS[cred["provider"]]
     if cred["kind"] == "api_key":
-        return RunAuth(harness=harness, env={harness.provider.env_var: cred["secret"]})
+        key_env = "CODEX_API_KEY" if harness is harness_mod.CODEX else harness.provider.env_var
+        return RunAuth(harness=harness, env={key_env: cred["secret"]})
 
     # OAuth: the CLI reads a credential file, not an env var.
     if harness is harness_mod.CLAUDE:
