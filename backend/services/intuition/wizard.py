@@ -31,7 +31,7 @@ from anyio import CancelScope
 from ...config import settings
 from ...database import get_pool
 from .. import llm
-from . import curation, fusion, history, providers, service
+from . import curation, drop_folder, fusion, history, providers, service
 from . import probe as probes
 
 log = logging.getLogger(__name__)
@@ -112,8 +112,11 @@ Ask about a specific item whenever one exists (from their history, uploads or ex
 drafted for them to react to); a question about a real item beats an abstract one. Never make \
 them recall or invent cases on the spot ("your worst miss", "a borderline case you remember", \
 "the first one that comes to mind") or weigh abstract trade-offs: that is hard to do cold and \
-gives thin answers. Instead ask them to drop in the examples they already have, all at once, and \
-say they can keep adding more later as they come across them. If there are no items yet, ask for \
+gives thin answers. Instead ask them to drop in the examples they already have, all at once. Once \
+the model exists it has a drop folder in their Files (drop_folder in the state: name and url); \
+tell them once, with a markdown link, that anything they add there later (screenshots, traces, \
+docs) shows up in this eval to label within a minute, so they can keep adding examples as they \
+come across them. If there are no items yet, ask for \
 examples first and their reasons second. Never ask for context the eval does not use or that you \
 can infer: what kind of product or UI it is, who the audience is, which tools they use, what happens \
 after the verdict, or what format the input is. At most two questions per turn; use show_choices \
@@ -132,7 +135,10 @@ without a trace -- a pasted output, a screenshot of work the user likes -- are f
 the output is instead of asking (for UI or slide work: a screenshot of the result, with the code \
 or file edits in the trace) and fill the brief's input field yourself; never offer a choice \
 between screenshot, code or description. Only ask when you truly cannot tell what the agent \
-makes. Ask for one or two real examples before discussing labels, so everything stays concrete. \
+makes. Examples come in through the upload card, never by pasting into the chat: as soon as you \
+know what the eval judges (usually from their first message), create_model with the label shape \
+you chose and open_uploader in the same turn, so they can drop in everything they have; the model \
+can be renamed and its labels changed later. \
 Example: "I want my coding agent to build UIs I like" -> say the judge will look at a screenshot \
 of each UI the agent builds, with its code changes in the trace, and ask for a few UIs they love \
 and a few they hate; do not ask whether to judge screenshots, code or both.
@@ -644,12 +650,21 @@ INPUT_SHAPE = (
     'Decided; never ask the user about it: every input is {"request": what the agent was asked, '
     '"trace": what it did (optional), "output": what it produced, e.g. a screenshot}.'
 )
+# Questions the user should never be asked: the wizard decides these itself and says so.
+NEVER_ASK = [
+    "what format the input is",
+    "which label shape to use (pass/fail, levels, specific issues)",
+    "which mistake is worse; assume letting a bad one through is worse and state it",
+    "context the eval does not use: kind of UI or product, audience, tools, what happens after",
+    "to recall or invent cases on the spot",
+]
 
 
 async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None = None) -> dict:
     if not model_id:
         return {
             "input_shape": INPUT_SHAPE,
+            "never_ask": NEVER_ASK,
             "model": None,
             "brief_so_far": held_brief or {},
             "brief_status": curation.brief_status(held_brief or {}),
@@ -669,6 +684,9 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
     brief = detail["model"].get("brief") or {}
     return {
         "input_shape": INPUT_SHAPE,
+        "never_ask": NEVER_ASK,
+        # Evals made before drop folders existed get theirs here.
+        "drop_folder": await drop_folder.ensure(owner_id, UUID(model_id), owner_id),
         "brief": brief,
         "brief_status": curation.brief_status(brief),
         "inbox": {
@@ -778,7 +796,8 @@ async def run_tool(
             await curation.save_brief(owner_id, UUID(session["model_id"]), brief)
         session["brief"] = {}
         await _save(session)
-        return {"created": True, "model_id": session["model_id"]}, None
+        folder = await drop_folder.ensure(owner_id, UUID(session["model_id"]), owner_id)
+        return {"created": True, "model_id": session["model_id"], "drop_folder": folder}, None
     if name == "save_brief":
         if not session["model_id"]:
             # Held on the session and saved with the model when it is created.

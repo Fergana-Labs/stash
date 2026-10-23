@@ -85,6 +85,8 @@ celery.conf.update(
         "backend.tasks.optimization.score_run": {"queue": "reward"},
         "backend.tasks.intuitions.improve": {"queue": "heavy"},
         "backend.tasks.intuitions.refine": {"queue": "heavy"},
+        # Reads uploads with a vision model; keep it off the snappy default queue.
+        "backend.tasks.intuitions.sync_drop_folder": {"queue": "heavy"},
         "backend.tasks.behaviors.scan_models": {"queue": "heavy"},
         "backend.tasks.behaviors.triage": {"queue": "heavy"},
         "backend.tasks.agent_judge.investigate": {"queue": "heavy"},
@@ -108,6 +110,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "eval-drop-folders-sync": {
+            "task": "backend.tasks.intuitions.drop_folders_due",
+            "schedule": 60.0,
+        },
         "prompt-optimization-reconcile": {
             "task": "backend.tasks.optimization.reconcile",
             "schedule": 30.0,

@@ -16,7 +16,7 @@ from backend.tasks.clips import process_url_imports
 from backend.tasks.drive_extraction import extract_drive_document
 from backend.tasks.evals import build_eval
 from backend.tasks.extraction import extract_file_text
-from backend.tasks.intuitions import improve, refine
+from backend.tasks.intuitions import improve, refine, sync_drop_folder
 from backend.tasks.optimization import score_run
 from backend.tasks.reward_models import (
     collect_examples,
@@ -44,6 +44,7 @@ HEAVY_TASKS = {
     precompute.name,
     improve.name,
     refine.name,
+    sync_drop_folder.name,
     scan_models.name,
     triage.name,
     investigate.name,
