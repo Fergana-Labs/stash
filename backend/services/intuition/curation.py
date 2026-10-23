@@ -52,7 +52,7 @@ BRIEF_FIELDS = {
     "input": ("What the agent produces and where its requests come from", False),
     "labels": ("Each label: what it means and where its boundary is", True),
     "costly_mistake": ("Which mistake is worse, and why", True),
-    "must_never": ("Cases the judge must never get wrong", True),
+    "must_never": ("Cases the judge must never get wrong", False),
     "edge_cases": ("Known hard or ambiguous cases, with the right call", False),
     "context": ("Policies, style guides or facts the decision depends on", False),
     "success": ("What good enough looks like (e.g. agreement with experts)", False),
