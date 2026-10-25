@@ -24,6 +24,9 @@ from . import agent_auth, curation_service, files_tree_service, llm, memory_serv
 _READ_CHARS = 16_000
 _MAX_TURNS = 40
 _MAX_CONCURRENT_SCOPES = 4
+# Event count alone is not a model-context budget: 500 uploaded tool results
+# can contain megabytes. Split those inputs across bounded, checkpointed runs.
+_MAX_INPUT_CHARS = 200_000
 # Re-ingesting retrievals feeds historical cross-user copies back into the
 # shared corpus. Shared learning uses primary interactions and vendor results.
 _RETRIEVAL_TOOLS = ("search_stash", "stash_vfs", "recall", "load_skill")
@@ -399,6 +402,7 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
     system = system_prompt(scope.purpose)
     if instructions is not None:
         system += "\n" + instructions
+    truncated_responses = 0
     for _ in range(_MAX_TURNS):
         async with get_pool().acquire() as conn:
             await scope.check(conn)
@@ -416,6 +420,20 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
             if not summary.strip():
                 raise ValueError("Curator returned no completion summary")
             return summary
+        if response.stop_reason == "max_tokens" and truncated_responses == 0:
+            # Never execute or replay a partial tool payload. Give the model
+            # one chance to produce a smaller, complete write instead of
+            # wasting the entire batch on a single oversized response.
+            truncated_responses += 1
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Your previous response was truncated; none of its tool calls "
+                    "were executed. Continue with a smaller response: one focused page per "
+                    "write, or a short completion summary. Preserve useful existing knowledge.",
+                }
+            )
+            continue
         if response.stop_reason != "tool_use":
             raise RuntimeError(f"Curator stopped before completing: {response.stop_reason}")
         messages.append(
@@ -442,7 +460,9 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
     require_configured()
     owner = workspace["scope_user_id"]
     since = agent["curated_through"]
-    until = await curation_service.complete_through(owner, since, datetime.now(UTC))
+    until = await curation_service.complete_through(
+        owner, since, datetime.now(UTC), max_event_chars=_MAX_INPUT_CHARS
+    )
     session = f"agent-curate-{agent['id']}-{run_stamp}"
     scopes = []
     if agent["curator_wiki"] == "internal":

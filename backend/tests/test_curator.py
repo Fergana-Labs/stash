@@ -739,3 +739,58 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
     assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
     assert all(f["id"] != mem["id"] for f in files_tree["folders"])
+
+
+@pytest.mark.asyncio
+async def test_text_bounded_feed_eventually_covers_every_event(client, pool):
+    _, uid = await _register(client)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    await pool.executemany(
+        "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content,created_at) "
+        "VALUES ($1,$1,'test','user_message','text-budget-test',$2,$3)",
+        [(uid, str(i) * 60, base + timedelta(minutes=i)) for i in range(5)],
+    )
+    since = base - timedelta(seconds=1)
+    target = base + timedelta(hours=1)
+    seen = []
+    passes = 0
+    while since < target:
+        through = await curation_service.complete_through(uid, since, target, max_event_chars=100)
+        assert through > since
+        batch = await pool.fetch(
+            "SELECT content FROM history_events WHERE owner_user_id=$1 "
+            "AND created_at>$2 AND created_at<=$3 ORDER BY created_at,id",
+            uid,
+            since,
+            through,
+        )
+        assert sum(len(row["content"]) for row in batch) <= 100
+        seen.extend(row["content"] for row in batch)
+        since = through
+        passes += 1
+        assert passes <= 5
+    assert passes == 5
+    assert seen == [str(i) * 60 for i in range(5)]
+
+
+@pytest.mark.asyncio
+async def test_text_budget_keeps_an_oversized_first_timestamp_group(client, pool):
+    _, uid = await _register(client)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    await pool.executemany(
+        "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content,created_at) "
+        "VALUES ($1,$1,'test','user_message','text-budget-test',$2,$3)",
+        [
+            (uid, "large" * 100, base),
+            (uid, "same timestamp", base),
+            (uid, "next", base + timedelta(seconds=1)),
+        ],
+    )
+    target = base + timedelta(hours=1)
+    through = await curation_service.complete_through(
+        uid, base - timedelta(seconds=1), target, max_event_chars=100
+    )
+    assert base <= through < base + timedelta(seconds=1)
+    assert (
+        await curation_service.complete_through(uid, through, target, max_event_chars=100) == target
+    )

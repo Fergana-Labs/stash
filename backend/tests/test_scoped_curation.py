@@ -672,3 +672,48 @@ async def test_successful_scoped_batches_queue_and_drain_without_skipping_privat
     assert current["last_run_outcome"] == "ran"
     assert current["month_run_count"] == 0
     assert any("SECRET_TRANSCRIPT" in text for text in seen)
+
+
+@pytest.mark.asyncio
+async def test_truncated_write_is_discarded_before_one_complete_retry(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        if len(requests) <= 2:
+            truncated = len(requests) == 1
+            return SimpleNamespace(
+                stop_reason="max_tokens" if truncated else "tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id=f"write-{len(requests)}",
+                        name="write_page",
+                        input={
+                            "page_id": None,
+                            "title": "Partial page" if truncated else "Concise page",
+                            "content": "Discard this partial output"
+                            if truncated
+                            else "Complete permitted lesson.",
+                        },
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Done.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    assert await curation.run_scope(await scope(dataset, "shared"), None) == "Done."
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Partial page'") == 0
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Concise page'") == 1
+    assert len(requests) == 3
+    assert "Discard this partial output" not in json.dumps(requests[1:])
