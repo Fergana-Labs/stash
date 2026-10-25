@@ -195,11 +195,15 @@ jobs:
       - name: Run CLI tests
         run: python -m pytest cli/tests --no-cov
 
-  backend-test:
+  backend-test-shard:
     needs: changes
     if: needs.changes.outputs.python == 'true'
-    name: Backend tests (pytest)
+    name: Backend tests (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     services:
       postgres:
@@ -211,7 +215,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U stash"
+          --health-cmd "pg_isready -U stash -d stash_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -234,8 +238,52 @@ jobs:
           TEST_DATABASE_URL: postgresql://stash:stash@localhost:5432/stash_test
         run: python -m alembic upgrade head
 
-      - name: Run pytest with coverage
+      - name: Run pytest shard with coverage
         env:
           DATABASE_URL: postgresql://stash:stash@localhost:5432/stash_test
           TEST_DATABASE_URL: postgresql://stash:stash@localhost:5432/stash_test
-        run: python -m pytest -v
+          COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+        run: >-
+          python -m pytest -v -p backend.tests.shard_plugin
+          --shard-count=4 --shard-index=${{ matrix.shard }}
+          --cov-report= --cov-fail-under=0 --durations=20
+
+      - name: Upload shard coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-${{ matrix.shard }}
+          path: .coverage.shard-${{ matrix.shard }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  backend-test:
+    name: Backend tests (pytest)
+    needs: [changes, backend-test-shard]
+    if: ${{ always() && needs.changes.outputs.python == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.backend-test-shard.result }}
+        run: test "$SHARD_RESULT" = success
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install coverage tooling
+        run: pip install "$(grep '^pytest-cov' backend/requirements-dev.txt)"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: backend-coverage-*
+          merge-multiple: true
+          path: coverage-shards
+      - name: Combine all four shards and enforce coverage
+        run: |
+          for shard in 1 2 3 4; do
+            test -f "coverage-shards/.coverage.shard-$shard"
+          done
+          python -m coverage combine coverage-shards
+          # Match the existing pytest.ini threshold; an individual shard is partial.
+          python -m coverage report --fail-under=78
