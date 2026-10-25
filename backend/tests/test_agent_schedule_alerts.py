@@ -156,7 +156,9 @@ async def test_successful_but_backlogged_curator_still_alerts(client, pool, monk
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["progress", "caught_up", "no_progress", "paused", "exhausted"])
+@pytest.mark.parametrize(
+    "mode", ["progress", "caught_up", "no_progress", "paused", "exhausted", "failed"]
+)
 async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
     client, pool, monkeypatch, mode
 ):
@@ -171,10 +173,11 @@ async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
     if mode == "no_progress":
         through = before
     await pool.execute(
-        "UPDATE agents SET curated_through=$2,run_mode=$3 WHERE id=$1",
+        "UPDATE agents SET curated_through=$2,run_mode=$3,last_run_outcome=$4 WHERE id=$1",
         agent["id"],
         through,
         "chat" if mode == "paused" else "scheduled",
+        "failed" if mode == "failed" else "ran",
     )
 
     async def workspace(_):
@@ -331,3 +334,35 @@ async def test_deleted_agent_run_is_a_quiet_no_op(client: AsyncClient, monkeypat
     sent = _capture_alerts(monkeypatch)
     await agent_schedules._run_scheduled_agent(uuid.uuid4(), "202608091200")
     assert sent == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["manual", "scheduled"])
+async def test_catchup_dispatch_failure_preserves_completed_batch_and_charge(
+    client, pool, monkeypatch, trigger
+):
+    from backend.services import sprite_agent_service
+
+    uid = await _register(client)
+    agent = await _make_curator(uid, curated_hours_ago=72, last_run_error=None)
+
+    async def completed(*args):
+        return "Completed."
+
+    async def unavailable(*args):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", completed)
+    monkeypatch.setattr(agent_schedules, "_queue_curator_catchup", unavailable)
+    alerts = _capture_alerts(monkeypatch)
+    if trigger == "manual":
+        await agent_schedules._run_curator_now(agent["id"])
+    else:
+        await agent_service.mark_run(agent["id"])
+        await agent_schedules._run_scheduled_agent(agent["id"], "dispatch-failure")
+    current = await agent_service.get_agent_by_id(agent["id"])
+    assert current["last_run_outcome"] == "ran"
+    assert current["last_run_error"] is None
+    assert current["month_run_count"] == 1
+    assert current["curated_through"] > datetime.now(UTC) - timedelta(minutes=1)
+    assert len(alerts) == 1 and "catch-up dispatch failed" in alerts[0]

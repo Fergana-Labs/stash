@@ -99,10 +99,24 @@ async def _run_curator_now(
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
-        await _queue_curator_catchup(agent, now, catchup_remaining)
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
         raise
+    await _dispatch_curator_catchup(agent, now, catchup_remaining)
+
+
+async def _dispatch_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
+    """A dispatch failure must not undo a successfully completed batch."""
+    from ..services import alert_service
+
+    try:
+        await _queue_curator_catchup(agent, run_started, remaining)
+    except Exception:
+        logger.exception("agent schedule: catch-up dispatch failed for agent %s", agent["id"])
+        await alert_service.send_alert(
+            f"Curator catch-up dispatch failed for agent {agent['id']}; "
+            "the completed batch and its checkpoint are preserved."
+        )
 
 
 async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
@@ -115,6 +129,7 @@ async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: 
     before = agent["curated_through"]
     if (
         current["run_mode"] != "scheduled"
+        or current["last_run_outcome"] != "ran"
         or through is None
         or through >= run_started
         or (before is not None and through <= before)
@@ -282,7 +297,6 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
-        await _queue_curator_catchup(agent, now, CURATOR_CATCHUP_PASSES - 1)
     except Exception as e:
         logger.exception("agent schedule: run failed for agent %s", agent_id)
         await agent_service.mark_run_failed(agent_id, str(e))
@@ -290,6 +304,8 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         await alert_service.send_alert(
             f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
         )
+    else:
+        await _dispatch_curator_catchup(agent, now, CURATOR_CATCHUP_PASSES - 1)
 
 
 # Pending input older than this is stale even when individual batches succeed.

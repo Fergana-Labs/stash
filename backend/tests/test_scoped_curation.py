@@ -717,3 +717,36 @@ async def test_truncated_write_is_discarded_before_one_complete_retry(
     assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Concise page'") == 1
     assert len(requests) == 3
     assert "Discard this partial output" not in json.dumps(requests[1:])
+
+
+@pytest.mark.asyncio
+async def test_rename_collision_resolves_in_the_pages_subfolder_not_the_wiki_root(dataset, pool):
+    folder = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id,created_by,name,parent_folder_id) "
+        "VALUES ($1,$1,'Nested',$2) RETURNING id",
+        dataset.owner,
+        dataset.workspace["external_wiki_folder_id"],
+    )
+    pages = {}
+    for name in ("Index", "Other"):
+        pages[name] = await pool.fetchval(
+            "INSERT INTO pages (owner_user_id,folder_id,name,content_markdown,created_by) "
+            "VALUES ($1,$2,$3,$4,$1) RETURNING id",
+            dataset.owner,
+            folder,
+            name,
+            "Nested " + name,
+        )
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "write_page", {"page_id": str(pages["Other"]), "title": "Index", "content": "Bad rename"}
+    )
+    assert result["page_id"] == str(pages["Index"]) and "error" in result
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", pages["Other"])
+        == "Nested Other"
+    )

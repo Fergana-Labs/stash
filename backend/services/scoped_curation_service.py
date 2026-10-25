@@ -111,6 +111,8 @@ def system_prompt(purpose: str) -> str:
         "Write one page per response, keeping new pages focused and concise. "
         "Before creating a page, search for its title. Read and update an existing writable "
         "page using its page_id rather than creating another page with the same title. "
+        "Keep index entries short. Put new lessons in focused pages rather than continually "
+        "expanding and regenerating a long notes page. "
         "Link wiki pages using /p/<page_id>. Write Markdown content with actual newlines. "
         "Finish with a short summary of your changes, or explain why no update was needed."
     )
@@ -201,12 +203,17 @@ class CurationScope:
                 except asyncpg.UniqueViolationError as exc:
                     if exc.constraint_name != "idx_pages_unique_in_folder":
                         raise
+                    folder_id = (
+                        self.destination
+                        if args.page_id is None
+                        else self.writable[args.page_id]["folder_id"]
+                    )
                     existing = await conn.fetchrow(
                         "SELECT id,folder_id,name,content_markdown,content_hash,content_type "
                         "FROM pages WHERE owner_user_id=$1 AND folder_id=$2 AND name=$3 "
                         "AND deleted_at IS NULL",
                         self.owner_id,
-                        self.destination,
+                        folder_id,
                         args.title,
                     )
                     if existing is None:

@@ -284,8 +284,9 @@ async def complete_through(
 ) -> datetime:
     """How far the curator's watermark may advance after a successful run.
 
-    The feed is complete through `until` unless it overflowed _MAX_EVENTS, in
-    which case it is only complete through the last event that fit — minus a
+    The feed is complete through `until` unless it overflowed _MAX_EVENTS or
+    the optional event-text budget. In that case it is only complete through
+    the last event that fit — minus a
     microsecond, so events sharing that exact timestamp are re-presented next
     run rather than skipped. Overflow therefore drains run by run and no event
     is ever silently dropped from curation."""
