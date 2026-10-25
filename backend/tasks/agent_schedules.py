@@ -21,6 +21,11 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+# Each pass keeps the existing event and time limits. Queue the next pass
+# separately so a busy developer account does not wait another day for its
+# next 500 events, or monopolize one worker indefinitely.
+CURATOR_CATCHUP_PASSES = 8
+
 
 def _is_due(cron: str, last_run: datetime | None, now: datetime) -> bool:
     """True if a cron tick falls in (last_run, now]. Never fires on the very
@@ -45,12 +50,20 @@ def run_scheduled_agent(agent_id: str, stamp: str) -> None:
 
 
 @celery.task(name="backend.tasks.agent_schedules.run_curator_now")
-def run_curator_now(agent_id: str, full_history: bool = False, metered: bool = True) -> None:
-    run_async(_run_curator_now(UUID(agent_id), full_history, metered))
+def run_curator_now(
+    agent_id: str,
+    full_history: bool = False,
+    metered: bool = True,
+    catchup_remaining: int = CURATOR_CATCHUP_PASSES - 1,
+) -> None:
+    run_async(_run_curator_now(UUID(agent_id), full_history, metered, catchup_remaining))
 
 
 async def _run_curator_now(
-    agent_id: UUID, full_history: bool = False, metered: bool = True
+    agent_id: UUID,
+    full_history: bool = False,
+    metered: bool = True,
+    catchup_remaining: int = CURATOR_CATCHUP_PASSES - 1,
 ) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
@@ -86,9 +99,34 @@ async def _run_curator_now(
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
+        await _queue_curator_catchup(agent, now, catchup_remaining)
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
         raise
+
+
+async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
+    from ..services import agent_service, scoped_curation_service
+
+    if remaining <= 0 or await scoped_curation_service.workspace_for_agent(agent) is None:
+        return
+    current = await agent_service.get_agent_by_id(UUID(str(agent["id"])))
+    through = current["curated_through"]
+    before = agent["curated_through"]
+    if (
+        current["run_mode"] != "scheduled"
+        or through is None
+        or through >= run_started
+        or (before is not None and through <= before)
+    ):
+        return
+    # Only successful, advancing, bounded batches can continue. No retry
+    # chain on failure or permission revocation, and no paid personal runs.
+    run_curator_now.apply_async(
+        args=[str(agent["id"])],
+        kwargs={"metered": False, "catchup_remaining": remaining - 1},
+        countdown=15,
+    )
 
 
 # During a scope's first day its wiki updates after every conversation, not
@@ -244,6 +282,7 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
+        await _queue_curator_catchup(agent, now, CURATOR_CATCHUP_PASSES - 1)
     except Exception as e:
         logger.exception("agent schedule: run failed for agent %s", agent_id)
         await agent_service.mark_run_failed(agent_id, str(e))
@@ -253,8 +292,8 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         )
 
 
-# A curator whose watermark is older than this while changes are pending has
-# been failing for multiple nightly runs — one bad night must not page.
+# Pending input older than this is stale even when individual batches succeed.
+# One bad night must not page.
 STALE_CURATOR_HOURS = 48
 
 
@@ -267,8 +306,8 @@ async def _alert_stale_curators() -> int:
     """Alert on curators whose watermark stopped advancing despite pending
     changes. Alerting on the stale *outcome* catches every cause — dead
     provider keys, harness bugs, a wedged beat — where per-run failure alerts
-    only catch runs that started. A failed outcome or an unresolved started
-    outcome qualifies. Designed skips resolve explicitly and stay quiet.
+    only catch runs that started. Successful runs with an undrained backlog
+    also qualify. Designed skips resolve explicitly and stay quiet.
     """
     from ..database import get_pool
     from ..services import alert_service, curation_service
@@ -280,7 +319,7 @@ async def _alert_stale_curators() -> int:
         FROM agents a JOIN users u ON u.id = a.user_id
         WHERE a.is_curator AND a.run_mode = 'scheduled'
           AND a.curated_through IS NOT NULL AND a.curated_through < $1
-          AND a.last_run_outcome IN ('started', 'failed')
+          AND a.last_run_outcome IN ('started', 'failed', 'ran')
         """,
         cutoff,
     )
@@ -293,11 +332,18 @@ async def _alert_stale_curators() -> int:
     ]
     if not stale:
         return 0
-    lines = [
-        f"- {r['email']}: last curated {r['curated_through']:%Y-%m-%d %H:%M} UTC "
-        f"({(r['last_run_error'] or 'run started but never resolved')[:200]})"
-        for r in stale
-    ]
+    lines = []
+    for row in stale:
+        outcome = (
+            "backlog remains after a successful batch"
+            if row["last_run_outcome"] == "ran"
+            else "run started but never resolved"
+        )
+        detail = row["last_run_error"] or outcome
+        lines.append(
+            f"- {row['email']}: last curated {row['curated_through']:%Y-%m-%d %H:%M} UTC "
+            f"({detail[:200]})"
+        )
     await alert_service.send_alert(
         f"{len(stale)} Memory curator(s) stale >{STALE_CURATOR_HOURS}h with pending changes:\n"
         + "\n".join(lines)

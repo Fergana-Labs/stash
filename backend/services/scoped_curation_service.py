@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
+import asyncpg
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
@@ -105,6 +106,8 @@ def system_prompt(purpose: str) -> str:
         "You have no shell, filesystem, network or other tools. Never create audit/log pages "
         "or copy operational audit details into knowledge. Keep an index of knowledge pages. "
         "Write one page per response, keeping new pages focused and concise. "
+        "Before creating a page, search for its title. Read and update an existing writable "
+        "page using its page_id rather than creating another page with the same title. "
         "Link wiki pages using /p/<page_id>. Write Markdown content with actual newlines. "
         "Finish with a short summary of your changes, or explain why no update was needed."
     )
@@ -185,7 +188,41 @@ class CurationScope:
                     "next_offset": end if end < len(content) else None,
                 }
             if name == "write_page":
-                return await self.write(conn, Write.model_validate(arguments))
+                args = Write.model_validate(arguments)
+                try:
+                    # A model can try to create an existing index, or rename a
+                    # page over another page. Roll back only that tool call so
+                    # PostgreSQL remains usable and the model can correct it.
+                    async with conn.transaction():
+                        return await self.write(conn, args)
+                except asyncpg.UniqueViolationError as exc:
+                    if exc.constraint_name != "idx_pages_unique_in_folder":
+                        raise
+                    existing = await conn.fetchrow(
+                        "SELECT id,folder_id,name,content_markdown,content_hash,content_type "
+                        "FROM pages WHERE owner_user_id=$1 AND folder_id=$2 AND name=$3 "
+                        "AND deleted_at IS NULL",
+                        self.owner_id,
+                        self.destination,
+                        args.title,
+                    )
+                    if existing is None:
+                        raise
+                    if existing["content_type"] != "markdown":
+                        return {
+                            "error": "That title belongs to a non-Markdown page. Choose another title."
+                        }
+                    self.writable[existing["id"]] = dict(existing)
+                    self.documents[str(existing["id"])] = {
+                        "title": existing["name"],
+                        "content": existing["content_markdown"],
+                        "writable": True,
+                    }
+                    return {
+                        "error": "A page with this title already exists in this wiki. "
+                        "Read it before updating it with its page_id, or choose another title.",
+                        "page_id": str(existing["id"]),
+                    }
             raise PermissionError("Tool is not available to this curator")
 
     async def write(self, conn, args: Write) -> dict:

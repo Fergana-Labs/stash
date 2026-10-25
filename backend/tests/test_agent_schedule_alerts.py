@@ -143,6 +143,62 @@ async def test_fresh_curator_stays_quiet(client: AsyncClient, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_successful_but_backlogged_curator_still_alerts(client, pool, monkeypatch):
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    await agent_service.mark_run_succeeded(agent["id"])
+    await memory_service.push_event(
+        user_id, "test", "user_message", "pending", user_id, f"sess-{uuid.uuid4()}"
+    )
+    sent = _capture_alerts(monkeypatch)
+    assert await agent_schedules._alert_stale_curators() == 1
+    assert "backlog remains after a successful batch" in sent[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["progress", "caught_up", "no_progress", "paused", "exhausted"])
+async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
+    client, pool, monkeypatch, mode
+):
+    from backend.services import scoped_curation_service
+
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    agent = await agent_service.get_agent_by_id(agent["id"])
+    started = datetime.now(UTC)
+    before = agent["curated_through"]
+    through = started if mode == "caught_up" else before + timedelta(hours=1)
+    if mode == "no_progress":
+        through = before
+    await pool.execute(
+        "UPDATE agents SET curated_through=$2,run_mode=$3 WHERE id=$1",
+        agent["id"],
+        through,
+        "chat" if mode == "paused" else "scheduled",
+    )
+
+    async def workspace(_):
+        return {"id": uuid.uuid4()}
+
+    monkeypatch.setattr(scoped_curation_service, "workspace_for_agent", workspace)
+    queued = []
+    monkeypatch.setattr(
+        agent_schedules.run_curator_now, "apply_async", lambda **kw: queued.append(kw)
+    )
+    await agent_schedules._queue_curator_catchup(agent, started, 0 if mode == "exhausted" else 2)
+    if mode == "progress":
+        assert queued == [
+            {
+                "args": [str(agent["id"])],
+                "kwargs": {"metered": False, "catchup_remaining": 1},
+                "countdown": 15,
+            }
+        ]
+    else:
+        assert queued == []
+
+
+@pytest.mark.asyncio
 async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
     from backend.services import agent_auth, sprite_agent_service
 
