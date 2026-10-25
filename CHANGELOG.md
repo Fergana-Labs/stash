@@ -6,10 +6,11 @@ everything before it is captured in git history (`git log`), not here.
 ## Unreleased
 
 - Recover from duplicate page titles during developer wiki curation. Successful
-  batches respect an input-text budget and queue up to seven bounded catch-up
-  passes instead of waiting another day; stale backlogs remain visible in alerts
+  batches respect a history-event text budget; paid developer accounts queue up
+  to seven bounded catch-up passes instead of waiting another day; stale backlogs remain visible in alerts
   even after a successful batch. Truncated responses get one smaller-response
-  retry without executing partial writes.
+  retry without executing partial writes. Concurrent human edits stay protected,
+  and overlapping curator passes skip without reporting a false failure.
 
 - Replace the marketing homepage with a concise verifier research introduction,
   a Fergana-inspired interactive valley, and matching social previews.

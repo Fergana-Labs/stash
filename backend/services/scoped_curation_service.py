@@ -222,6 +222,12 @@ class CurationScope:
                         return {
                             "error": "That title belongs to a non-Markdown page. Choose another title."
                         }
+                    original = self.writable.get(existing["id"])
+                    if (
+                        original is not None
+                        and original["content_hash"] != existing["content_hash"]
+                    ):
+                        raise ValueError("Wiki page changed during curation; restart the run")
                     self.writable[existing["id"]] = dict(existing)
                     self.documents[str(existing["id"])] = {
                         "title": existing["name"],

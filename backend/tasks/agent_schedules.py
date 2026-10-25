@@ -55,8 +55,9 @@ def run_curator_now(
     full_history: bool = False,
     metered: bool = True,
     catchup_remaining: int = CURATOR_CATCHUP_PASSES - 1,
+    catchup: bool = False,
 ) -> None:
-    run_async(_run_curator_now(UUID(agent_id), full_history, metered, catchup_remaining))
+    run_async(_run_curator_now(UUID(agent_id), full_history, metered, catchup_remaining, catchup))
 
 
 async def _run_curator_now(
@@ -64,6 +65,7 @@ async def _run_curator_now(
     full_history: bool = False,
     metered: bool = True,
     catchup_remaining: int = CURATOR_CATCHUP_PASSES - 1,
+    catchup: bool = False,
 ) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
@@ -77,6 +79,7 @@ async def _run_curator_now(
     first-day curator): they must not eat the user's free monthly allowance."""
     from ..services import (
         agent_service,
+        billing_service,
         curation_service,
         scoped_curation_service,
         sprite_agent_service,
@@ -85,24 +88,53 @@ async def _run_curator_now(
     agent = await agent_service.get_agent_by_id(agent_id)
     if not metered and agent["run_mode"] != "scheduled":
         return
+    if catchup:
+        if await scoped_curation_service.workspace_for_agent(agent) is None:
+            return
+        await scoped_curation_service.require_run_auth(agent)
+        owner = UUID(str(agent["user_id"]))
+        if not await billing_service.is_pro(owner) or not await curation_service.has_changes_since(
+            owner, owner, agent["curated_through"]
+        ):
+            return
     if full_history:
         agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
     await agent_service.mark_run(agent_id, metered=metered)
+    workspace = None
     try:
+        workspace = await scoped_curation_service.workspace_for_agent(agent)
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
         await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
-        if await scoped_curation_service.workspace_for_agent(agent) is None:
+        if workspace is None:
             through = await curation_service.complete_through(
                 UUID(str(agent["user_id"])), agent["curated_through"], now
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
+        if workspace is not None and isinstance(e, sprite_agent_service.TurnInProgress):
+            await _skip_busy_curator(agent_id, metered=metered)
+            return
         await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
         raise
     await _dispatch_curator_catchup(agent, now, catchup_remaining)
+
+
+async def _skip_busy_curator(agent_id: UUID, *, metered: bool) -> None:
+    """The active run owns the shared outcome; refund only this skipped charge."""
+    from ..database import get_pool
+
+    if metered:
+        await get_pool().execute(
+            "UPDATE agents SET month_run_count=GREATEST(0,month_run_count-1) "
+            "WHERE id=$1 AND month_run_anchor=date_trunc('month',now())::date",
+            agent_id,
+        )
+    logger.info(
+        "agent schedule: curator %s is already running; skipping overlapping pass", agent_id
+    )
 
 
 async def _dispatch_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
@@ -120,7 +152,7 @@ async def _dispatch_curator_catchup(agent: dict, run_started: datetime, remainin
 
 
 async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
-    from ..services import agent_service, scoped_curation_service
+    from ..services import agent_service, billing_service, scoped_curation_service
 
     if remaining <= 0 or await scoped_curation_service.workspace_for_agent(agent) is None:
         return
@@ -133,13 +165,14 @@ async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: 
         or through is None
         or through >= run_started
         or (before is not None and through <= before)
+        or not await billing_service.is_pro(UUID(str(current["user_id"])))
     ):
         return
     # Only successful, advancing, bounded batches can continue. No retry
     # chain on failure or permission revocation, and no paid personal runs.
     run_curator_now.apply_async(
         args=[str(agent["id"])],
-        kwargs={"metered": False, "catchup_remaining": remaining - 1},
+        kwargs={"metered": False, "catchup_remaining": remaining - 1, "catchup": True},
         countdown=15,
     )
 
@@ -283,9 +316,11 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
+    workspace = None
     try:
+        workspace = await scoped_curation_service.workspace_for_agent(agent)
         await sprite_agent_service.run_scheduled(agent, stamp)
-        if agent["is_curator"] and await scoped_curation_service.workspace_for_agent(agent) is None:
+        if agent["is_curator"] and workspace is None:
             # `now` predates the run, so changes made during it stay ahead of
             # the watermark and are picked up next time. If the delta
             # overflowed the event cap, the watermark stops at the last event
@@ -298,6 +333,9 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
+        if workspace is not None and isinstance(e, sprite_agent_service.TurnInProgress):
+            await _skip_busy_curator(agent_id, metered=True)
+            return
         logger.exception("agent schedule: run failed for agent %s", agent_id)
         await agent_service.mark_run_failed(agent_id, str(e))
         email = await get_pool().fetchval("SELECT email FROM users WHERE id = $1", user_id)

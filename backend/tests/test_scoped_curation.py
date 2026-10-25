@@ -616,9 +616,13 @@ async def test_duplicate_title_lookup_never_returns_another_wikis_page(dataset, 
 async def test_successful_scoped_batches_queue_and_drain_without_skipping_private_input(
     dataset, pool, monkeypatch, sprite_exec
 ):
-    from backend.services import agent_service, curation_service
+    from backend.services import agent_service, billing_service, curation_service
     from backend.tasks import agent_schedules
 
+    async def entitled(_):
+        return True
+
+    monkeypatch.setattr(billing_service, "is_pro", entitled)
     await pool.execute(
         "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content) "
         "VALUES ($1,$1,'heavi-chat','user_message','public-job','Another permitted lesson')",
@@ -749,4 +753,29 @@ async def test_rename_collision_resolves_in_the_pages_subfolder_not_the_wiki_roo
     assert (
         await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", pages["Other"])
         == "Nested Other"
+    )
+
+
+@pytest.mark.asyncio
+async def test_duplicate_title_does_not_refresh_a_revision_changed_by_a_human(dataset, pool):
+    shared = await scope(dataset, "shared")
+    original = dict(shared.writable[dataset.shared])
+    await pool.execute(
+        "UPDATE pages SET content_markdown='Human edit',content_hash='human-revision' WHERE id=$1",
+        dataset.shared,
+    )
+    with pytest.raises(ValueError, match="changed during curation"):
+        await shared.tool(
+            "write_page", {"page_id": None, "title": "Index", "content": "Stale replacement"}
+        )
+    assert shared.writable[dataset.shared] == original
+    # Nor can a subsequent ordinary update reuse a silently refreshed hash.
+    with pytest.raises(ValueError, match="changed during curation"):
+        await shared.tool(
+            "write_page",
+            {"page_id": str(dataset.shared), "title": "Index", "content": "Stale replacement"},
+        )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "Human edit"
     )
