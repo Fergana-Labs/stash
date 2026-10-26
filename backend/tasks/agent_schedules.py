@@ -94,15 +94,28 @@ async def _run_curator_now(
                 agent, workspace, full_history, metered, catchup_remaining, catchup
             )
     except sprite_agent_service.TurnInProgress:
+        # Only the scoped lock above means "busy". A personal curator's own
+        # turn lock fails inside the run, which already recorded the failure.
+        if workspace is None:
+            raise
         # No mark_run and no charge happened: leave the active run untouched.
         logger.info("agent schedule: curator %s is busy; skipping", agent_id)
 
 
+# The scheduler's lock also covers the gates before the run and the bookkeeping
+# after it, so it must outlive the run's own timeout.
+_RUN_LOCK_MARGIN_SECONDS = 600
+
+
 def _run_lock(agent: dict, workspace):
+    from ..config import settings
     from ..services import sprite_agent_service
 
     return (
-        sprite_agent_service._TurnLock(f"scoped-curator-{agent['id']}")
+        sprite_agent_service._TurnLock(
+            f"scoped-curator-{agent['id']}",
+            ttl=settings.AGENT_TURN_TIMEOUT_SECONDS + _RUN_LOCK_MARGIN_SECONDS,
+        )
         if workspace is not None
         else nullcontext()
     )
@@ -217,6 +230,10 @@ async def _queue_curator_catchup(
         current["run_mode"] != "scheduled"
         or current["last_run_outcome"] != "ran"
         or through is None
+        # An empty cursor means the batch drained everything up to its start.
+        # Input that arrived during the run waits for the next scheduled run
+        # rather than starting a platform-funded chain on every busy account.
+        or not current.get("curation_cursor")
         or (
             before is not None
             and through <= before
@@ -319,14 +336,21 @@ async def _run_due() -> int:
         try:
             async with _run_lock(agent, workspace):
                 agent = await agent_service.get_agent_by_id(UUID(str(agent["id"])))
-                if _is_due(agent["schedule_cron"], agent["last_run_at"], now):
-                    dispatched += await _dispatch_due_agent(agent, stamp, workspace)
+                eligible = _is_due(
+                    agent["schedule_cron"], agent["last_run_at"], now
+                ) and await _consume_due_tick(agent, workspace)
         except sprite_agent_service.TurnInProgress:
             continue
+        # Queue only after releasing the lock: the worker takes the same lock
+        # and would otherwise skip a run whose tick was already consumed.
+        if eligible:
+            run_scheduled_agent.delay(str(agent["id"]), stamp)
+            dispatched += 1
     return dispatched
 
 
-async def _dispatch_due_agent(agent, stamp, workspace):
+async def _consume_due_tick(agent, workspace) -> bool:
+    """Consume the tick and apply the cheap gates; True when the run should be queued."""
     from ..config import settings
     from ..services import agent_auth, agent_service, billing_service, scoped_curation_service
 
@@ -345,21 +369,20 @@ async def _dispatch_due_agent(agent, stamp, workspace):
     ):
         logger.info("agent schedule: curator credits exhausted for user %s — skipping", user_id)
         await agent_service.mark_run_skipped(agent["id"], "credits")
-        return 0
+        return False
     # No runnable credential (unconnected free user) → nothing can run.
     try:
         await scoped_curation_service.require_run_auth(agent, workspace=workspace)
     except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
         logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
         await agent_service.mark_run_skipped(agent["id"], "no_credential")
-        return 0
+        return False
     # Cost gate: skip the curator (and the sprite wake) when nothing changed
     # since its watermark. Idle users cost one EXISTS per day.
     if agent["is_curator"] and not await _pending_input(agent, workspace):
         await agent_service.mark_run_skipped(agent["id"], "no_changes")
-        return 0
-    run_scheduled_agent.delay(str(agent["id"]), stamp)
-    return 1
+        return False
+    return True
 
 
 async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
@@ -458,12 +481,16 @@ async def _alert_stale_curators() -> int:
 
     stale = []
     for row in rows:
-        # Allow a slow cron its next scheduled run plus a day's grace. A daily
-        # curator with an old undrained backlog still alerts after 48 hours.
+        # A slow cron gets one full interval plus a day's grace, measured
+        # against the watermark. A daily curator with an old undrained backlog
+        # still alerts after 48 hours, even though every nightly run succeeds.
         if row["last_run_outcome"] == "ran":
             try:
-                due = croniter(row["schedule_cron"], row["curated_through"]).get_next(datetime)
-                if now < due + timedelta(hours=24):
+                firings = croniter(row["schedule_cron"], now)
+                first = firings.get_next(datetime)
+                interval = firings.get_next(datetime) - first
+                grace = max(timedelta(hours=STALE_CURATOR_HOURS), interval + timedelta(hours=24))
+                if row["curated_through"] >= now - grace:
                     continue
             except (ValueError, KeyError, TypeError):
                 pass

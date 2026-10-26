@@ -5,6 +5,14 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Developer wiki catch-up runs continue only when the previous batch stopped at
+  its input budget, not whenever new input arrived during the run. Scheduled
+  runs are no longer skipped when a worker starts before the scheduler releases
+  its lock, and the lock outlasts the run's own timeout. Checking for pending
+  input no longer hashes every pending document. Stale alerts give slow
+  schedules one full interval of grace, and first-pass page writes fit in a
+  single model response.
+
 - Developer wiki curation can edit a small passage without regenerating an entire
   page. Runs start from new input, skip scopes with no new documents, and use
   smaller responses to reduce timeout and truncation failures.

@@ -43,35 +43,39 @@ async def load_batch(
     partial = dict(state.get("partial", {}))
     remaining = max_chars
     limit = curation_service._MAX_EVENTS if max_items is None else max_items
-    # Metadata only: never transfer an unbounded extracted document to the worker.
+    # Metadata only: never transfer an unbounded extracted document to the
+    # worker, and never hash or measure the whole backlog. A document is hashed
+    # here only when an earlier run already completed it at this timestamp.
+    done_bases = [_base(key) for key in done]
     async with get_pool().acquire() as conn, conn.transaction(isolation="repeatable_read"):
         rows = await conn.fetch(
             """
             WITH inputs AS (
                 SELECT 'event' AS kind, he.id, he.created_at AS stamp,
-                    'event:'||he.id::text AS key, 'session:'||he.session_id AS document_id,
-                    he.session_id AS title, s.end_user_id, he.event_type, he.tool_name,
-                    length(coalesce(he.content,'')) AS characters
+                    'event:'||he.id::text AS base,
+                    'session:'||he.session_id AS document_id,
+                    he.session_id AS title, s.end_user_id, he.event_type, he.tool_name
                 FROM history_events he JOIN sessions s ON s.owner_user_id=he.owner_user_id
                     AND s.session_id=he.session_id
                 WHERE he.owner_user_id=$1 AND s.deleted_at IS NULL
                     AND he.session_id NOT LIKE 'agent-curate-%'
                 UNION ALL
-                SELECT 'file', f.id, f.created_at,
-                    'file:'||f.id::text||':'||md5(f.extracted_text), 'file:'||f.id::text,
-                    f.name, f.end_user_id, NULL, NULL, length(f.extracted_text)
+                SELECT 'file', f.id, f.created_at, 'file:'||f.id::text, 'file:'||f.id::text, f.name, f.end_user_id, NULL, NULL
                 FROM files f WHERE f.owner_user_id=$1 AND f.deleted_at IS NULL
                     AND f.extraction_status='done' AND f.extracted_text IS NOT NULL
                 UNION ALL
-                SELECT 'source', d.id, d.updated_at,
-                    'source:'||d.id::text||':'||md5(d.content), 'source:'||d.id::text,
-                    d.name, s.end_user_id, NULL, NULL, length(d.content)
+                SELECT 'source', d.id, d.updated_at, 'source:'||d.id::text, 'source:'||d.id::text, d.name, s.end_user_id, NULL, NULL
                 FROM drive_documents d JOIN user_sources s ON s.id=d.source_id
                 WHERE d.owner_user_id=$1 AND s.owner_user_id=$1 AND d.deleted_at IS NULL
                     AND d.extraction_status='done' AND d.content IS NOT NULL
             )
-            SELECT * FROM inputs WHERE ($2::timestamptz IS NULL OR stamp>$2) AND stamp<=$3
-                AND ((end_user_id IS NULL)=$4) AND key<>ALL($5::text[])
+            SELECT kind,id,stamp,base,document_id,title,end_user_id,event_type,tool_name
+            FROM inputs WHERE ($2::timestamptz IS NULL OR stamp>$2) AND stamp<=$3
+                AND ((end_user_id IS NULL)=$4)
+                AND (base<>ALL($7::text[]) OR coalesce(base||':'||CASE kind
+                    WHEN 'file' THEN (SELECT md5(extracted_text) FROM files WHERE id=inputs.id)
+                    WHEN 'source' THEN (SELECT md5(content) FROM drive_documents WHERE id=inputs.id)
+                    END,base)<>ALL($5::text[]))
             ORDER BY stamp,kind,id LIMIT $6
             """,
             owner,
@@ -80,6 +84,7 @@ async def load_batch(
             internal,
             done,
             limit + 1,
+            done_bases,
         )
         completed = []
         pending_stamp = None
@@ -87,14 +92,25 @@ async def load_batch(
             if index >= limit or remaining < 1024:
                 pending_stamp = row["stamp"]
                 break
-            offset = int(partial.get(row["key"], 0))
             table, column = {
                 "event": ("history_events", "content"),
                 "file": ("files", "extracted_text"),
                 "source": ("drive_documents", "content"),
             }[row["kind"]]
-            text = await conn.fetchval(
-                f"SELECT substring(coalesce({column},'') FROM $2::integer FOR $3::integer) FROM {table} WHERE id=$1",
+            # Revised files and sources get a new key, so a stale offset or a
+            # completed marker never applies to their new text.
+            row = {
+                **dict(row),
+                "key": row["base"]
+                if row["kind"] == "event"
+                else row["base"]
+                + ":"
+                + await conn.fetchval(f"SELECT md5({column}) FROM {table} WHERE id=$1", row["id"]),
+            }
+            offset = int(partial.get(row["key"], 0))
+            text, row["characters"] = await conn.fetchrow(
+                f"SELECT substring(coalesce({column},'') FROM $2::integer FOR $3::integer), "
+                f"length(coalesce({column},'')) FROM {table} WHERE id=$1",
                 row["id"],
                 offset + 1,
                 remaining,
@@ -120,21 +136,25 @@ async def load_batch(
                     + "\n"
                 )
 
-            lo, hi = 0, len(text)
-            while lo < hi:
-                mid = (lo + hi + 1) // 2
-                if len(render(text[:mid])) <= remaining:
-                    lo = mid
-                else:
-                    hi = mid - 1
+            if len(render(text)) <= remaining:
+                lo = len(text)
+            else:
+                lo, hi = 0, len(text) - 1
+                while lo < hi:
+                    mid = (lo + hi + 1) // 2
+                    if len(render(text[:mid])) <= remaining:
+                        lo = mid
+                    else:
+                        hi = mid - 1
             content = render(text[:lo])
             documents.append(
-                {**dict(row), "content": content, "offset": offset, "next_offset": offset + lo}
+                {**row, "content": content, "offset": offset, "next_offset": offset + lo}
             )
             remaining -= len(content)
             if offset + lo < row["characters"]:
                 partial[row["key"]] = offset + lo
                 pending_stamp = row["stamp"]
+                completed.append(row)
                 break
             partial.pop(row["key"], None)
             completed.append(row)
@@ -147,10 +167,12 @@ async def load_batch(
             done = []
             partial = {
                 r["key"]: partial[r["key"]]
-                for r in rows
+                for r in completed
                 if r["stamp"] == pending_stamp and r["key"] in partial
             }
-        done.extend(r["key"] for r in completed if r["stamp"] == pending_stamp)
+        done.extend(
+            r["key"] for r in completed if r["stamp"] == pending_stamp and r["key"] not in partial
+        )
         return Batch(
             documents,
             through,
@@ -161,6 +183,11 @@ async def load_batch(
                 "partial": partial,
             },
         )
+
+
+def _base(key: str) -> str:
+    """'event:<id>' keys have no digest; file and source keys end in ':<md5>'."""
+    return key if key.startswith("event:") else key.rsplit(":", 1)[0]
 
 
 async def has_pending(agent: dict, workspace: dict, *, until: datetime | None = None) -> bool:
