@@ -20,13 +20,6 @@ from backend.managed.auth0.users import get_or_create_user_row_from_auth0
 from .conftest import unique_name
 
 
-@pytest.fixture(autouse=True)
-async def _managed_auth0_schema(pool):
-    """Auth0 lives in the managed migration chain (backend/managed/migrations),
-    which the test DB doesn't apply. Mirror m0001 so users.auth0_sub exists."""
-    await pool.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS auth0_sub VARCHAR(128) UNIQUE")
-
-
 async def _managed_auth0_headers(monkeypatch, name: str = "Managed User") -> tuple[dict, dict]:
     sub = f"google-oauth2|{unique_name()}"
     user, _created = await get_or_create_user_row_from_auth0(

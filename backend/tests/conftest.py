@@ -50,6 +50,11 @@ async def _db_pool():
         cfg = Config(ini_path)
         alembic_cmd.upgrade(cfg, "head")
 
+        # Managed-only chain (e.g. users.auth0_sub). Apply it unconditionally so
+        # every test sees the managed schema regardless of which files ran first.
+        managed_ini = os.path.join(os.path.dirname(__file__), "..", "managed", "alembic.ini")
+        alembic_cmd.upgrade(Config(managed_ini), "head")
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, functools.partial(_run_alembic))
 
@@ -108,7 +113,8 @@ async def _cleanup(_db_pool):
     rows = await _db_pool.fetch(
         "SELECT format('%I.%I', schemaname, tablename) AS name "
         "FROM pg_tables "
-        "WHERE schemaname = 'public' AND tablename <> 'alembic_version' "
+        "WHERE schemaname = 'public' "
+        "AND tablename NOT IN ('alembic_version', 'alembic_version_managed') "
         "ORDER BY tablename"
     )
     table_names = ", ".join(row["name"] for row in rows)
