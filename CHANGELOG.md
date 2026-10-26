@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Developer wiki curation can edit a small passage without regenerating an entire
+  page. Runs start from new input, skip scopes with no new documents, and use
+  smaller responses to reduce timeout and truncation failures.
+
 - Recover from duplicate page titles during developer wiki curation. Successful
   batches respect a history-event text budget; paid developer accounts queue up
   to seven bounded catch-up passes instead of waiting another day; stale backlogs remain visible in alerts

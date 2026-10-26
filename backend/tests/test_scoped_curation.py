@@ -354,6 +354,7 @@ async def test_native_model_loop_uses_fresh_messages_and_restricted_tools(
         assert {t["name"] for t in kwargs["tools"]} == {
             "search_documents",
             "read_document",
+            "edit_page",
             "write_page",
         }
         if len(requests) == 1:
@@ -779,3 +780,151 @@ async def test_duplicate_title_does_not_refresh_a_revision_changed_by_a_human(da
         await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
         == "Human edit"
     )
+
+
+@pytest.mark.asyncio
+async def test_small_edit_preserves_large_page_and_tracks_revision(dataset, pool):
+    text = "Existing detail.\n" * 3000 + "Unique ending."
+    await pool.execute("UPDATE pages SET content_markdown=$2 WHERE id=$1", dataset.shared, text)
+    shared = await scope(dataset, "shared")
+    for old, new in [
+        ("Unique ending.", "Unique ending.\nNew lesson."),
+        ("New lesson.", "Verified new lesson."),
+    ]:
+        await shared.tool(
+            "edit_page",
+            {
+                "page_id": str(dataset.shared),
+                "old_text": old,
+                "new_text": new,
+            },
+        )
+    assert await pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE id=$1", dataset.shared
+    ) == (text + "\nVerified new lesson.")
+    assert (
+        await pool.fetchval("SELECT count(*) FROM page_edits WHERE page_id=$1", dataset.shared) == 2
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old,new", [("absent", "new"), ("repeat", "new"), ("repeat repeat", "")])
+async def test_ambiguous_missing_or_destructive_edit_does_not_write(dataset, pool, old, new):
+    await pool.execute(
+        "UPDATE pages SET content_markdown='repeat repeat' WHERE id=$1", dataset.shared
+    )
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "edit_page",
+        {
+            "page_id": str(dataset.shared),
+            "old_text": old,
+            "new_text": new,
+        },
+    )
+    assert "error" in result
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "repeat repeat"
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_cannot_overwrite_a_concurrent_human_edit(dataset, pool):
+    shared = await scope(dataset, "shared")
+    original = shared.documents[str(dataset.shared)]["content"]
+    await pool.execute(
+        "UPDATE pages SET content_markdown='Human edit',content_hash='new-revision' WHERE id=$1",
+        dataset.shared,
+    )
+    with pytest.raises(ValueError, match="changed during curation"):
+        await shared.tool(
+            "edit_page",
+            {
+                "page_id": str(dataset.shared),
+                "old_text": original,
+                "new_text": "Agent edit",
+            },
+        )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "Human edit"
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_enforces_writable_scope_and_permission_revocation(dataset):
+    private = await scope(dataset, "private")
+    with pytest.raises(PermissionError):
+        await private.tool(
+            "edit_page",
+            {
+                "page_id": str(dataset.shared),
+                "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+                "new_text": "Bad edit",
+            },
+        )
+    shared = await scope(dataset, "shared")
+    await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
+    with pytest.raises(PermissionError):
+        await shared.tool(
+            "edit_page",
+            {
+                "page_id": str(dataset.shared),
+                "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+                "new_text": "Bad edit",
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_initial_prompt_identifies_delta_inputs_not_existing_wiki(
+    dataset, monkeypatch, sprite_exec
+):
+    from anthropic.types import TextBlock
+
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(kwargs)
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="No update needed.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    shared = await scope(dataset, "shared")
+    await curation.run_scope(shared, None)
+    manifest = requests[0]["messages"][0]["content"]
+    assert "session:public-job" in manifest
+    assert "session:private-job" not in manifest
+    assert "ALLOWED_SHARED_KNOWLEDGE" not in manifest
+    assert requests[0]["max_tokens"] == 4096
+    shared.documents = {
+        key: doc
+        for key, doc in shared.documents.items()
+        if not key.startswith(("session:", "file:", "source:"))
+    }
+    assert "No new input" in await curation.run_scope(shared, None)
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_text_edit_preserves_a_concurrent_title_only_change(dataset, pool):
+    shared = await scope(dataset, "shared")
+    await pool.execute("UPDATE pages SET name='Human title' WHERE id=$1", dataset.shared)
+    await shared.tool(
+        "edit_page",
+        {
+            "page_id": str(dataset.shared),
+            "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+            "new_text": "Updated knowledge",
+        },
+    )
+    row = await pool.fetchrow("SELECT name,content_markdown FROM pages WHERE id=$1", dataset.shared)
+    assert row["name"] == "Human title"
+    assert row["content_markdown"] == "Updated knowledge"
+    assert shared.documents[str(dataset.shared)]["title"] == "Human title"
