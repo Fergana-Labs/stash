@@ -1,13 +1,14 @@
 "use client";
 
 import { EvalPageFrame } from "@/components/evals/eval-ui";
-import NewEvalUpload from "@/components/evals/judge/NewEvalUpload";
+import NewEvalChannel, { SetUpInChat } from "@/components/evals/judge/NewEvalChannel";
 
-/** New eval: drop examples of good work; that's all it needs. */
+/** New eval: drop in examples of the agent's work and say what you think of them, or set it
+ * up in a conversation with the wizard. */
 export default function NewEvalPage() {
   return (
-    <EvalPageFrame title="New eval" description="Drop in the examples you want to use to create your verifier.">
-      <NewEvalUpload />
+    <EvalPageFrame title="New eval" actions={<SetUpInChat />}>
+      <NewEvalChannel />
     </EvalPageFrame>
   );
 }

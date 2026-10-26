@@ -33,8 +33,11 @@ export default function EvalsPage() {
     ...(models ?? []).map((model) => {
       // Evals made from examples are ready once built and count their own examples.
       const made = judged.find((e) => e.id === model.id);
+      // Their held-out agreement is the rubric's, measured on examples it never learned from.
+      const held = made?.build?.metrics?.held_out;
       if (made) return { id: model.id, name: made.name, draft: !made.ready, href: `/reward-models/evals/${model.id}`,
-        description: made.build?.summary ?? made.instructions, examples: made.examples.good + made.examples.bad, metrics: model.active_metrics };
+        description: made.build?.summary ?? made.instructions, examples: made.examples.good + made.examples.bad,
+        metrics: held?.n ? { eval: { accuracy: held.agreement, n: held.n } } : null };
       return { id: model.id, name: model.name, draft: model.active_number == null,
         href: `/reward-models/evals/${model.id}`,
         description: model.active_description ?? model.draft_description ?? "", examples: model.examples, metrics: model.active_metrics };
