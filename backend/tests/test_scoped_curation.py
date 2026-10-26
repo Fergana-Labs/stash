@@ -722,6 +722,10 @@ async def test_truncated_write_is_discarded_before_one_complete_retry(
     assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Concise page'") == 1
     assert len(requests) == 3
     assert "Discard this partial output" not in json.dumps(requests[1:])
+    assert "Partial page" in requests[1]["messages"][-1]["content"]
+    retry_tools = {tool["name"]: tool for tool in requests[1]["tools"]}
+    assert retry_tools["write_page"]["input_schema"]["properties"]["content"]["maxLength"] == 4000
+    assert retry_tools["edit_page"]["input_schema"]["properties"]["new_text"]["maxLength"] == 2000
 
 
 @pytest.mark.asyncio
@@ -1044,4 +1048,288 @@ async def test_model_recovers_from_readonly_write_without_changing_shared_page(
             "SELECT content_markdown FROM pages WHERE id=$1", dataset.pages["private"]
         )
         == "PRIVATE_WIKI_SECRET with new detail"
+    )
+
+
+@pytest.mark.asyncio
+async def test_collision_cannot_adopt_a_page_created_after_snapshot(dataset, pool):
+    shared = await scope(dataset, "shared")
+    human_page = await pool.fetchval(
+        "INSERT INTO pages (owner_user_id,folder_id,name,content_markdown,created_by) "
+        "VALUES ($1,$2,'New human page','Human work',$1) RETURNING id",
+        dataset.owner,
+        shared.destination,
+    )
+    with pytest.raises(ValueError, match="created during curation"):
+        await shared.tool(
+            "write_page",
+            {
+                "page_id": None,
+                "title": "New human page",
+                "content": "Stale agent replacement",
+            },
+        )
+    assert human_page not in shared.writable
+    denied = await shared.tool(
+        "write_page",
+        {
+            "page_id": str(human_page),
+            "title": "New human page",
+            "content": "Still stale",
+        },
+    )
+    assert "error" in denied
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", human_page)
+        == "Human work"
+    )
+
+
+@pytest.mark.asyncio
+async def test_large_files_and_sources_resume_without_skipping_or_unbounded_input(dataset, pool):
+    from backend.services import scoped_curation_inputs
+
+    stamp = datetime.now(UTC) - timedelta(minutes=5)
+    file_text, source_text = "A" * 6000 + "FILE_END", "B" * 9000 + "SOURCE_END"
+    await pool.execute(
+        "UPDATE files SET extracted_text=$2,created_at=$3 WHERE id=$1",
+        dataset.private_file,
+        file_text,
+        stamp,
+    )
+    await pool.execute(
+        "UPDATE drive_documents SET content=$2,updated_at=$3 WHERE id=$1",
+        dataset.source_doc,
+        source_text,
+        stamp,
+    )
+    await pool.execute("DELETE FROM history_events WHERE owner_user_id=$1", dataset.owner)
+    since, cursor = stamp - timedelta(microseconds=1), {}
+    collected = {}
+    for _ in range(12):
+        batch = await scoped_curation_inputs.load_batch(
+            dataset.owner,
+            since,
+            datetime.now(UTC),
+            internal=False,
+            generation=dataset.workspace["curation_generation"],
+            cursor=cursor,
+            max_chars=2048,
+        )
+        assert sum(len(d["content"]) for d in batch.documents) <= 2048
+        for doc in batch.documents:
+            collected[doc["document_id"]] = collected.get(doc["document_id"], "") + doc["content"]
+        if batch.cursor:
+            assert batch.through < stamp
+            assert batch.cursor != cursor
+        since, cursor = batch.through, batch.cursor
+        if not cursor:
+            break
+    assert not cursor and since >= stamp
+    assert collected == {
+        f"file:{dataset.private_file}": file_text,
+        f"source:{dataset.source_doc}": source_text,
+    }
+
+
+@pytest.mark.asyncio
+async def test_cursor_is_committed_only_after_all_scopes_succeed(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from backend.services import agent_service, sprite_agent_service
+
+    await pool.execute(
+        "UPDATE files SET extracted_text=$2 WHERE id=$1", dataset.private_file, "X" * 10000
+    )
+    monkeypatch.setattr(curation, "_MAX_INPUT_CHARS", 2048)
+    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    await pool.execute("UPDATE agents SET curated_through=NULL WHERE id=$1", UUID(agent["id"]))
+    seen = []
+
+    async def completed(scope, instructions):
+        seen.append(scope)
+        return "Curated supplied chunk."
+
+    monkeypatch.setattr(curation, "run_scope", completed)
+    agent = await agent_service.get_agent_by_id(UUID(agent["id"]))
+    await sprite_agent_service.run_scheduled(agent, "chunk-one")
+    before = await agent_service.get_agent_by_id(UUID(agent["id"]))
+    assert before["curation_cursor"]
+    assert "X" * 100 not in json.dumps([s.documents for s in seen if s.purpose == "shared"])
+
+    async def failed(*args):
+        raise RuntimeError("Model unavailable")
+
+    monkeypatch.setattr(curation, "run_scope", failed)
+    with pytest.raises(ExceptionGroup):
+        await sprite_agent_service.run_scheduled(before, "chunk-two")
+    after = await agent_service.get_agent_by_id(UUID(agent["id"]))
+    assert (after["curated_through"], after["curation_cursor"]) == (
+        before["curated_through"],
+        before["curation_cursor"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_same_timestamp_group_larger_than_event_limit_drains(dataset, pool, monkeypatch):
+    from backend.services import curation_service, scoped_curation_inputs
+
+    stamp = datetime.now(UTC) - timedelta(minutes=5)
+    await pool.execute("DELETE FROM history_events WHERE owner_user_id=$1", dataset.owner)
+    for index in range(7):
+        await pool.execute(
+            "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content,created_at) "
+            "VALUES ($1,$1,'test','user_message','private-job',$2,$3)",
+            dataset.owner,
+            f"message-{index}",
+            stamp,
+        )
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 2)
+    since, cursor, seen = stamp - timedelta(microseconds=1), {}, []
+    for _ in range(4):
+        batch = await scoped_curation_inputs.load_batch(
+            dataset.owner,
+            since,
+            stamp,
+            internal=False,
+            generation=dataset.workspace["curation_generation"],
+            cursor=cursor,
+        )
+        seen.extend(d["key"] for d in batch.documents)
+        since, cursor = batch.through, batch.cursor
+    assert len(seen) == len(set(seen)) == 7
+    assert since == stamp and cursor == {}
+
+
+@pytest.mark.asyncio
+async def test_revised_large_document_restarts_its_partial_cursor(dataset, pool):
+    from backend.services import scoped_curation_inputs
+
+    stamp = datetime.now(UTC) - timedelta(minutes=5)
+    await pool.execute("DELETE FROM history_events WHERE owner_user_id=$1", dataset.owner)
+    await pool.execute(
+        "UPDATE files SET extracted_text=$2,created_at=$3 WHERE id=$1",
+        dataset.private_file,
+        "old" * 3000,
+        stamp,
+    )
+    batch = await scoped_curation_inputs.load_batch(
+        dataset.owner,
+        stamp - timedelta(microseconds=1),
+        stamp,
+        internal=False,
+        generation=dataset.workspace["curation_generation"],
+        max_chars=2048,
+    )
+    await pool.execute(
+        "UPDATE files SET extracted_text=$2 WHERE id=$1", dataset.private_file, "new" * 3000
+    )
+    revised = await scoped_curation_inputs.load_batch(
+        dataset.owner,
+        batch.through,
+        stamp,
+        internal=False,
+        generation=dataset.workspace["curation_generation"],
+        cursor=batch.cursor,
+        max_chars=2048,
+    )
+    assert revised.documents[0]["offset"] == 0
+    assert revised.documents[0]["content"].startswith("newnew")
+
+
+@pytest.mark.asyncio
+async def test_scoped_wiki_output_does_not_trigger_staleness_or_catchup(dataset, pool, monkeypatch):
+    from backend.services import agent_service, alert_service, scoped_curation_inputs
+    from backend.tasks import agent_schedules
+
+    old = datetime.now(UTC) - timedelta(days=4)
+    await pool.execute(
+        "UPDATE history_events SET created_at=$2 WHERE owner_user_id=$1", dataset.owner, old
+    )
+    await pool.execute("UPDATE files SET created_at=$2 WHERE owner_user_id=$1", dataset.owner, old)
+    await pool.execute(
+        "UPDATE drive_documents SET updated_at=$2 WHERE owner_user_id=$1", dataset.owner, old
+    )
+    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    await pool.execute(
+        "UPDATE agents SET curated_through=$2,last_run_outcome='ran' WHERE id=$1",
+        UUID(agent["id"]),
+        datetime.now(UTC) - timedelta(days=3),
+    )
+    await pool.execute("UPDATE pages SET updated_at=now() WHERE owner_user_id=$1", dataset.owner)
+    current = await agent_service.get_agent_by_id(UUID(agent["id"]))
+    assert not await scoped_curation_inputs.has_pending(current, dataset.workspace)
+
+    async def forbidden(*args):
+        pytest.fail("Curator's own wiki output must not page an operator")
+
+    monkeypatch.setattr(alert_service, "send_alert", forbidden)
+    assert await agent_schedules._alert_stale_curators() == 0
+
+
+@pytest.mark.asyncio
+async def test_truncated_full_replacement_retries_as_small_edit(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    text = "Keep all existing knowledge.\n" * 2000 + "Unique ending."
+    await pool.execute("UPDATE pages SET content_markdown=$2 WHERE id=$1", dataset.shared, text)
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        turn = len(requests)
+        if turn <= 2:
+            return SimpleNamespace(
+                stop_reason="max_tokens" if turn == 1 else "tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id=f"write-{turn}",
+                        name="write_page",
+                        input={
+                            "page_id": str(dataset.shared),
+                            "title": "Index",
+                            "content": "X" * 5000,
+                        },
+                    )
+                ],
+            )
+        if turn == 3:
+            result = kwargs["messages"][-1]["content"][0]
+            assert result["is_error"] and "4000 characters" in result["content"]
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="edit",
+                        name="edit_page",
+                        input={
+                            "page_id": str(dataset.shared),
+                            "old_text": "Unique ending.",
+                            "new_text": "Unique ending. New lesson.",
+                        },
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Done.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    await curation.run_scope(await scope(dataset, "shared"), None)
+    assert str(dataset.shared) in requests[1]["messages"][-1]["content"]
+    assert "X" * 5000 not in json.dumps(requests[1])
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == text + " New lesson."
+    )
+    assert (
+        await pool.fetchval("SELECT count(*) FROM page_edits WHERE page_id=$1", dataset.shared) == 1
     )

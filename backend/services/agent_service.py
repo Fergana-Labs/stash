@@ -19,7 +19,7 @@ _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
     "telegram_bound, last_run_at, last_run_error, last_run_outcome, curated_through, "
-    "curator_wiki, month_run_count, month_run_anchor, created_at"
+    "curator_wiki, month_run_count, month_run_anchor, curation_cursor, created_at"
 )
 
 
@@ -335,14 +335,43 @@ async def mark_run_failed(agent_id: UUID, error: str, metered: bool = True) -> N
         """
         UPDATE agents SET
             last_run_error = left($2, 500),
-            last_run_outcome = 'failed',
-            month_run_count = CASE WHEN $3
-                THEN greatest(month_run_count - 1, 0) ELSE month_run_count END
+            last_run_outcome = 'failed'
         WHERE id = $1
         """,
         agent_id,
         error,
-        metered,
+    )
+    if metered:
+        await refund_run(agent_id)
+
+
+async def refund_run(agent_id: UUID) -> None:
+    """Refund a charged run only while its month counter still belongs to this month."""
+    await get_pool().execute(
+        "UPDATE agents SET month_run_count=GREATEST(0,month_run_count-1) "
+        "WHERE id=$1 AND month_run_anchor=date_trunc('month',now())::date",
+        agent_id,
+    )
+
+
+async def claim_catchup(agent_id: UUID, limit: int) -> bool:
+    """One shared, atomic 24-hour allowance across all catch-up chains/triggers.
+
+    Attempts consume the allowance even if they fail, so repeated failures
+    cannot turn into unlimited platform-funded model calls.
+    """
+    return bool(
+        await get_pool().fetchval(
+            "UPDATE agents SET catchup_runs=CASE "
+            "WHEN catchup_window_started > now()-interval '24 hours' THEN catchup_runs+1 ELSE 1 END, "
+            "catchup_window_started=CASE WHEN catchup_window_started > now()-interval '24 hours' "
+            "THEN catchup_window_started ELSE now() END "
+            "WHERE id=$1 AND (catchup_window_started IS NULL "
+            "OR catchup_window_started <= now()-interval '24 hours' OR catchup_runs < $2) "
+            "RETURNING true",
+            agent_id,
+            limit,
+        )
     )
 
 

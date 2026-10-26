@@ -391,17 +391,26 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     return session_id, agent["schedule_prompt"]
 
 
-async def run_scheduled(agent: dict, run_stamp: str) -> str:
+_WORKSPACE_UNSET = object()
+
+
+async def run_scheduled(
+    agent: dict, run_stamp: str, *, workspace=_WORKSPACE_UNSET, scoped_lock_held: bool = False
+) -> str:
     """Run a scheduled agent headless — one turn into a fresh per-run session —
     and return the result text."""
     from . import scoped_curation_service, user_service
 
     user_id = UUID(str(agent["user_id"]))
-    workspace = await scoped_curation_service.workspace_for_agent(agent)
+    from contextlib import nullcontext
+
+    if workspace is _WORKSPACE_UNSET:
+        workspace = await scoped_curation_service.workspace_for_agent(agent)
     if workspace is not None:
+        # Scoped runs use fresh in-process model state. Their per-agent lock
+        # already serializes every run; a second session lock is unnecessary.
         async with (
-            _TurnLock(f"scoped-curator-{agent['id']}"),
-            _TurnLock(f"{scheduled_session_prefix(agent)}{run_stamp}"),
+            nullcontext() if scoped_lock_held else _TurnLock(f"scoped-curator-{agent['id']}")
         ):
             try:
                 return await asyncio.wait_for(

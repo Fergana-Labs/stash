@@ -31,10 +31,12 @@ def dispatched(monkeypatch):
     return calls
 
 
-async def _workspace_with_conversation(client: AsyncClient) -> UUID:
+async def _workspace_with_conversation(client: AsyncClient, *, include_internal=False) -> UUID:
     api_key, _, workspace = await _developer(client)
     ws_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(client, ws_key, [_event("s-1", user_id="cust-1", user_name="Cust")])
+    if include_internal:
+        await _push(client, ws_key, [_event("developer-own-conversation")])
     return UUID(workspace["scope_user_id"])
 
 
@@ -48,14 +50,16 @@ async def _dispatched_wikis(pool, dispatched) -> set[str]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("include_internal", [False, True])
 async def test_first_day_conversation_dispatches_unmetered_runs(
-    client: AsyncClient, pool, dispatched
+    client: AsyncClient, pool, dispatched, include_internal
 ):
-    scope_id = await _workspace_with_conversation(client)
+    scope_id = await _workspace_with_conversation(client, include_internal=include_internal)
     await _first_day_curator_tick(scope_id)
-    # Both of the workspace's wikis update eagerly on day one: its own Memory
-    # wiki and the cross-user external wiki.
-    assert await _dispatched_wikis(pool, dispatched) == {"internal", "external"}
+    # Only wikis with eligible input update. A customer-only conversation
+    # cannot cause an empty run in the developer's own Memory wiki.
+    expected = {"internal", "external"} if include_internal else {"external"}
+    assert await _dispatched_wikis(pool, dispatched) == expected
     # The platform is the trigger, so the runs must not eat the workspace's
     # free monthly curator allowance.
     assert all(kwargs == {"metered": False} for _, kwargs in dispatched)
@@ -73,7 +77,7 @@ async def test_paused_curator_stays_paused_on_first_day(client, pool, dispatched
 
 @pytest.mark.asyncio
 async def test_old_workspace_still_curates_its_own_memory(client: AsyncClient, pool, dispatched):
-    scope_id = await _workspace_with_conversation(client)
+    scope_id = await _workspace_with_conversation(client, include_internal=True)
     await pool.execute(
         "UPDATE workspaces SET created_at = now() - interval '2 days' WHERE scope_user_id = $1",
         scope_id,
@@ -100,7 +104,7 @@ async def test_old_scope_does_not_dispatch(client: AsyncClient, pool, dispatched
 
 @pytest.mark.asyncio
 async def test_recent_run_debounces(client: AsyncClient, pool, dispatched):
-    scope_id = await _workspace_with_conversation(client)
+    scope_id = await _workspace_with_conversation(client, include_internal=True)
     await pool.execute(
         "UPDATE agents SET last_run_outcome = 'ran', last_run_at = now() "
         "WHERE user_id = $1 AND is_curator",
