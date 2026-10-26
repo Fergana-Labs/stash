@@ -59,13 +59,19 @@ async def test_byo_claude_oauth_writes_credentials_file(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
 
     async def cred(_uid):
-        return {"provider": "anthropic", "kind": "oauth", "secret": '{"claudeAiOauth":{}}'}
+        return {
+            "user_id": _uid,
+            "provider": "anthropic",
+            "kind": "oauth",
+            "secret": '{"claudeAiOauth":{}}',
+        }
 
     monkeypatch.setattr(agent_auth, "_get_credential", cred)
     auth = await agent_auth.resolve(uuid.uuid4())
     assert auth.harness is h.CLAUDE
     assert auth.env["CLAUDE_CONFIG_DIR"] == "/home/sprite/.claude"
     assert "/home/sprite/.claude/.credentials.json" in auth.files
+    assert auth.oauth_file.path == "/home/sprite/.claude/.credentials.json"
 
 
 @pytest.mark.asyncio

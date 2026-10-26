@@ -523,6 +523,24 @@ async def write_file(sprite: Sprite, abs_path: str, contents: str) -> None:
         raise SpriteError(f"write_file failed for {abs_path}")
 
 
+async def read_file(sprite: Sprite, abs_path: str) -> str | None:
+    """A file's text from the box (absolute path), or None if it doesn't exist.
+    Used to read back OAuth credential files the harness may have refreshed."""
+    import base64
+
+    script = (
+        "import base64,os,sys;p=sys.argv[1];"
+        'print(base64.b64encode(open(p,"rb").read()).decode() if os.path.isfile(p) else "-")'
+    )
+    output, code = await exec_collect(
+        sprite, ["python3", "-c", script, abs_path], env={}, timeout_s=30, stdout_only=True
+    )
+    if code != 0:
+        raise SpriteError(f"read_file failed for {abs_path}")
+    encoded = output.strip()
+    return None if encoded == "-" else base64.b64decode(encoded).decode()
+
+
 async def write_workdir_file(sprite: Sprite, rel_path: str, contents: str) -> None:
     """Write a workdir-relative file, resolved for the active exec mode.
 
