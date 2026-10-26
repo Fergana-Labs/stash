@@ -12,6 +12,7 @@ Required env vars (defaults work against the Docker Compose postgres):
 
 import asyncio
 import os
+import time
 import uuid
 
 import asyncpg
@@ -139,18 +140,47 @@ class FakeRedis:
 
     def __init__(self) -> None:
         self.data: dict[str, bytes] = {}
+        self.expires_at: dict[str, float] = {}
+
+    def _expire(self, key):
+        if key in self.expires_at and self.expires_at[key] <= time.monotonic():
+            self.data.pop(key, None)
+            self.expires_at.pop(key)
 
     async def set(self, key, value, nx=False, ex=None):
+        self._expire(key)
         if nx and key in self.data:
             return None
         self.data[key] = value.encode() if isinstance(value, str) else value
+        if ex is not None:
+            self.expires_at[key] = time.monotonic() + ex
+        else:
+            self.expires_at.pop(key, None)
         return True
 
     async def get(self, key):
+        self._expire(key)
         return self.data.get(key)
 
     async def delete(self, key):
         self.data.pop(key, None)
+        self.expires_at.pop(key, None)
+
+    async def ttl(self, key):
+        self._expire(key)
+        if key not in self.data:
+            return -2
+        if key not in self.expires_at:
+            return -1
+        return max(0, round(self.expires_at[key] - time.monotonic()))
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    """Isolate lock tests from an external Redis server."""
+    redis = FakeRedis()
+    monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: redis)
+    return redis
 
 
 def stream_json_reply(text: str) -> list[str]:
@@ -171,7 +201,7 @@ def stream_json_reply(text: str) -> list[str]:
 
 
 @pytest.fixture
-def sprite_exec(monkeypatch):
+def sprite_exec(monkeypatch, fake_redis):
     """Mock the sprite seam: capture exec argv, reply via a queue of canned
     transcripts (default: echo the prompt back)."""
     calls: list[list[str]] = []
@@ -200,8 +230,6 @@ def sprite_exec(monkeypatch):
     monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
     monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
     monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
-    fake_redis = FakeRedis()
-    monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
 
     class Seam:

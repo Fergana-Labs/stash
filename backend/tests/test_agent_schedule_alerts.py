@@ -653,7 +653,7 @@ async def test_refunds_do_not_change_an_old_month_counter(client, pool, reason):
 
 @pytest.mark.asyncio
 async def test_due_scoped_run_is_queued_after_the_scheduler_releases_its_lock(
-    client, pool, monkeypatch
+    client, pool, monkeypatch, fake_redis
 ):
     from backend.services import scoped_curation_service, sprite_agent_service
 
@@ -690,10 +690,11 @@ async def test_due_scoped_run_is_queued_after_the_scheduler_releases_its_lock(
     assert await agent_schedules._run_due() == 1
     # The worker takes the same lock, so it must be free once the task is queued.
     assert events == ["released", "queued"]
+    assert await fake_redis.get(f"agent-turn:scoped-curator-{agent['id']}") is None
 
 
 @pytest.mark.asyncio
-async def test_scheduler_lock_outlives_the_run_timeout(client, monkeypatch):
+async def test_scheduler_lock_outlives_the_run_timeout(client, fake_redis):
     from backend.config import settings
     from backend.services import sprite_agent_service
 
@@ -705,6 +706,7 @@ async def test_scheduler_lock_outlives_the_run_timeout(client, monkeypatch):
             f"agent-turn:scoped-curator-{agent['id']}"
         )
     assert ttl > settings.AGENT_TURN_TIMEOUT_SECONDS
+    assert await fake_redis.ttl(f"agent-turn:scoped-curator-{agent['id']}") == -2
 
 
 @pytest.mark.asyncio
