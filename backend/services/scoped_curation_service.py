@@ -159,6 +159,10 @@ def system_prompt(purpose: str) -> str:
         "or copy operational audit details into knowledge. Keep an index of knowledge pages. "
         "Some inputs are chunks of a larger document; curate the supplied chunk and do not "
         "claim the whole document is complete. Unread chunks will arrive in later runs. "
+        "Session documents contain newline-delimited JSON events. Each event's offset and "
+        "total_characters describe that event's original content, not the combined session document. "
+        "File/source chunk bounds also refer to the original input. For read_document, always "
+        "start at offset 0 in the supplied document and follow its next_offset for more text. "
         "This is incremental curation. Read the new input documents listed in the user message "
         "first; existing wiki pages are reference material, not new input to re-audit. "
         "Read only relevant wiki sections to identify what is missing or contradictory. "
@@ -475,7 +479,12 @@ async def load_scope(
                     "writable": False,
                 }
             scope.documents[key]["content"] += item["content"]
-            if item["offset"] or item["next_offset"] < item["characters"]:
+            # Session documents combine several event envelopes, each carrying
+            # its own source bounds. A single event's offsets cannot describe
+            # the merged document returned by read_document.
+            if item["kind"] != "event" and (
+                item["offset"] or item["next_offset"] < item["characters"]
+            ):
                 scope.documents[key]["chunk"] = {
                     "offset": item["offset"],
                     "end": item["next_offset"],

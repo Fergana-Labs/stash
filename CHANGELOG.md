@@ -10,6 +10,8 @@ everything before it is captured in git history (`git log`), not here.
   smaller responses to reduce timeout and truncation failures.
   History, extracted files, and source documents share a bounded input budget;
   large inputs resume from saved offsets without advancing past unread content.
+  Combined session documents retain chunk bounds per event, keeping source
+  offsets distinct from paging offsets in the supplied document.
   Automatic catch-up attempts share a seven-run allowance per curator over 24
   hours, across all triggering chains. Busy attempts preserve the active run's
   status, concurrent page creation forces a fresh snapshot, and stale alerts

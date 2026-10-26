@@ -1086,6 +1086,106 @@ async def test_collision_cannot_adopt_a_page_created_after_snapshot(dataset, poo
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resumed", [False, True], ids=["partial-last-event", "partial-first-event"]
+)
+async def test_session_manifest_does_not_promote_event_offsets_to_document_bounds(
+    dataset, pool, monkeypatch, sprite_exec, resumed
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    from backend.services import scoped_curation_inputs
+
+    stamp = datetime.now(UTC) - timedelta(minutes=5)
+    until = stamp + timedelta(seconds=2)
+    texts = ["First complete event", 'Tool result: "bolt" \\ café\n' * 80, "Last complete event"]
+    await pool.execute("DELETE FROM history_events WHERE owner_user_id=$1", dataset.owner)
+    for index, text in enumerate(texts):
+        await pool.execute(
+            "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content,created_at) "
+            "VALUES ($1,$1,'test','user_message','private-job',$2,$3)",
+            dataset.owner,
+            text,
+            stamp + timedelta(seconds=index),
+        )
+    batch = await scoped_curation_inputs.load_batch(
+        dataset.owner,
+        stamp - timedelta(microseconds=1),
+        until,
+        internal=False,
+        generation=dataset.workspace["curation_generation"],
+        max_chars=2048,
+    )
+    assert len(batch.documents) == 2 and batch.cursor
+    if resumed:
+        batch = await scoped_curation_inputs.load_batch(
+            dataset.owner,
+            batch.through,
+            until,
+            internal=False,
+            generation=dataset.workspace["curation_generation"],
+            cursor=batch.cursor,
+            max_chars=2048,
+        )
+        assert len(batch.documents) == 2 and not batch.cursor
+    private = await curation.load_scope(
+        dataset.workspace,
+        "private",
+        dataset.users["private"]["wiki_folder_id"],
+        [dataset.users["private"]["id"]],
+        "agent-curate-session-chunks",
+        None,
+        until,
+        batch=batch,
+    )
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        if len(requests) == 1:
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="read-session",
+                        name="read_document",
+                        input={"document_id": "session:private-job"},
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Read supplied events.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    await curation.run_scope(private, None)
+    manifest = json.loads(
+        requests[0]["messages"][0]["content"].split("New input documents: ", 1)[1]
+    )
+    read = json.loads(requests[1]["messages"][-1]["content"][0]["content"])
+    events = [json.loads(line) for line in read["content"].splitlines()]
+    assert len(manifest) == 1 and len(events) == 2
+    assert manifest[0]["characters"] == read["total_characters"] == len(read["content"])
+    assert "chunk" not in manifest[0]  # The merged document has no single event's bounds.
+    assert read["next_offset"] is None
+    expected_texts = texts[1:] if resumed else texts[:2]
+    for event, original in zip(events, expected_texts, strict=True):
+        offset = event["offset"]
+        assert event["total_characters"] == len(original)
+        assert event["content"] == original[offset : offset + len(event["content"])]
+    if resumed:
+        assert events[0]["offset"] > 0 and events[1]["content"] == texts[2]
+    else:
+        assert events[0]["content"] == texts[0]
+        assert len(events[1]["content"]) < events[1]["total_characters"]
+
+
+@pytest.mark.asyncio
 async def test_large_files_and_sources_resume_without_skipping_or_unbounded_input(dataset, pool):
     from backend.services import scoped_curation_inputs
 
@@ -1117,8 +1217,27 @@ async def test_large_files_and_sources_resume_without_skipping_or_unbounded_inpu
             max_chars=2048,
         )
         assert sum(len(d["content"]) for d in batch.documents) <= 2048
+        private = await curation.load_scope(
+            dataset.workspace,
+            "private",
+            dataset.users["private"]["wiki_folder_id"],
+            [dataset.users["private"]["id"]],
+            "agent-curate-file-source-chunks",
+            since,
+            datetime.now(UTC),
+            batch=batch,
+        )
         for doc in batch.documents:
             collected[doc["document_id"]] = collected.get(doc["document_id"], "") + doc["content"]
+            read = await private.tool("read_document", {"document_id": doc["document_id"]})
+            assert read["content"] == doc["content"]
+            assert read["total_characters"] == len(doc["content"])
+            assert read["next_offset"] is None
+            assert private.documents[doc["document_id"]]["chunk"] == {
+                "offset": doc["offset"],
+                "end": doc["next_offset"],
+                "total_characters": doc["characters"],
+            }
         if batch.cursor:
             assert batch.through < stamp
             assert batch.cursor != cursor
