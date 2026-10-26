@@ -276,16 +276,30 @@ async def _feed_events(
 
 
 async def complete_through(
-    owner_user_id: UUID, since: datetime | None, until: datetime
+    owner_user_id: UUID,
+    since: datetime | None,
+    until: datetime,
+    *,
+    max_event_chars: int | None = None,
 ) -> datetime:
     """How far the curator's watermark may advance after a successful run.
 
-    The feed is complete through `until` unless it overflowed _MAX_EVENTS, in
-    which case it is only complete through the last event that fit — minus a
+    The feed is complete through `until` unless it overflowed _MAX_EVENTS or
+    the optional event-text budget. In that case it is only complete through
+    the last event that fit — minus a
     microsecond, so events sharing that exact timestamp are re-presented next
     run rather than skipped. Overflow therefore drains run by run and no event
     is ever silently dropped from curation."""
     events, has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
+    if max_event_chars is not None and events:
+        characters = 0
+        for event in events:
+            characters += len(event["content"] or "")
+            # Never split a timestamp group, or stall forever on one large
+            # event. Keep the first group and stop before the next group that
+            # exceeds the text budget; the next pass receives the remainder.
+            if characters > max_event_chars and event["created_at"] > events[0]["created_at"]:
+                return event["created_at"] - timedelta(microseconds=1)
     if not has_more:
         return until
     return events[-1]["created_at"] - timedelta(microseconds=1)

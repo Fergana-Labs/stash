@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -368,6 +368,7 @@ async def test_native_model_loop_uses_fresh_messages_and_restricted_tools(
                     )
                 ],
             )
+
         return SimpleNamespace(
             stop_reason="end_turn", content=[TextBlock(type="text", text="Done.")]
         )
@@ -548,3 +549,233 @@ async def test_scoped_run_timeout_preserves_progress_and_releases_lock(
     assert row["curated_through"] == before
     assert row["last_run_outcome"] == "failed" and "run time limit" in row["last_run_error"]
     assert sprite_exec.redis.data == {}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_create_returns_existing_page_without_overwriting_it(dataset, pool):
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "write_page", {"page_id": None, "title": "Index", "content": "Accidental replacement"}
+    )
+    assert "already exists" in result["error"]
+    assert result["page_id"] == str(dataset.shared)
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+    assert (
+        await pool.fetchval("SELECT count(*) FROM page_edits WHERE page_id=$1", dataset.shared) == 0
+    )
+    # The conflict rolls back to a savepoint; the same scope can read and
+    # deliberately update the existing page instead of aborting the run.
+    doc = await shared.tool("read_document", {"document_id": result["page_id"]})
+    assert doc["content"] == "ALLOWED_SHARED_KNOWLEDGE"
+    await shared.tool(
+        "write_page", {"page_id": result["page_id"], "title": "Index", "content": "Reviewed update"}
+    )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "Reviewed update"
+    )
+
+
+@pytest.mark.asyncio
+async def test_conflicting_rename_preserves_both_pages(dataset, pool):
+    shared = await scope(dataset, "shared")
+    other = await shared.tool(
+        "write_page", {"page_id": None, "title": "Other", "content": "Original other page"}
+    )
+    conflict = await shared.tool(
+        "write_page", {"page_id": other["page_id"], "title": "Index", "content": "Bad rename"}
+    )
+    assert conflict["page_id"] == str(dataset.shared) and "error" in conflict
+    assert (
+        await pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE id=$1", UUID(other["page_id"])
+        )
+        == "Original other page"
+    )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+
+
+@pytest.mark.asyncio
+async def test_duplicate_title_lookup_never_returns_another_wikis_page(dataset, pool):
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "write_page", {"page_id": None, "title": "private notes", "content": "Public knowledge"}
+    )
+    assert "error" not in result
+    assert result["page_id"] != str(dataset.pages["private"])
+    assert "PRIVATE_WIKI_SECRET" not in json.dumps(shared.documents)
+
+
+@pytest.mark.asyncio
+async def test_successful_scoped_batches_queue_and_drain_without_skipping_private_input(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from backend.services import agent_service, billing_service, curation_service
+    from backend.tasks import agent_schedules
+
+    async def entitled(_):
+        return True
+
+    monkeypatch.setattr(billing_service, "is_pro", entitled)
+    await pool.execute(
+        "INSERT INTO history_events (owner_user_id,created_by,agent_name,event_type,session_id,content) "
+        "VALUES ($1,$1,'heavi-chat','user_message','public-job','Another permitted lesson')",
+        dataset.owner,
+    )
+    # DB and runner clocks may differ; make this a fixed historical backlog.
+    inputs = await pool.fetch(
+        "SELECT id FROM history_events WHERE owner_user_id=$1 ORDER BY created_at,id", dataset.owner
+    )
+    base = datetime.now(UTC) - timedelta(minutes=1)
+    for index, event in enumerate(inputs):
+        await pool.execute(
+            "UPDATE history_events SET created_at=$2 WHERE id=$1",
+            event["id"],
+            base + timedelta(milliseconds=index),
+        )
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 2)
+    seen = []
+
+    async def fake_run(scope, instructions):
+        text = json.dumps(scope.documents)
+        if scope.purpose == "shared":
+            assert "SECRET_TRANSCRIPT" not in text
+        seen.append(text)
+        return "Reviewed this batch."
+
+    monkeypatch.setattr(curation, "run_scope", fake_run)
+    queued = []
+    monkeypatch.setattr(
+        agent_schedules.run_curator_now, "apply_async", lambda **kw: queued.append(kw)
+    )
+    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    await pool.execute("UPDATE agents SET curated_through=NULL WHERE id=$1", UUID(agent["id"]))
+    # A small event limit must split the real input rather than moving the
+    # watermark over unseen data. Re-run only the tasks actually dispatched.
+    await agent_schedules._run_curator_now(UUID(agent["id"]), metered=False)
+    passes = 1
+    while queued:
+        task = queued.pop(0)
+        await agent_schedules._run_curator_now(UUID(task["args"][0]), **task["kwargs"])
+        passes += 1
+        assert passes <= agent_schedules.CURATOR_CATCHUP_PASSES
+    current = await agent_service.get_agent_by_id(UUID(agent["id"]))
+    latest_input = await pool.fetchval(
+        "SELECT max(created_at) FROM history_events WHERE owner_user_id=$1 "
+        "AND session_id NOT LIKE 'agent-curate-%'",
+        dataset.owner,
+    )
+    assert passes >= 2
+    assert current["curated_through"] >= latest_input
+    assert current["last_run_outcome"] == "ran"
+    assert current["month_run_count"] == 0
+    assert any("SECRET_TRANSCRIPT" in text for text in seen)
+
+
+@pytest.mark.asyncio
+async def test_truncated_write_is_discarded_before_one_complete_retry(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        if len(requests) <= 2:
+            truncated = len(requests) == 1
+            return SimpleNamespace(
+                stop_reason="max_tokens" if truncated else "tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id=f"write-{len(requests)}",
+                        name="write_page",
+                        input={
+                            "page_id": None,
+                            "title": "Partial page" if truncated else "Concise page",
+                            "content": "Discard this partial output"
+                            if truncated
+                            else "Complete permitted lesson.",
+                        },
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Done.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    assert await curation.run_scope(await scope(dataset, "shared"), None) == "Done."
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Partial page'") == 0
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Concise page'") == 1
+    assert len(requests) == 3
+    assert "Discard this partial output" not in json.dumps(requests[1:])
+
+
+@pytest.mark.asyncio
+async def test_rename_collision_resolves_in_the_pages_subfolder_not_the_wiki_root(dataset, pool):
+    folder = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id,created_by,name,parent_folder_id) "
+        "VALUES ($1,$1,'Nested',$2) RETURNING id",
+        dataset.owner,
+        dataset.workspace["external_wiki_folder_id"],
+    )
+    pages = {}
+    for name in ("Index", "Other"):
+        pages[name] = await pool.fetchval(
+            "INSERT INTO pages (owner_user_id,folder_id,name,content_markdown,created_by) "
+            "VALUES ($1,$2,$3,$4,$1) RETURNING id",
+            dataset.owner,
+            folder,
+            name,
+            "Nested " + name,
+        )
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "write_page", {"page_id": str(pages["Other"]), "title": "Index", "content": "Bad rename"}
+    )
+    assert result["page_id"] == str(pages["Index"]) and "error" in result
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", pages["Other"])
+        == "Nested Other"
+    )
+
+
+@pytest.mark.asyncio
+async def test_duplicate_title_does_not_refresh_a_revision_changed_by_a_human(dataset, pool):
+    shared = await scope(dataset, "shared")
+    original = dict(shared.writable[dataset.shared])
+    await pool.execute(
+        "UPDATE pages SET content_markdown='Human edit',content_hash='human-revision' WHERE id=$1",
+        dataset.shared,
+    )
+    with pytest.raises(ValueError, match="changed during curation"):
+        await shared.tool(
+            "write_page", {"page_id": None, "title": "Index", "content": "Stale replacement"}
+        )
+    assert shared.writable[dataset.shared] == original
+    # Nor can a subsequent ordinary update reuse a silently refreshed hash.
+    with pytest.raises(ValueError, match="changed during curation"):
+        await shared.tool(
+            "write_page",
+            {"page_id": str(dataset.shared), "title": "Index", "content": "Stale replacement"},
+        )
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "Human edit"
+    )

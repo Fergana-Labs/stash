@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
+import asyncpg
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
@@ -23,6 +24,9 @@ from . import agent_auth, curation_service, files_tree_service, llm, memory_serv
 _READ_CHARS = 16_000
 _MAX_TURNS = 40
 _MAX_CONCURRENT_SCOPES = 4
+# Event count alone is not a model-context budget: 500 uploaded tool results
+# can contain megabytes. Split those inputs across bounded, checkpointed runs.
+_MAX_INPUT_CHARS = 200_000
 # Re-ingesting retrievals feeds historical cross-user copies back into the
 # shared corpus. Shared learning uses primary interactions and vendor results.
 _RETRIEVAL_TOOLS = ("search_stash", "stash_vfs", "recall", "load_skill")
@@ -105,6 +109,10 @@ def system_prompt(purpose: str) -> str:
         "You have no shell, filesystem, network or other tools. Never create audit/log pages "
         "or copy operational audit details into knowledge. Keep an index of knowledge pages. "
         "Write one page per response, keeping new pages focused and concise. "
+        "Before creating a page, search for its title. Read and update an existing writable "
+        "page using its page_id rather than creating another page with the same title. "
+        "Keep index entries short. Put new lessons in focused pages rather than continually "
+        "expanding and regenerating a long notes page. "
         "Link wiki pages using /p/<page_id>. Write Markdown content with actual newlines. "
         "Finish with a short summary of your changes, or explain why no update was needed."
     )
@@ -185,7 +193,52 @@ class CurationScope:
                     "next_offset": end if end < len(content) else None,
                 }
             if name == "write_page":
-                return await self.write(conn, Write.model_validate(arguments))
+                args = Write.model_validate(arguments)
+                try:
+                    # A model can try to create an existing index, or rename a
+                    # page over another page. Roll back only that tool call so
+                    # PostgreSQL remains usable and the model can correct it.
+                    async with conn.transaction():
+                        return await self.write(conn, args)
+                except asyncpg.UniqueViolationError as exc:
+                    if exc.constraint_name != "idx_pages_unique_in_folder":
+                        raise
+                    folder_id = (
+                        self.destination
+                        if args.page_id is None
+                        else self.writable[args.page_id]["folder_id"]
+                    )
+                    existing = await conn.fetchrow(
+                        "SELECT id,folder_id,name,content_markdown,content_hash,content_type "
+                        "FROM pages WHERE owner_user_id=$1 AND folder_id=$2 AND name=$3 "
+                        "AND deleted_at IS NULL",
+                        self.owner_id,
+                        folder_id,
+                        args.title,
+                    )
+                    if existing is None:
+                        raise
+                    if existing["content_type"] != "markdown":
+                        return {
+                            "error": "That title belongs to a non-Markdown page. Choose another title."
+                        }
+                    original = self.writable.get(existing["id"])
+                    if (
+                        original is not None
+                        and original["content_hash"] != existing["content_hash"]
+                    ):
+                        raise ValueError("Wiki page changed during curation; restart the run")
+                    self.writable[existing["id"]] = dict(existing)
+                    self.documents[str(existing["id"])] = {
+                        "title": existing["name"],
+                        "content": existing["content_markdown"],
+                        "writable": True,
+                    }
+                    return {
+                        "error": "A page with this title already exists in this wiki. "
+                        "Read it before updating it with its page_id, or choose another title.",
+                        "page_id": str(existing["id"]),
+                    }
             raise PermissionError("Tool is not available to this curator")
 
     async def write(self, conn, args: Write) -> dict:
@@ -362,6 +415,7 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
     system = system_prompt(scope.purpose)
     if instructions is not None:
         system += "\n" + instructions
+    truncated_responses = 0
     for _ in range(_MAX_TURNS):
         async with get_pool().acquire() as conn:
             await scope.check(conn)
@@ -379,6 +433,20 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
             if not summary.strip():
                 raise ValueError("Curator returned no completion summary")
             return summary
+        if response.stop_reason == "max_tokens" and truncated_responses == 0:
+            # Never execute or replay a partial tool payload. Give the model
+            # one chance to produce a smaller, complete write instead of
+            # wasting the entire batch on a single oversized response.
+            truncated_responses += 1
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Your previous response was truncated; none of its tool calls "
+                    "were executed. Continue with a smaller response: one focused page per "
+                    "write, or a short completion summary. Preserve useful existing knowledge.",
+                }
+            )
+            continue
         if response.stop_reason != "tool_use":
             raise RuntimeError(f"Curator stopped before completing: {response.stop_reason}")
         messages.append(
@@ -405,7 +473,9 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
     require_configured()
     owner = workspace["scope_user_id"]
     since = agent["curated_through"]
-    until = await curation_service.complete_through(owner, since, datetime.now(UTC))
+    until = await curation_service.complete_through(
+        owner, since, datetime.now(UTC), max_event_chars=_MAX_INPUT_CHARS
+    )
     session = f"agent-curate-{agent['id']}-{run_stamp}"
     scopes = []
     if agent["curator_wiki"] == "internal":

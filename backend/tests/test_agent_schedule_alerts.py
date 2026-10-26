@@ -143,6 +143,69 @@ async def test_fresh_curator_stays_quiet(client: AsyncClient, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_successful_but_backlogged_curator_still_alerts(client, pool, monkeypatch):
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    await agent_service.mark_run_succeeded(agent["id"])
+    await memory_service.push_event(
+        user_id, "test", "user_message", "pending", user_id, f"sess-{uuid.uuid4()}"
+    )
+    sent = _capture_alerts(monkeypatch)
+    assert await agent_schedules._alert_stale_curators() == 1
+    assert "backlog remains after a successful batch" in sent[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode", ["progress", "caught_up", "no_progress", "paused", "exhausted", "failed", "free"]
+)
+async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
+    client, pool, monkeypatch, mode
+):
+    from backend.services import billing_service, scoped_curation_service
+
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    agent = await agent_service.get_agent_by_id(agent["id"])
+    started = datetime.now(UTC)
+    before = agent["curated_through"]
+    through = started if mode == "caught_up" else before + timedelta(hours=1)
+    if mode == "no_progress":
+        through = before
+    await pool.execute(
+        "UPDATE agents SET curated_through=$2,run_mode=$3,last_run_outcome=$4 WHERE id=$1",
+        agent["id"],
+        through,
+        "chat" if mode == "paused" else "scheduled",
+        "failed" if mode == "failed" else "ran",
+    )
+
+    async def workspace(_):
+        return {"id": uuid.uuid4()}
+
+    async def entitled(_):
+        return mode != "free"
+
+    monkeypatch.setattr(billing_service, "is_pro", entitled)
+    monkeypatch.setattr(scoped_curation_service, "workspace_for_agent", workspace)
+    queued = []
+    monkeypatch.setattr(
+        agent_schedules.run_curator_now, "apply_async", lambda **kw: queued.append(kw)
+    )
+    await agent_schedules._queue_curator_catchup(agent, started, 0 if mode == "exhausted" else 2)
+    if mode == "progress":
+        assert queued == [
+            {
+                "args": [str(agent["id"])],
+                "kwargs": {"metered": False, "catchup_remaining": 1, "catchup": True},
+                "countdown": 15,
+            }
+        ]
+    else:
+        assert queued == []
+
+
+@pytest.mark.asyncio
 async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
     from backend.services import agent_auth, sprite_agent_service
 
@@ -275,3 +338,112 @@ async def test_deleted_agent_run_is_a_quiet_no_op(client: AsyncClient, monkeypat
     sent = _capture_alerts(monkeypatch)
     await agent_schedules._run_scheduled_agent(uuid.uuid4(), "202608091200")
     assert sent == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["manual", "scheduled"])
+async def test_catchup_dispatch_failure_preserves_completed_batch_and_charge(
+    client, pool, monkeypatch, trigger
+):
+    from backend.services import sprite_agent_service
+
+    uid = await _register(client)
+    agent = await _make_curator(uid, curated_hours_ago=72, last_run_error=None)
+
+    async def completed(*args):
+        return "Completed."
+
+    async def unavailable(*args):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", completed)
+    monkeypatch.setattr(agent_schedules, "_queue_curator_catchup", unavailable)
+    alerts = _capture_alerts(monkeypatch)
+    if trigger == "manual":
+        await agent_schedules._run_curator_now(agent["id"])
+    else:
+        await agent_service.mark_run(agent["id"])
+        await agent_schedules._run_scheduled_agent(agent["id"], "dispatch-failure")
+    current = await agent_service.get_agent_by_id(agent["id"])
+    assert current["last_run_outcome"] == "ran"
+    assert current["last_run_error"] is None
+    assert current["month_run_count"] == 1
+    assert current["curated_through"] > datetime.now(UTC) - timedelta(minutes=1)
+    assert len(alerts) == 1 and "catch-up dispatch failed" in alerts[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["manual", "scheduled"])
+async def test_busy_scoped_curator_refunds_only_skipped_run(client, pool, monkeypatch, trigger):
+    from backend.services import scoped_curation_service, sprite_agent_service
+
+    uid = await _register(client)
+    agent = await _make_curator(uid, curated_hours_ago=72, last_run_error=None)
+    before = (await agent_service.get_agent_by_id(agent["id"]))["curated_through"]
+    await agent_service.mark_run(agent["id"])
+
+    async def workspace(_):
+        return {"id": uuid.uuid4()}
+
+    async def busy(*args):
+        raise sprite_agent_service.TurnInProgress
+
+    monkeypatch.setattr(scoped_curation_service, "workspace_for_agent", workspace)
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", busy)
+    alerts = _capture_alerts(monkeypatch)
+    if trigger == "manual":
+        await agent_schedules._run_curator_now(agent["id"])
+    else:
+        await agent_service.mark_run(agent["id"])
+        await agent_schedules._run_scheduled_agent(agent["id"], "busy")
+    current = await agent_service.get_agent_by_id(agent["id"])
+    assert current["month_run_count"] == 1
+    assert current["last_run_outcome"] == "started"
+    assert current["last_run_error"] is None
+    assert current["curated_through"] == before
+    assert alerts == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed", ["entitlement", "workspace", "input", "auth"])
+async def test_queued_catchup_rechecks_execution_gates(client, pool, monkeypatch, changed):
+    from backend.services import (
+        agent_auth,
+        billing_service,
+        curation_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
+
+    uid = await _register(client)
+    agent = await _make_curator(uid, curated_hours_ago=72, last_run_error=None)
+
+    async def workspace(_):
+        return None if changed == "workspace" else {"id": uuid.uuid4()}
+
+    async def entitled(_):
+        return changed != "entitlement"
+
+    async def pending(*args):
+        return changed != "input"
+
+    async def auth(_):
+        if changed == "auth":
+            raise agent_auth.ProviderNotConfigured("revoked")
+
+    async def forbidden(*args):
+        pytest.fail("Catch-up must recheck its gates before starting a model run")
+
+    monkeypatch.setattr(scoped_curation_service, "workspace_for_agent", workspace)
+    monkeypatch.setattr(scoped_curation_service, "require_run_auth", auth)
+    monkeypatch.setattr(billing_service, "is_pro", entitled)
+    monkeypatch.setattr(curation_service, "has_changes_since", pending)
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", forbidden)
+    if changed == "auth":
+        with pytest.raises(agent_auth.ProviderNotConfigured):
+            await agent_schedules._run_curator_now(agent["id"], metered=False, catchup=True)
+    else:
+        await agent_schedules._run_curator_now(agent["id"], metered=False, catchup=True)
+    current = await agent_service.get_agent_by_id(agent["id"])
+    assert current["last_run_outcome"] is None
+    assert current["month_run_count"] == 0
