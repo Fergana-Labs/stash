@@ -35,6 +35,13 @@ _MAX_INPUT_CHARS = 200_000
 # Re-ingesting retrievals feeds historical cross-user copies back into the
 # shared corpus. Shared learning uses primary interactions and vendor results.
 _RETRIEVAL_TOOLS = ("search_stash", "stash_vfs", "recall", "load_skill")
+# Tool payloads must fit in one response, or the turn truncates and none of
+# its tool calls run. These limits keep a write well under the output cap.
+_MAX_OUTPUT_TOKENS = 4096
+_MAX_WRITE_CHARS = 10_000
+_MAX_EDIT_CHARS = 5_000
+# After one truncated response, writes get smaller still.
+_RETRY_LIMITS = {"write_page": {"content": 4000}, "edit_page": {"old_text": 2000, "new_text": 2000}}
 
 
 class Search(BaseModel):
@@ -53,14 +60,14 @@ class Write(BaseModel):
     model_config = ConfigDict(extra="forbid")
     page_id: UUID | None
     title: str = Field(min_length=1, max_length=200)
-    content: str = Field(min_length=1, max_length=100_000)
+    content: str = Field(min_length=1, max_length=_MAX_WRITE_CHARS)
 
 
 class Edit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     page_id: UUID
-    old_text: str = Field(min_length=1, max_length=16_000)
-    new_text: str = Field(max_length=16_000)
+    old_text: str = Field(min_length=1, max_length=_MAX_EDIT_CHARS)
+    new_text: str = Field(max_length=_MAX_EDIT_CHARS)
 
 
 _TOOLS = [
@@ -90,21 +97,19 @@ _TOOLS = [
 ]
 
 
-def _retry_tools() -> list[dict]:
-    tools = deepcopy(_TOOLS)
+def _with_retry_limits(tools: list[dict]) -> list[dict]:
+    tools = deepcopy(tools)
     for tool in tools:
-        properties = tool["input_schema"]["properties"]
-        if tool["name"] == "write_page":
-            properties["content"]["maxLength"] = 4000
-        elif tool["name"] == "edit_page":
-            properties["old_text"]["maxLength"] = 2000
-            properties["new_text"]["maxLength"] = 2000
+        for key, limit in _RETRY_LIMITS.get(tool["name"], {}).items():
+            tool["input_schema"]["properties"][key]["maxLength"] = limit
     return tools
 
 
+_RETRY_TOOLS = _with_retry_limits(_TOOLS)
+
+
 def _retry_size_error(name: str, arguments: dict) -> dict | None:
-    limits = {"write_page": {"content": 4000}, "edit_page": {"old_text": 2000, "new_text": 2000}}
-    for key, limit in limits.get(name, {}).items():
+    for key, limit in _RETRY_LIMITS.get(name, {}).items():
         value = arguments.get(key)
         if isinstance(value, str) and len(value) > limit:
             return {
@@ -528,10 +533,10 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
         logger.info("curator scope=%s turn=%s model_start", scope.destination, turn + 1)
         response = await llm._get_client().messages.create(
             model=llm._model_for(llm.ModelTier.QUALITY),
-            max_tokens=4096,
+            max_tokens=_MAX_OUTPUT_TOKENS,
             system=system,
             messages=messages,
-            tools=_retry_tools() if truncated_responses else _TOOLS,
+            tools=_RETRY_TOOLS if truncated_responses else _TOOLS,
         )
         logger.info(
             "curator scope=%s turn=%s model_end elapsed=%.1fs stop=%s",

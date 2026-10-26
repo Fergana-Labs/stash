@@ -157,7 +157,8 @@ async def test_successful_but_backlogged_curator_still_alerts(client, pool, monk
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode", ["progress", "caught_up", "no_progress", "paused", "exhausted", "failed", "free"]
+    "mode",
+    ["progress", "caught_up", "drained", "no_progress", "paused", "exhausted", "failed", "free"],
 )
 async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
     client, pool, monkeypatch, mode
@@ -172,13 +173,20 @@ async def test_scoped_curator_catchup_is_bounded_and_requires_progress(
     through = started if mode == "caught_up" else before + timedelta(hours=1)
     if mode == "no_progress":
         through = before
+    # A batch that stopped at its input budget leaves a cursor; one that drained
+    # everything up to its start leaves it empty.
+    cursor = {} if mode in ("caught_up", "drained") else {"since": through.isoformat()}
     await pool.execute(
-        "UPDATE agents SET curated_through=$2,run_mode=$3,last_run_outcome=$4 WHERE id=$1",
+        "UPDATE agents SET curated_through=$2,run_mode=$3,last_run_outcome=$4,"
+        "curation_cursor=$5 WHERE id=$1",
         agent["id"],
         through,
         "chat" if mode == "paused" else "scheduled",
         "failed" if mode == "failed" else "ran",
+        cursor,
     )
+    if mode == "no_progress":
+        agent = {**agent, "curation_cursor": cursor}
 
     async def workspace(_):
         return {"id": uuid.uuid4()}
@@ -475,6 +483,27 @@ async def test_weekly_curator_is_not_stale_before_its_next_scheduled_run(client,
 
 
 @pytest.mark.asyncio
+async def test_partly_drained_weekly_curator_waits_for_its_next_run(client, pool, monkeypatch):
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=5 * 24, last_run_error=None)
+    await pool.execute(
+        "UPDATE agents SET last_run_outcome='ran',schedule_cron='0 0 * * 0',"
+        "last_run_at=now()-interval '1 day' WHERE id=$1",
+        agent["id"],
+    )
+    await memory_service.push_event(
+        user_id, "test", "user_message", "pending", user_id, f"sess-{uuid.uuid4()}"
+    )
+    sent = _capture_alerts(monkeypatch)
+    assert await agent_schedules._alert_stale_curators() == 0
+    await pool.execute(
+        "UPDATE agents SET curated_through=now()-interval '9 days' WHERE id=$1", agent["id"]
+    )
+    assert await agent_schedules._alert_stale_curators() == 1
+    assert "backlog remains after a successful batch" in sent[0]
+
+
+@pytest.mark.asyncio
 async def test_failed_without_message_is_not_reported_as_stuck(client, pool, monkeypatch):
     user_id = await _register(client)
     agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
@@ -553,10 +582,12 @@ async def test_catchup_uses_pending_input_not_outer_task_start_time(client, pool
     agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
     agent = await agent_service.get_agent_by_id(agent["id"])
     started = datetime.now(UTC)
+    through = started + timedelta(milliseconds=1)
     await pool.execute(
-        "UPDATE agents SET curated_through=$2,last_run_outcome='ran' WHERE id=$1",
+        "UPDATE agents SET curated_through=$2,last_run_outcome='ran',curation_cursor=$3 WHERE id=$1",
         agent["id"],
-        started + timedelta(milliseconds=1),
+        through,
+        {"since": through.isoformat()},
     )
 
     async def yes(*args):
@@ -618,3 +649,76 @@ async def test_refunds_do_not_change_an_old_month_counter(client, pool, reason):
     else:
         await agent_service.mark_run_failed(agent["id"], "Failed")
     assert await pool.fetchval("SELECT month_run_count FROM agents WHERE id=$1", agent["id"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_due_scoped_run_is_queued_after_the_scheduler_releases_its_lock(
+    client, pool, monkeypatch
+):
+    from backend.services import scoped_curation_service, sprite_agent_service
+
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    await pool.execute(
+        "UPDATE agents SET schedule_cron='* * * * *',last_run_at=now()-interval '5 minutes' WHERE id=$1",
+        agent["id"],
+    )
+
+    async def workspace(_):
+        return {"id": uuid.uuid4()}
+
+    async def yes(*args, **kwargs):
+        return True
+
+    async def authorized(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(scoped_curation_service, "workspace_for_agent", workspace)
+    monkeypatch.setattr(scoped_curation_service, "require_run_auth", authorized)
+    monkeypatch.setattr(agent_schedules, "_pending_input", yes)
+    events = []
+    release = sprite_agent_service._TurnLock.__aexit__
+
+    async def tracked_release(self, *exc):
+        await release(self, *exc)
+        events.append("released")
+
+    monkeypatch.setattr(sprite_agent_service._TurnLock, "__aexit__", tracked_release)
+    monkeypatch.setattr(
+        agent_schedules.run_scheduled_agent, "delay", lambda *args: events.append("queued")
+    )
+    assert await agent_schedules._run_due() == 1
+    # The worker takes the same lock, so it must be free once the task is queued.
+    assert events == ["released", "queued"]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_lock_outlives_the_run_timeout(client, monkeypatch):
+    from backend.config import settings
+    from backend.services import sprite_agent_service
+
+    user_id = await _register(client)
+    agent = await agent_service.get_or_create_curator(user_id)
+    lock = agent_schedules._run_lock(agent, {"id": uuid.uuid4()})
+    async with lock:
+        ttl = await sprite_agent_service._get_redis().ttl(
+            f"agent-turn:scoped-curator-{agent['id']}"
+        )
+    assert ttl > settings.AGENT_TURN_TIMEOUT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_personal_curator_turn_conflict_is_not_reported_as_busy(client, monkeypatch):
+    from backend.services import sprite_agent_service
+
+    user_id = await _register(client)
+    agent = await agent_service.get_or_create_curator(user_id)
+
+    async def conflict(*args, **kwargs):
+        raise sprite_agent_service.TurnInProgress
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", conflict)
+    with pytest.raises(sprite_agent_service.TurnInProgress):
+        await agent_schedules._run_curator_now(agent["id"])
+    current = await agent_service.get_agent_by_id(agent["id"])
+    assert current["last_run_outcome"] == "failed"

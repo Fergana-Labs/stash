@@ -339,14 +339,13 @@ async def _stoppable(events: AsyncIterator[dict], session_id: str) -> AsyncItera
 
 
 class _TurnLock:
-    def __init__(self, session_id: str) -> None:
+    def __init__(self, session_id: str, *, ttl: int | None = None) -> None:
         self._key = f"agent-turn:{session_id}"
         self._token = secrets.token_hex(16)
+        self._ttl = ttl or settings.AGENT_TURN_TIMEOUT_SECONDS
 
     async def __aenter__(self) -> None:
-        acquired = await _get_redis().set(
-            self._key, self._token, nx=True, ex=settings.AGENT_TURN_TIMEOUT_SECONDS
-        )
+        acquired = await _get_redis().set(self._key, self._token, nx=True, ex=self._ttl)
         if not acquired:
             raise TurnInProgress
 
