@@ -1,13 +1,21 @@
 "use client";
 
-import { EvalPageFrame } from "@/components/evals/eval-ui";
-import NewEvalUpload from "@/components/evals/judge/NewEvalUpload";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { errorMessage } from "@/components/reward-models/rm-text";
+import { wzCreate } from "@/lib/wizard-api";
 
-/** New eval: drop examples of good work; that's all it needs. */
+/** Every eval is created through the wizard: start a conversation and open it. */
 export default function NewEvalPage() {
-  return (
-    <EvalPageFrame title="New eval" description="Drop in the examples you want to use to create your verifier.">
-      <NewEvalUpload />
-    </EvalPageFrame>
-  );
+  const router = useRouter();
+  const [error, setError] = useState("");
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    wzCreate()
+      .then((session) => router.replace(`/reward-models/wizard/${session.id}`))
+      .catch((e) => setError(errorMessage(e)));
+  }, [router]);
+  return <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">{error || "Starting a new eval…"}</p>;
 }

@@ -29,6 +29,13 @@ import ReportCard from "./cards/ReportCard";
 import RobustnessCard from "./cards/RobustnessCard";
 import UploaderCard from "./cards/UploaderCard";
 
+const STARTERS = [
+  "Build an eval from my past Codex sessions",
+  "Check my coding agent's PRs before it opens them",
+  "Grade my AI assistant's answers as good or bad",
+  "Flag which brand guidelines a product photo breaks",
+  "Route incoming support tickets to billing, bugs, or how-to",
+];
 const EVAL_STARTERS = [
   "Help me set up this eval.",
   "Find relevant examples in my past Codex sessions",
@@ -246,9 +253,9 @@ export default function WizardChat({ sessionId, embedded = false, inject = null,
                 <div className="py-10 text-center">
                   <h2 className="m-0 text-lg font-semibold tracking-tight">{modelId ? "How can I help with this eval?" : "What judgment call should it make?"}</h2>
                   <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">{modelId ? "This is a fresh conversation. Your eval’s existing examples, labels, and criteria are saved." : "Describe what you want to judge. The wizard finds relevant examples, learns from your feedback, and asks about anything unclear."}</p>
-                  {modelId && <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
-                    {EVAL_STARTERS.map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
-                  </div>}
+                  <div className="mx-auto mt-5 grid max-w-xl gap-2 sm:grid-cols-2">
+                    {(modelId ? EVAL_STARTERS : STARTERS).map((s) => <button key={s} type="button" disabled={busy || restarting} onClick={() => send(s)} className="rounded border border-border px-3 py-2 text-left text-[12.5px] hover:bg-surface/60">{s}</button>)}
+                  </div>
                 </div>
               )}
               {entries?.map((entry, i) => entry.role === "user" ? (
