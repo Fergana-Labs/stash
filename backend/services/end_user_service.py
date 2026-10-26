@@ -401,7 +401,7 @@ async def _archive_shared_wiki(conn, workspace) -> None:
         "UPDATE workspaces SET external_wiki_folder_id=$2 WHERE id=$1", workspace["id"], new_root
     )
     await conn.execute(
-        "UPDATE agents SET curated_through=NULL WHERE user_id=$1 AND curator_wiki='external'",
+        "UPDATE agents SET curated_through=NULL,curation_cursor='{}'::jsonb WHERE user_id=$1 AND curator_wiki='external'",
         workspace["scope_user_id"],
     )
 

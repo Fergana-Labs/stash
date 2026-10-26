@@ -11,6 +11,7 @@ minutes and must not hold a default-queue slot. The agent's own turn lock
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -23,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Each pass keeps the existing event and time limits. Queue the next pass
 # separately so a busy developer account does not wait another day for its
-# next 500 events, or monopolize one worker indefinitely.
+# next 500 inputs, or monopolize one worker indefinitely. In addition to this
+# per-chain bound, executions share seven automatic continuations per 24h.
 CURATOR_CATCHUP_PASSES = 8
 
 
@@ -79,34 +81,81 @@ async def _run_curator_now(
     first-day curator): they must not eat the user's free monthly allowance."""
     from ..services import (
         agent_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
+
+    agent = await agent_service.get_agent_by_id(agent_id)
+    workspace = await scoped_curation_service.workspace_for_agent(agent)
+    try:
+        async with _run_lock(agent, workspace):
+            agent = await agent_service.get_agent_by_id(agent_id)
+            await _run_curator_locked(
+                agent, workspace, full_history, metered, catchup_remaining, catchup
+            )
+    except sprite_agent_service.TurnInProgress:
+        # No mark_run and no charge happened: leave the active run untouched.
+        logger.info("agent schedule: curator %s is busy; skipping", agent_id)
+
+
+def _run_lock(agent: dict, workspace):
+    from ..services import sprite_agent_service
+
+    return (
+        sprite_agent_service._TurnLock(f"scoped-curator-{agent['id']}")
+        if workspace is not None
+        else nullcontext()
+    )
+
+
+async def _run_turn(agent, stamp, workspace):
+    from ..services import sprite_agent_service
+
+    if workspace is None:
+        return await sprite_agent_service.run_scheduled(agent, stamp)
+    return await sprite_agent_service.run_scheduled(
+        agent, stamp, workspace=workspace, scoped_lock_held=True
+    )
+
+
+async def _pending_input(agent: dict, workspace) -> bool:
+    from ..services import curation_service, scoped_curation_inputs
+
+    if workspace is not None:
+        return await scoped_curation_inputs.has_pending(agent, workspace)
+    owner = UUID(str(agent["user_id"]))
+    return await curation_service.has_changes_since(owner, owner, agent["curated_through"])
+
+
+async def _run_curator_locked(agent, workspace, full_history, metered, catchup_remaining, catchup):
+    from ..services import (
+        agent_service,
         billing_service,
         curation_service,
         scoped_curation_service,
         sprite_agent_service,
     )
 
-    agent = await agent_service.get_agent_by_id(agent_id)
+    agent_id = UUID(str(agent["id"]))
     if not metered and agent["run_mode"] != "scheduled":
         return
     if catchup:
-        if await scoped_curation_service.workspace_for_agent(agent) is None:
+        if workspace is None:
             return
-        await scoped_curation_service.require_run_auth(agent)
+        await scoped_curation_service.require_run_auth(agent, workspace=workspace)
         owner = UUID(str(agent["user_id"]))
-        if not await billing_service.is_pro(owner) or not await curation_service.has_changes_since(
-            owner, owner, agent["curated_through"]
-        ):
+        if not await billing_service.is_pro(owner) or not await _pending_input(agent, workspace):
+            return
+        if not await agent_service.claim_catchup(agent_id, CURATOR_CATCHUP_PASSES - 1):
             return
     if full_history:
-        agent = {**agent, "curated_through": None}
+        agent = {**agent, "curated_through": None, "curation_cursor": {}}
     now = datetime.now(UTC)
     await agent_service.mark_run(agent_id, metered=metered)
-    workspace = None
     try:
-        workspace = await scoped_curation_service.workspace_for_agent(agent)
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
-        await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
+        await _run_turn(agent, now.strftime("%Y%m%d%H%M%S"), workspace)
         if workspace is None:
             through = await curation_service.complete_through(
                 UUID(str(agent["user_id"])), agent["curated_through"], now
@@ -119,30 +168,31 @@ async def _run_curator_now(
             return
         await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
         raise
-    await _dispatch_curator_catchup(agent, now, catchup_remaining)
+    await _dispatch_curator_catchup(agent, now, catchup_remaining, workspace=workspace)
 
 
 async def _skip_busy_curator(agent_id: UUID, *, metered: bool) -> None:
     """The active run owns the shared outcome; refund only this skipped charge."""
-    from ..database import get_pool
+    from ..services import agent_service
 
     if metered:
-        await get_pool().execute(
-            "UPDATE agents SET month_run_count=GREATEST(0,month_run_count-1) "
-            "WHERE id=$1 AND month_run_anchor=date_trunc('month',now())::date",
-            agent_id,
-        )
+        await agent_service.refund_run(agent_id)
     logger.info(
         "agent schedule: curator %s is already running; skipping overlapping pass", agent_id
     )
 
 
-async def _dispatch_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
+_WORKSPACE_UNSET = object()
+
+
+async def _dispatch_curator_catchup(
+    agent: dict, run_started: datetime, remaining: int, *, workspace=_WORKSPACE_UNSET
+) -> None:
     """A dispatch failure must not undo a successfully completed batch."""
     from ..services import alert_service
 
     try:
-        await _queue_curator_catchup(agent, run_started, remaining)
+        await _queue_curator_catchup(agent, run_started, remaining, workspace=workspace)
     except Exception:
         logger.exception("agent schedule: catch-up dispatch failed for agent %s", agent["id"])
         await alert_service.send_alert(
@@ -151,10 +201,14 @@ async def _dispatch_curator_catchup(agent: dict, run_started: datetime, remainin
         )
 
 
-async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: int) -> None:
+async def _queue_curator_catchup(
+    agent: dict, run_started: datetime, remaining: int, *, workspace=_WORKSPACE_UNSET
+) -> None:
     from ..services import agent_service, billing_service, scoped_curation_service
 
-    if remaining <= 0 or await scoped_curation_service.workspace_for_agent(agent) is None:
+    if workspace is _WORKSPACE_UNSET:
+        workspace = await scoped_curation_service.workspace_for_agent(agent)
+    if remaining <= 0 or workspace is None:
         return
     current = await agent_service.get_agent_by_id(UUID(str(agent["id"])))
     through = current["curated_through"]
@@ -163,10 +217,15 @@ async def _queue_curator_catchup(agent: dict, run_started: datetime, remaining: 
         current["run_mode"] != "scheduled"
         or current["last_run_outcome"] != "ran"
         or through is None
-        or through >= run_started
-        or (before is not None and through <= before)
+        or (
+            before is not None
+            and through <= before
+            and current.get("curation_cursor") == agent.get("curation_cursor")
+        )
         or not await billing_service.is_pro(UUID(str(current["user_id"])))
     ):
+        return
+    if not await _pending_input(current, workspace):
         return
     # Only successful, advancing, bounded batches can continue. No retry
     # chain on failure or permission revocation, and no paid personal runs.
@@ -218,7 +277,7 @@ async def _first_day_curator_tick(scope_user_id: UUID) -> None:
 
 
 async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: datetime) -> None:
-    from ..services import agent_auth, curation_service, scoped_curation_service
+    from ..services import agent_auth, scoped_curation_service
 
     if agent["run_mode"] != "scheduled":
         return
@@ -231,13 +290,12 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
         and agent["last_run_at"] > now - FIRST_DAY_DEBOUNCE
     ):
         return
+    workspace = await scoped_curation_service.workspace_for_agent(agent)
     try:
-        await scoped_curation_service.require_run_auth(agent)
+        await scoped_curation_service.require_run_auth(agent, workspace=workspace)
     except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
         return
-    if not await curation_service.has_changes_since(
-        scope_user_id, scope_user_id, agent["curated_through"]
-    ):
+    if not await _pending_input(agent, workspace):
         return
     # Unmetered: the platform is the trigger, so the run must not eat the
     # scope's free monthly curator allowance.
@@ -245,13 +303,10 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
 
 
 async def _run_due() -> int:
-    from ..config import settings
     from ..services import (
-        agent_auth,
         agent_service,
-        billing_service,
-        curation_service,
         scoped_curation_service,
+        sprite_agent_service,
     )
 
     now = datetime.now(UTC)
@@ -260,47 +315,56 @@ async def _run_due() -> int:
     for agent in await agent_service.list_scheduled():
         if not _is_due(agent["schedule_cron"], agent["last_run_at"], now):
             continue
-        user_id = UUID(str(agent["user_id"]))
-        # Consume the tick up front so a skipped, slow, or failing run can't be
-        # re-fired by the next beat. The curator's delta watermark is separate
-        # (curated_through) and only advances after a successful run, so a
-        # skipped or failed run never discards un-curated changes.
-        month_runs = await agent_service.mark_run(agent["id"])
-        # Sleep-time compute is metered: free accounts get a monthly curator
-        # allowance; Pro and enterprise are unlimited.
-        if (
-            agent["is_curator"]
-            and month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH
-            and not await billing_service.is_pro(user_id)
-        ):
-            logger.info("agent schedule: curator credits exhausted for user %s — skipping", user_id)
-            await agent_service.mark_run_skipped(agent["id"], "credits")
-            continue
-        # No runnable credential (unconnected free user) → nothing can run.
+        workspace = await scoped_curation_service.workspace_for_agent(agent)
         try:
-            await scoped_curation_service.require_run_auth(agent)
-        except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
-            logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
-            await agent_service.mark_run_skipped(agent["id"], "no_credential")
+            async with _run_lock(agent, workspace):
+                agent = await agent_service.get_agent_by_id(UUID(str(agent["id"])))
+                if _is_due(agent["schedule_cron"], agent["last_run_at"], now):
+                    dispatched += await _dispatch_due_agent(agent, stamp, workspace)
+        except sprite_agent_service.TurnInProgress:
             continue
-        # Cost gate: skip the curator (and the sprite wake) when nothing changed
-        # since its watermark. Idle users cost one EXISTS per day.
-        if agent["is_curator"] and not await curation_service.has_changes_since(
-            user_id, user_id, agent["curated_through"]
-        ):
-            await agent_service.mark_run_skipped(agent["id"], "no_changes")
-            continue
-        run_scheduled_agent.delay(str(agent["id"]), stamp)
-        dispatched += 1
     return dispatched
 
 
+async def _dispatch_due_agent(agent, stamp, workspace):
+    from ..config import settings
+    from ..services import agent_auth, agent_service, billing_service, scoped_curation_service
+
+    user_id = UUID(str(agent["user_id"]))
+    # Consume the tick up front so a skipped, slow, or failing run can't be
+    # re-fired by the next beat. The curator's delta watermark is separate
+    # (curated_through) and only advances after a successful run, so a
+    # skipped or failed run never discards un-curated changes.
+    month_runs = await agent_service.mark_run(agent["id"])
+    # Sleep-time compute is metered: free accounts get a monthly curator
+    # allowance; Pro and enterprise are unlimited.
+    if (
+        agent["is_curator"]
+        and month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH
+        and not await billing_service.is_pro(user_id)
+    ):
+        logger.info("agent schedule: curator credits exhausted for user %s — skipping", user_id)
+        await agent_service.mark_run_skipped(agent["id"], "credits")
+        return 0
+    # No runnable credential (unconnected free user) → nothing can run.
+    try:
+        await scoped_curation_service.require_run_auth(agent, workspace=workspace)
+    except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
+        logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
+        await agent_service.mark_run_skipped(agent["id"], "no_credential")
+        return 0
+    # Cost gate: skip the curator (and the sprite wake) when nothing changed
+    # since its watermark. Idle users cost one EXISTS per day.
+    if agent["is_curator"] and not await _pending_input(agent, workspace):
+        await agent_service.mark_run_skipped(agent["id"], "no_changes")
+        return 0
+    run_scheduled_agent.delay(str(agent["id"]), stamp)
+    return 1
+
+
 async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
-    from ..database import get_pool
     from ..services import (
         agent_service,
-        alert_service,
-        curation_service,
         scoped_curation_service,
         sprite_agent_service,
     )
@@ -312,14 +376,26 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         # agent row left to record a failure on.
         logger.info("agent schedule: agent %s deleted before its run", agent_id)
         return
+    workspace = await scoped_curation_service.workspace_for_agent(agent)
+    try:
+        async with _run_lock(agent, workspace):
+            agent = await agent_service.get_agent_by_id(agent_id)
+            await _run_scheduled_locked(agent, stamp, workspace)
+    except sprite_agent_service.TurnInProgress:
+        await _skip_busy_curator(agent_id, metered=True)
+
+
+async def _run_scheduled_locked(agent, stamp, workspace):
+    from ..database import get_pool
+    from ..services import agent_service, alert_service, curation_service, sprite_agent_service
+
+    agent_id = UUID(str(agent["id"]))
     if agent["run_mode"] != "scheduled":
         return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
-    workspace = None
     try:
-        workspace = await scoped_curation_service.workspace_for_agent(agent)
-        await sprite_agent_service.run_scheduled(agent, stamp)
+        await _run_turn(agent, stamp, workspace)
         if agent["is_curator"] and workspace is None:
             # `now` predates the run, so changes made during it stay ahead of
             # the watermark and are picked up next time. If the delta
@@ -343,7 +419,7 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
         )
     else:
-        await _dispatch_curator_catchup(agent, now, CURATOR_CATCHUP_PASSES - 1)
+        await _dispatch_curator_catchup(agent, now, CURATOR_CATCHUP_PASSES - 1, workspace=workspace)
 
 
 # Pending input older than this is stale even when individual batches succeed.
@@ -364,12 +440,13 @@ async def _alert_stale_curators() -> int:
     also qualify. Designed skips resolve explicitly and stay quiet.
     """
     from ..database import get_pool
-    from ..services import alert_service, curation_service
+    from ..services import alert_service
 
-    cutoff = datetime.now(UTC) - timedelta(hours=STALE_CURATOR_HOURS)
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=STALE_CURATOR_HOURS)
     rows = await get_pool().fetch(
         """
-        SELECT a.user_id, a.curated_through, a.last_run_error, a.last_run_outcome, u.email
+        SELECT a.*, u.email
         FROM agents a JOIN users u ON u.id = a.user_id
         WHERE a.is_curator AND a.run_mode = 'scheduled'
           AND a.curated_through IS NOT NULL AND a.curated_through < $1
@@ -377,22 +454,31 @@ async def _alert_stale_curators() -> int:
         """,
         cutoff,
     )
-    stale = [
-        r
-        for r in rows
-        if await curation_service.has_changes_since(
-            r["user_id"], r["user_id"], r["curated_through"]
-        )
-    ]
+    from ..services import scoped_curation_service
+
+    stale = []
+    for row in rows:
+        # Allow a slow cron its next scheduled run plus a day's grace. A daily
+        # curator with an old undrained backlog still alerts after 48 hours.
+        if row["last_run_outcome"] == "ran":
+            try:
+                due = croniter(row["schedule_cron"], row["curated_through"]).get_next(datetime)
+                if now < due + timedelta(hours=24):
+                    continue
+            except (ValueError, KeyError, TypeError):
+                pass
+        workspace = await scoped_curation_service.workspace_for_agent(dict(row))
+        if await _pending_input(dict(row), workspace):
+            stale.append(row)
     if not stale:
         return 0
     lines = []
     for row in stale:
-        outcome = (
-            "backlog remains after a successful batch"
-            if row["last_run_outcome"] == "ran"
-            else "run started but never resolved"
-        )
+        outcome = {
+            "ran": "backlog remains after a successful batch",
+            "failed": "last run failed without an error message",
+            "started": "run started but never resolved",
+        }[row["last_run_outcome"]]
         detail = row["last_run_error"] or outcome
         lines.append(
             f"- {row['email']}: last curated {row['curated_through']:%Y-%m-%d %H:%M} UTC "
