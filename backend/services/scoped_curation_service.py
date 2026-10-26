@@ -134,6 +134,8 @@ def system_prompt(purpose: str) -> str:
         "just to add a lesson or an index entry. Write focused new pages for new topics. "
         "Do not spend turns re-verifying unrelated existing wiki pages or rewriting unchanged content. "
         "Keep each response concise. "
+        "Only edit pages marked writable=true. Read-only shared knowledge is reference "
+        "material; put any user-specific additions in your own writable wiki. "
         "Before creating a page, search for its title. Read and update an existing writable "
         "page using its page_id rather than creating another page with the same title. "
         "Keep index entries short. Put new lessons in focused pages rather than continually "
@@ -218,6 +220,7 @@ class CurationScope:
                 content = self.documents[args.document_id]["content"]
                 end = args.offset + _READ_CHARS
                 return {
+                    "writable": self.documents[args.document_id]["writable"],
                     "content": content[args.offset : end],
                     "total_characters": len(content),
                     "next_offset": end if end < len(content) else None,
@@ -225,8 +228,17 @@ class CurationScope:
             if name == "edit_page":
                 edit = Edit.model_validate(arguments)
                 if edit.page_id not in self.writable:
-                    raise PermissionError("Page is outside this curator's writable wiki")
+                    return {
+                        "error": "Page is outside this curator's writable wiki. "
+                        "No changes were made. Choose a page marked writable=true, "
+                        "or create a new page in your own wiki."
+                    }
                 document = self.documents[str(edit.page_id)]
+                if document["title"].casefold() in {"log", "changelog"}:
+                    return {
+                        "error": "Curator audit logs cannot be published as knowledge. "
+                        "Choose a knowledge page instead."
+                    }
                 occurrences = document["content"].count(edit.old_text)
                 if occurrences != 1:
                     return {
@@ -239,7 +251,10 @@ class CurationScope:
                     return {"error": "An edit cannot erase the entire page."}
                 return await self.write(
                     conn,
-                    Write(
+                    # Only the small edit payload comes from the model. The
+                    # server retains the existing title and surrounding text,
+                    # which may exceed the create/replace output limits.
+                    Write.model_construct(
                         page_id=edit.page_id,
                         title=document["title"],
                         content=content,
@@ -248,6 +263,12 @@ class CurationScope:
                 )
             if name == "write_page":
                 args = Write.model_validate(arguments)
+                if args.page_id is not None and args.page_id not in self.writable:
+                    return {
+                        "error": "Page is outside this curator's writable wiki. "
+                        "No changes were made. Choose a page marked writable=true, "
+                        "or create a new page in your own wiki."
+                    }
                 try:
                     # A model can try to create an existing index, or rename a
                     # page over another page. Roll back only that tool call so

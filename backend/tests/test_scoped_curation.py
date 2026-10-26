@@ -140,10 +140,10 @@ async def test_private_curator_reads_own_material_and_shared_knowledge_only(data
     assert "ALLOWED_SHARED_KNOWLEDGE" in corpus
     assert "ALLOWED_TRANSCRIPT" not in corpus and "PUBLIC_WIKI_SECRET" not in corpus
     for page in (dataset.shared, dataset.pages["public"]):
-        with pytest.raises(PermissionError):
-            await private.tool(
-                "write_page", {"page_id": str(page), "title": "Leak", "content": "SECRET"}
-            )
+        denied = await private.tool(
+            "write_page", {"page_id": str(page), "title": "Leak", "content": "SECRET"}
+        )
+        assert "outside" in denied["error"]
     with pytest.raises(ValidationError):
         await private.tool(
             "write_page",
@@ -170,11 +170,11 @@ async def test_model_can_write_only_its_fixed_destination(dataset, pool):
         "write_page",
         {"page_id": str(page["id"]), "title": "Maintenance", "content": "Updated SECRET_RECORD"},
     )
-    with pytest.raises(PermissionError):
-        shared = await scope(dataset, "shared")
-        await shared.tool(
-            "write_page", {"page_id": str(page["id"]), "title": "Public", "content": "SECRET"}
-        )
+    shared = await scope(dataset, "shared")
+    denied = await shared.tool(
+        "write_page", {"page_id": str(page["id"]), "title": "Public", "content": "SECRET"}
+    )
+    assert "outside" in denied["error"]
 
 
 @pytest.mark.asyncio
@@ -855,15 +855,15 @@ async def test_edit_cannot_overwrite_a_concurrent_human_edit(dataset, pool):
 @pytest.mark.asyncio
 async def test_edit_enforces_writable_scope_and_permission_revocation(dataset):
     private = await scope(dataset, "private")
-    with pytest.raises(PermissionError):
-        await private.tool(
-            "edit_page",
-            {
-                "page_id": str(dataset.shared),
-                "old_text": "ALLOWED_SHARED_KNOWLEDGE",
-                "new_text": "Bad edit",
-            },
-        )
+    denied = await private.tool(
+        "edit_page",
+        {
+            "page_id": str(dataset.shared),
+            "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+            "new_text": "Bad edit",
+        },
+    )
+    assert "outside" in denied["error"]
     shared = await scope(dataset, "shared")
     await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
     with pytest.raises(PermissionError):
@@ -928,3 +928,120 @@ async def test_text_edit_preserves_a_concurrent_title_only_change(dataset, pool)
     assert row["name"] == "Human title"
     assert row["content_markdown"] == "Updated knowledge"
     assert shared.documents[str(dataset.shared)]["title"] == "Human title"
+
+
+@pytest.mark.asyncio
+async def test_small_edit_supports_existing_large_page_and_long_human_title(dataset, pool):
+    title = "H" * 250
+    content = "Existing detail.\n" * 10000 + "Unique ending."
+    await pool.execute(
+        "UPDATE pages SET name=$2,content_markdown=$3 WHERE id=$1", dataset.shared, title, content
+    )
+    shared = await scope(dataset, "shared")
+    await shared.tool(
+        "edit_page",
+        {
+            "page_id": str(dataset.shared),
+            "old_text": "Unique ending.",
+            "new_text": "Unique ending. New lesson.",
+        },
+    )
+    row = await pool.fetchrow("SELECT name,content_markdown FROM pages WHERE id=$1", dataset.shared)
+    assert row["name"] == title
+    assert row["content_markdown"] == content + " New lesson."
+
+
+@pytest.mark.asyncio
+async def test_editing_reserved_log_returns_recoverable_error(dataset, pool):
+    await pool.execute("UPDATE pages SET name='Changelog' WHERE id=$1", dataset.shared)
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(
+        "edit_page",
+        {
+            "page_id": str(dataset.shared),
+            "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+            "new_text": "Audit output",
+        },
+    )
+    assert "error" in result
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["edit_page", "write_page"])
+async def test_model_recovers_from_readonly_write_without_changing_shared_page(
+    dataset, pool, monkeypatch, sprite_exec, tool_name
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    private = await scope(dataset, "private", "private")
+    read = await private.tool("read_document", {"document_id": str(dataset.shared)})
+    assert read["writable"] is False
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            args = (
+                {"old_text": "ALLOWED_SHARED_KNOWLEDGE", "new_text": "PRIVATE detail"}
+                if tool_name == "edit_page"
+                else {"title": "Index", "content": "PRIVATE detail"}
+            )
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="denied",
+                        name=tool_name,
+                        input={"page_id": str(dataset.shared), **args},
+                    )
+                ],
+            )
+        if calls == 2:
+            result = kwargs["messages"][-1]["content"][0]
+            assert result["is_error"] and "outside" in result["content"]
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="allowed",
+                        name="edit_page",
+                        input={
+                            "page_id": str(dataset.pages["private"]),
+                            "old_text": "PRIVATE_WIKI_SECRET",
+                            "new_text": "PRIVATE_WIKI_SECRET with new detail",
+                        },
+                    )
+                ],
+            )
+        assert not kwargs["messages"][-1]["content"][0]["is_error"]
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Updated private wiki.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    assert await curation.run_scope(private, None) == "Updated private wiki."
+    assert calls == 3
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "ALLOWED_SHARED_KNOWLEDGE"
+    )
+    assert (
+        await pool.fetchval("SELECT count(*) FROM page_edits WHERE page_id=$1", dataset.shared) == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE id=$1", dataset.pages["private"]
+        )
+        == "PRIVATE_WIKI_SECRET with new detail"
+    )
