@@ -558,6 +558,104 @@ async def test_repeated_invalid_arguments_still_exhaust_the_turn_limit(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("empty_text", [None, " \n\t"])
+async def test_empty_completion_continues_without_replaying_saved_write(
+    dataset, pool, monkeypatch, sprite_exec, empty_text
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="saved-edit",
+                        name="edit_page",
+                        input={
+                            "page_id": str(dataset.shared),
+                            "old_text": "ALLOWED_SHARED_KNOWLEDGE",
+                            "new_text": "Saved knowledge",
+                        },
+                    )
+                ],
+            )
+        if calls == 2:
+            assert not kwargs["messages"][-1]["content"][0]["is_error"]
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                content=[] if empty_text is None else [TextBlock(type="text", text=empty_text)],
+            )
+        assert calls == 3
+        messages = kwargs["messages"]
+        assert messages[-1]["role"] == "user"
+        assert "summary" in messages[-1]["content"]
+        assert messages[-2]["content"][0]["tool_use_id"] == "saved-edit"
+        assert all(message["content"] for message in messages)
+        assert await pool.fetchval("SELECT count(*) FROM page_edits") == 1
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Updated wiki.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    assert await curation.run_scope(await scope(dataset, "shared"), None) == "Updated wiki."
+    assert calls == 3
+    assert await pool.fetchval("SELECT count(*) FROM page_edits") == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("turn_limit", [1, 40])
+async def test_empty_completion_retry_is_bounded(dataset, monkeypatch, sprite_exec, turn_limit):
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(stop_reason="end_turn", content=[])
+
+    monkeypatch.setattr(curation, "_MAX_TURNS", turn_limit)
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    error = RuntimeError if turn_limit == 1 else ValueError
+    with pytest.raises(error, match="exhausted its tool turns|no completion summary"):
+        await curation.run_scope(await scope(dataset, "shared"), None)
+    assert calls == min(turn_limit, 2)
+
+
+@pytest.mark.asyncio
+async def test_empty_completion_does_not_retry_after_optout(dataset, monkeypatch, sprite_exec):
+    shared = await scope(dataset, "shared")
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
+        return SimpleNamespace(stop_reason="end_turn", content=[])
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    with pytest.raises(PermissionError, match="permissions changed"):
+        await curation.run_scope(shared, None)
+    assert calls == 1
+
+
+@pytest.mark.asyncio
 async def test_truncated_response_cannot_execute_partial_page_writes(
     dataset, pool, monkeypatch, sprite_exec
 ):
@@ -1385,8 +1483,9 @@ async def test_large_files_and_sources_resume_without_skipping_or_unbounded_inpu
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["exception", "empty_completion"])
 async def test_cursor_is_committed_only_after_all_scopes_succeed(
-    dataset, pool, monkeypatch, sprite_exec
+    dataset, pool, monkeypatch, sprite_exec, failure
 ):
     from backend.services import agent_service, sprite_agent_service
 
@@ -1402,6 +1501,7 @@ async def test_cursor_is_committed_only_after_all_scopes_succeed(
         seen.append(scope)
         return "Curated supplied chunk."
 
+    real_run_scope = curation.run_scope
     monkeypatch.setattr(curation, "run_scope", completed)
     agent = await agent_service.get_agent_by_id(UUID(agent["id"]))
     await sprite_agent_service.run_scheduled(agent, "chunk-one")
@@ -1412,9 +1512,26 @@ async def test_cursor_is_committed_only_after_all_scopes_succeed(
     async def failed(*args):
         raise RuntimeError("Model unavailable")
 
-    monkeypatch.setattr(curation, "run_scope", failed)
-    with pytest.raises(ExceptionGroup):
+    if failure == "empty_completion":
+
+        async def create(**kwargs):
+            return SimpleNamespace(stop_reason="end_turn", content=[])
+
+        monkeypatch.setattr(curation, "run_scope", real_run_scope)
+        monkeypatch.setattr(
+            curation.llm,
+            "_get_client",
+            lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+        )
+    else:
+        monkeypatch.setattr(curation, "run_scope", failed)
+    with pytest.raises(ExceptionGroup) as errors:
         await sprite_agent_service.run_scheduled(before, "chunk-two")
+    if failure == "empty_completion":
+        assert all(
+            isinstance(error, ValueError) and "no completion summary" in str(error)
+            for error in errors.value.exceptions
+        )
     after = await agent_service.get_agent_by_id(UUID(agent["id"]))
     assert (after["curated_through"], after["curation_cursor"]) == (
         before["curated_through"],

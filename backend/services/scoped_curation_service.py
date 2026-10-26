@@ -542,6 +542,7 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
     if instructions is not None:
         system += "\n" + instructions
     truncated_responses = 0
+    empty_completions = 0
     for turn in range(_MAX_TURNS):
         async with get_pool().acquire() as conn:
             await scope.check(conn)
@@ -566,7 +567,26 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
                 await scope.check(conn)
             summary = "\n".join(b.text for b in response.content if b.type == "text")
             if not summary.strip():
-                raise ValueError("Curator returned no completion summary")
+                if empty_completions:
+                    raise ValueError("Curator returned no completion summary after continuation")
+                empty_completions += 1
+                logger.warning(
+                    "curator scope=%s turn=%s empty_completion; requesting continuation",
+                    scope.destination,
+                    turn + 1,
+                )
+                # Keep completed tool results; neither replay writes nor append an
+                # empty assistant message. This continuation consumes a normal turn.
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Your last response contained no completion summary. "
+                        "Continue from the tool results above without repeating saved changes. "
+                        "Process any remaining listed input, then finish with a short, nonempty "
+                        "summary of what you changed or why no wiki changes were needed.",
+                    }
+                )
+                continue
             return summary
         if response.stop_reason == "max_tokens" and truncated_responses == 0:
             # Never execute or replay a partial tool payload. Give the model
