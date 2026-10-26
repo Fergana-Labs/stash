@@ -18,7 +18,7 @@ from typing import Literal
 from uuid import UUID
 
 import asyncpg
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..config import settings
 from ..database import get_pool
@@ -61,6 +61,14 @@ class Edit(BaseModel):
     page_id: UUID
     old_text: str = Field(min_length=1, max_length=16_000)
     new_text: str = Field(max_length=16_000)
+
+
+_TOOL_ARGUMENTS = {
+    "search_documents": Search,
+    "read_document": Read,
+    "edit_page": Edit,
+    "write_page": Write,
+}
 
 
 _TOOLS = [
@@ -233,8 +241,23 @@ class CurationScope:
     async def tool(self, name: str, arguments: dict) -> dict:
         async with get_pool().acquire() as conn, conn.transaction():
             await self.check(conn)
+            schema = _TOOL_ARGUMENTS.get(name)
+            if schema is None:
+                raise PermissionError("Tool is not available to this curator")
+            try:
+                args = schema.model_validate(arguments)
+            except ValidationError as exc:
+                # Only model-supplied arguments are recoverable. Permission,
+                # database and internal validation failures must still abort.
+                return {
+                    "error": "Invalid tool arguments; no changes were made. Correct the fields "
+                    "below and retry. Copy page/document IDs exactly from search_documents.",
+                    "fields": [
+                        {"field": ".".join(map(str, error["loc"])), "message": error["msg"]}
+                        for error in exc.errors(include_input=False, include_url=False)[:10]
+                    ],
+                }
             if name == "search_documents":
-                args = Search.model_validate(arguments)
                 matches = [
                     {
                         "id": key,
@@ -247,7 +270,6 @@ class CurationScope:
                 ]
                 return {"documents": matches[args.offset : args.offset + 40], "total": len(matches)}
             if name == "read_document":
-                args = Read.model_validate(arguments)
                 if args.document_id not in self.documents:
                     return {
                         "error": "Document is unavailable in this scope. "
@@ -262,7 +284,7 @@ class CurationScope:
                     "next_offset": end if end < len(content) else None,
                 }
             if name == "edit_page":
-                edit = Edit.model_validate(arguments)
+                edit = args
                 if edit.page_id not in self.writable:
                     return {
                         "error": "Page is outside this curator's writable wiki. "
@@ -298,7 +320,6 @@ class CurationScope:
                     preserve_title=True,
                 )
             if name == "write_page":
-                args = Write.model_validate(arguments)
                 if args.page_id is not None and args.page_id not in self.writable:
                     return {
                         "error": "Page is outside this curator's writable wiki. "

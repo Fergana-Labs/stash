@@ -144,16 +144,17 @@ async def test_private_curator_reads_own_material_and_shared_knowledge_only(data
             "write_page", {"page_id": str(page), "title": "Leak", "content": "SECRET"}
         )
         assert "outside" in denied["error"]
-    with pytest.raises(ValidationError):
-        await private.tool(
-            "write_page",
-            {
-                "page_id": None,
-                "title": "Leak",
-                "content": "SECRET",
-                "folder_id": str(dataset.workspace["external_wiki_folder_id"]),
-            },
-        )
+    denied = await private.tool(
+        "write_page",
+        {
+            "page_id": None,
+            "title": "Leak",
+            "content": "SECRET",
+            "folder_id": str(dataset.workspace["external_wiki_folder_id"]),
+        },
+    )
+    assert "Invalid tool arguments" in denied["error"]
+    assert denied["fields"][0]["field"] == "folder_id"
 
 
 @pytest.mark.asyncio
@@ -422,6 +423,138 @@ async def test_denied_lookup_is_an_explicit_tool_error_without_protected_content
     result = requests[1]["messages"][-1]["content"][0]
     assert result["is_error"] and "unavailable" in result["content"]
     assert "SECRET_TRANSCRIPT" not in json.dumps(requests)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["edit_page", "write_page"])
+async def test_model_corrects_malformed_page_id_without_aborting_scope(
+    dataset, pool, monkeypatch, sprite_exec, tool_name
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    shared = await scope(dataset, "shared")
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            result = kwargs["messages"][-1]["content"][0]
+            assert result["is_error"]
+            assert "page_id" in result["content"] and "UUID" in result["content"]
+            assert await pool.fetchval("SELECT count(*) FROM page_edits") == 0
+        if calls <= 2:
+            arguments = (
+                {"old_text": "ALLOWED_SHARED_KNOWLEDGE", "new_text": "Corrected knowledge"}
+                if tool_name == "edit_page"
+                else {"title": "Index", "content": "Corrected knowledge"}
+            )
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id=f"edit-{calls}",
+                        name=tool_name,
+                        input={
+                            "page_id": "d792f10c-d6ac40fe-a73d-f5a2e493a3df"
+                            if calls == 1
+                            else str(dataset.shared),
+                            **arguments,
+                        },
+                    )
+                ],
+            )
+        assert not kwargs["messages"][-1]["content"][0]["is_error"]
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="Done.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    assert await curation.run_scope(shared, None) == "Done."
+    assert calls == 3
+    assert await pool.fetchval("SELECT count(*) FROM page_edits") == 1
+    assert (
+        await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", dataset.shared)
+        == "Corrected knowledge"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "arguments", "field"),
+    [
+        ("search_documents", {"query": "", "offset": -1}, "offset"),
+        ("read_document", {}, "document_id"),
+        ("edit_page", {"page_id": "bad", "old_text": "old", "new_text": "new"}, "page_id"),
+        ("write_page", {"page_id": None, "title": "", "content": "SECRET"}, "title"),
+    ],
+)
+async def test_invalid_tool_arguments_return_errors_without_writes(
+    dataset, pool, name, arguments, field
+):
+    shared = await scope(dataset, "shared")
+    result = await shared.tool(name, arguments)
+    assert "Invalid tool arguments" in result["error"]
+    assert any(error["field"] == field for error in result["fields"])
+    assert "SECRET" not in json.dumps(result)
+    assert await pool.fetchval("SELECT count(*) FROM page_edits") == 0
+    assert "documents" in await shared.tool("search_documents", {"query": ""})
+
+
+@pytest.mark.asyncio
+async def test_invalid_tool_arguments_do_not_mask_revoked_permissions(dataset):
+    shared = await scope(dataset, "shared")
+    await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
+    with pytest.raises(PermissionError):
+        await shared.tool("edit_page", {"page_id": "bad"})
+
+
+@pytest.mark.asyncio
+async def test_tool_argument_recovery_does_not_swallow_internal_validation_failure(
+    dataset, monkeypatch
+):
+    shared = await scope(dataset, "shared")
+
+    async def broken_write(*args, **kwargs):
+        curation.Search.model_validate({"query": []})
+
+    monkeypatch.setattr(shared, "write", broken_write)
+    with pytest.raises(ValidationError):
+        await shared.tool("write_page", {"page_id": None, "title": "Valid", "content": "Valid"})
+
+
+@pytest.mark.asyncio
+async def test_repeated_invalid_arguments_still_exhaust_the_turn_limit(
+    dataset, monkeypatch, sprite_exec
+):
+    from anthropic.types import ToolUseBlock
+
+    calls = 0
+
+    async def create(**kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(
+            stop_reason="tool_use",
+            content=[
+                ToolUseBlock(type="tool_use", id=f"bad-{calls}", name="read_document", input={})
+            ],
+        )
+
+    monkeypatch.setattr(curation, "_MAX_TURNS", 2)
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    with pytest.raises(RuntimeError, match="exhausted its tool turns"):
+        await curation.run_scope(await scope(dataset, "shared"), None)
+    assert calls == 2
 
 
 @pytest.mark.asyncio
