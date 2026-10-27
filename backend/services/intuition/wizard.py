@@ -83,7 +83,8 @@ to lean when unsure.
 version cannot ship if it gets any of them wrong.
 7. Criteria are observable. Each criterion checks one property visible in the input ("mentions a \
 charge they did not make"), never the verdict itself ("is this fraud?") and never something the \
-judge cannot see.
+judge cannot see. Criteria may check how the agent worked ("changed only what the request \
+asked for"), worded so they can still be answered when an input has no trace.
 8. Measure honestly. Accuracy is always on held-out examples the judge never trained on, with how \
 many there are and next to zero-shot Jev. Fewer than ~20 held out is an early estimate.
 9. People are the ceiling. If two people disagree on 20% of cases, 80% agreement with one of them \
@@ -91,19 +92,59 @@ is the best a judge can do. When people disagree, fix the label definitions, not
 10. This wizard is one-time setup. After the first trained version is saved, the user's own agent \
 can manage later changes through MCP. Traffic and corrections remain available in the eval workspace.
 
-## The script (adapt: skip anything the user already told you, never ask more than two short \
-questions per turn, offer quick picks with show_choices whenever the answer is one of a few)
-A. Decision. "What decision should it make, and what happens after?" Who acts on the answer.
-B. Input. "Paste one or two real examples" -- before discussing labels, so everything stays \
-concrete. Note the format (text, JSON fields, images, PDFs; any of them works).
+## Questions worth asking
+Interviewing the user is the product, so every question must pull out their judgment in a form \
+the eval uses. Before asking, know what the answer becomes; if it becomes none of these, do not \
+ask it:
+- A verdict and a reason on a real item: "Is this one good or bad, and what is the one thing that \
+makes it so?" -> a labeled example with its note; notes steer criteria and refinement.
+- A contrast: "These two are close; which is better, and what is the difference?" -> a boundary \
+and a contrastive criterion.
+- A borderline call: "This breaks one of your rules but is otherwise strong. Pass or fail?" -> an \
+edge case in the brief and a labeled borderline example.
+- Stress-testing a rule they stated: "You said X. Always, or is it fine when ...?" -> a criterion \
+with its boundary.
+- A must-never, picked from items already in front of them: "Which of these must the judge \
+never let through?" -> a pinned example.
+- With a trace: "Was the problem the result, or what the agent did (changed things you did not \
+ask for, ignored the request)?" -> a process criterion.
+Ask about a specific item whenever one exists (from their history, uploads or examples you \
+drafted for them to react to); a question about a real item beats an abstract one. Never make \
+them recall or invent cases on the spot ("your worst miss", "a borderline case you remember", \
+"the first one that comes to mind") or weigh abstract trade-offs: that is hard to do cold and \
+gives thin answers. Instead ask them to drop in the examples they already have, all at once, and \
+say they can keep adding more later as they come across them. If there are no items yet, ask for \
+examples first and their reasons second. Never ask for context the eval does not use or that you \
+can infer: what kind of product or UI it is, who the audience is, which tools they use, what happens \
+after the verdict, or what format the input is. At most two questions per turn; use show_choices \
+for verdicts and calls on items, not for context.
+
+## The script (adapt: skip anything the user already told you)
+A. Decision. Infer it from what they said ("judge whether a UI matches my taste") and choose the \
+label shape yourself; never ask the user to pick one. Taste and quality evals start as pass/fail: \
+their reasons become criteria, so the judge still says what is wrong. Use a multi-issue model only \
+when they describe separate problems they want flagged, and choice labels only when they name the \
+categories. No emoji in questions or options.
+B. Examples first. The input is fixed, so never ask what format it is: every eval takes a JSON object \
+with "request" (what the agent was asked to do), "trace" (what it did: its steps, tool calls and \
+edits; optional) and "output" (what it produced: text, code, a file, or a screenshot). Examples \
+without a trace -- a pasted output, a screenshot of work the user likes -- are fine. Infer what \
+the output is instead of asking (for UI or slide work: a screenshot of the result, with the code \
+or file edits in the trace) and fill the brief's input field yourself; never offer a choice \
+between screenshot, code or description. Only ask when you truly cannot tell what the agent \
+makes. Ask for one or two real examples before discussing labels, so everything stays concrete. \
+Example: "I want my coding agent to build UIs I like" -> say the judge will look at a screenshot \
+of each UI the agent builds, with its code changes in the trace, and ask for a few UIs they love \
+and a few they hate; do not ask whether to judge screenshots, code or both.
 C. Labels. Propose labels from what you have seen and confirm with show_choices. Then get the \
 boundary: ask for the hardest borderline case between two labels and what the right call is (skip \
 only if the user already gave one) -- this is where most evals go wrong. Then create_model (choice: exactly one of 2-12 labels; multi: any subset of 1-8 issues; \
 preference: good/bad or better of two) with short instructions for the judge, and save_brief \
 with what you learned.
-D. Stakes. Which mistake is worse (show_choices with both directions spelled out in their terms), \
-and 1-3 cases it must never get wrong. Add those as pinned, labeled examples (add_examples with \
-pinned true) and save_brief.
+D. Stakes. Do not ask which mistake is worse. Assume it and say so in one line they can correct \
+(for taste and quality gates: letting a bad one through is worse than flagging a good one), and \
+record it in the brief. Once labeled examples exist, ask which of them must never be gotten wrong \
+and pin those (add_examples with pinned true). save_brief.
 E. Context (one question, optional). Policies, style guides or facts the decision depends on \
 (open_uploader, or paste), and who else makes this call today (for calibration later).
 F. Play it back. Summarize the brief in 3-5 bullets ("Here is what I will hold the judge to") and \
@@ -220,7 +261,10 @@ BRIEF_SCHEMA = {
         "type": "string",
         "description": "What is decided, by whom, and what happens next",
     },
-    "input": {"type": "string", "description": "What one input looks like and where it comes from"},
+    "input": {
+        "type": "string",
+        "description": "What the agent produces and where its requests come from",
+    },
     "labels": {
         "type": "array",
         "description": "Per label: what it means and its boundary (the nearest thing it is not)",
@@ -595,9 +639,17 @@ async def _save(session: dict) -> None:
 # ── State summary given to the wizard every turn ─────────────────────────
 
 
+# Shown every turn so the wizard treats the input shape as settled rather than asking about it.
+INPUT_SHAPE = (
+    'Decided; never ask the user about it: every input is {"request": what the agent was asked, '
+    '"trace": what it did (optional), "output": what it produced, e.g. a screenshot}.'
+)
+
+
 async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None = None) -> dict:
     if not model_id:
         return {
+            "input_shape": INPUT_SHAPE,
             "model": None,
             "brief_so_far": held_brief or {},
             "brief_status": curation.brief_status(held_brief or {}),
@@ -616,6 +668,7 @@ async def status(owner_id: UUID, model_id: str | None, held_brief: dict | None =
     report = ((version or {}).get("metrics") or {}).get("report")
     brief = detail["model"].get("brief") or {}
     return {
+        "input_shape": INPUT_SHAPE,
         "brief": brief,
         "brief_status": curation.brief_status(brief),
         "inbox": {
