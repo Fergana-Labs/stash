@@ -48,6 +48,7 @@ KEEP_RIGHT = 8  # examples the current rubric gets right that a candidate is che
 MAX_TRAITS = 10  # traits a model writes
 MAX_RUBRIC = 12  # traits in a rubric, counting the person's own; the editor's limit too
 CONCURRENCY = 4
+MIN_GRADED = 0.8  # share of the examples a rubric is tried on that the judge must grade
 SAID = 40
 NOTES = 40
 
@@ -110,6 +111,16 @@ def tally(examples: list[dict], grades: dict) -> dict:
         "agreement": round(n_right / len(scored), 3) if scored else None,
         "good_above_bad": round(sum(pairs) / len(pairs), 3) if pairs else None,
     }
+
+
+def _enough(examples: list[dict], grades: dict) -> None:
+    """Stop the build, leaving the rubric as it is, unless the judge graded most of `examples`:
+    with the judge unreachable, a comparison would rest on the few grades that got through."""
+    graded = sum(e["id"] in grades for e in examples)
+    if graded < MIN_GRADED * len(examples):
+        raise judge.JudgeUnavailable(
+            f"The judge graded {graded} of {len(examples)} examples; the rubric is unchanged"
+        )
 
 
 def _both(examples: list[dict], a: dict, b: dict) -> list[dict]:
@@ -457,6 +468,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
 
     await progress("checking", 0, len(measured))
     current = await grades(model_id, version, measured, checking)
+    _enough(measured, current)
     other = "lowest" if version["scoring"] == "mean" else "mean"
     alt = rescore(current, other)
     gain = tally(fit, alt)["right"] - tally(fit, current)["right"]
@@ -525,6 +537,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
         }
         # The misses first: a rubric that fixes none of them isn't worth grading further.
         new_grades = await grades(model_id, candidate, wrong)
+        _enough(wrong, new_grades)
         fixed = sum(right(e, new_grades[e["id"]]) for e in wrong if e["id"] in new_grades)
         if fixed == 0:
             tried.append(_tried(changes, 0, len(wrong)))
@@ -532,6 +545,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             continue
         keep = sample(correct, KEEP_RIGHT, f"{seed}:{n}")
         new_grades |= await grades(model_id, candidate, keep + check)
+        _enough(wrong + keep + check, new_grades)
         on_fit = _both(wrong + keep, current, new_grades)
         on_check = _both(check, current, new_grades)
         gained = tally(on_fit, new_grades)["right"] > tally(on_fit, current)["right"]
@@ -544,6 +558,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             continue
         # Kept: measure it on everything the current rubric was measured on, then save it.
         new_grades |= await grades(model_id, candidate, measured)
+        _enough(measured, new_grades)
         new = await versions.save(
             model_id,
             after=version["number"],

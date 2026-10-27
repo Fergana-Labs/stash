@@ -109,6 +109,7 @@ def world(monkeypatch):
         proposer_error=None,
         per_trait=False,
         written=None,
+        judge_ok=None,
     )
 
     async def upload_file(owner, name, content, ctype):
@@ -152,6 +153,11 @@ def world(monkeypatch):
                 return reply(
                     json.dumps({"changes": [], "traits": [{**COLOR, "name": n} for n in current]})
                 )
+            if w.judge_ok is not None:
+                # The judge answers this many more times, then is unreachable.
+                if w.judge_ok <= 0:
+                    raise RuntimeError("Connection error.")
+                w.judge_ok -= 1
             w.calls["judge"] += 1
             names = re.findall(r"^- (.+?): good = ", system, re.M) or ["Color"]
             start = next(
@@ -1110,3 +1116,46 @@ async def test_removing_a_file_never_hides_what_its_thread_still_holds(client: A
     ]
     await remove(drop["attachments"][0])
     assert {drop["id"], said["id"]} <= await ids()
+
+
+async def test_a_judge_outage_never_decides_a_revision(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    world.proposals.append(
+        {
+            "changes": [{"kind": "add", "trait": "Stripes", "why": "the striped ones are bad"}],
+            "traits": [COLOR, STRIPES],
+        }
+    )
+    # The judge grades the candidate on one of the two misses, fixing it, then goes away. That
+    # one example would have been enough to keep the candidate.
+    world.judge_ok = 1
+    with pytest.raises(judge.JudgeUnavailable):
+        await _build(eid)
+    versions = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    assert [v["number"] for v in versions] == [1]
+    detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
+    assert detail["build"]["stage"] == "failed"
+    assert detail["build"]["error"] == "The judge graded 1 of 2 examples; the rubric is unchanged"
+
+
+async def test_a_judge_outage_leaves_a_new_rubric_unmeasured(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    edited = await client.put(
+        f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": [COLOR, STRIPES], "base": 1}
+    )
+    assert edited.status_code == 200, edited.text
+    world.judge_ok = 0
+    with pytest.raises(judge.JudgeUnavailable):
+        await eval_tasks.build_eval_async(UUID(eid))
+    versions = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    assert (versions[0]["number"], versions[0]["source"], versions[0]["metrics"]) == (
+        2,
+        "edited",
+        None,
+    )
+    detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
+    assert detail["build"]["error"] == "The judge graded 0 of 8 examples; the rubric is unchanged"
