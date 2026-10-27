@@ -576,6 +576,7 @@ class SkillAppVfsShell:
             paths = ["."]
         matches = []
         roots = []
+        directory_roots = []
         # Resolve every root before reading anything (listings are unbudgeted),
         # so a budget stop can say how much of the sweep went unsearched.
         sweep: list[list[str]] = []
@@ -584,6 +585,8 @@ class SkillAppVfsShell:
             path = self._resolve_path(raw_path)
             roots.append(path)
             node = self.model._get_node(path)
+            if node.is_dir:
+                directory_roots.append(path)
             file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
             if node.is_dir and not recursive:
                 raise VfsShellError(f"{raw_path}: is a directory")
@@ -645,7 +648,7 @@ class SkillAppVfsShell:
                             text,
                             file_path,
                             show_line_numbers=show_line_numbers,
-                            prefix_path=len(file_paths) > 1 or recursive,
+                            prefix_path=total_files > 1 or recursive,
                             before=before,
                             after=after,
                         )
@@ -653,7 +656,7 @@ class SkillAppVfsShell:
         self.model.client.record_search(pattern, roots, docs_scanned)
         next_offset = start + docs_scanned
         next_command = None
-        if budget_hit and next_offset > start:
+        if budget_hit:
             token = base64.urlsafe_b64encode(
                 json.dumps({"offset": next_offset, "signature": signature}).encode()
             ).decode()
@@ -667,7 +670,7 @@ class SkillAppVfsShell:
                 )
         listing_incomplete = any(
             self.model.truncated_roots_under(root) or self.model.truncated_root_containing(root)
-            for root in roots
+            for root in directory_roots
         )
         self._searches.append(
             {

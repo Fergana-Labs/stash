@@ -416,6 +416,16 @@ def test_grep_reports_truncated_source_listing_as_partial():
     assert result.searches[0]["complete"] is False
 
 
+def test_explicit_file_search_does_not_inherit_parent_listing_truncation():
+    shell, _client = _shell()
+    shell.model.list_dir("/sources/gmail")
+    shell.model._truncated["/sources/gmail"] = 1
+    result = shell.run("grep . '/sources/gmail/Welcome email'")
+    assert result.exit_code == 0
+    assert result.searches[0]["listing_complete"] is True
+    assert result.searches[0]["complete"] is True
+
+
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     shell, _client = _shell(DeadTranscriptClient())
 

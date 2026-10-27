@@ -283,6 +283,33 @@ async def test_search_cursor_rejects_changed_scope(client, monkeypatch):
     assert second["stdout"] == ""
 
 
+async def test_nonrecursive_continuation_preserves_filename_prefix(client, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "alpha")
+    first = (await _vfs(client, key, "grep alpha /files/One.md /files/Two.md")).json()
+    second = (await _vfs(client, key, first["searches"][0]["next_command"])).json()
+    assert first["stdout"] == "/files/One.md:alpha\n"
+    assert second["stdout"] == "/files/Two.md:alpha\n"
+
+
+async def test_search_can_continue_after_an_earlier_command_spent_budget(client, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "beta")
+    first = (await _vfs(client, key, "grep alpha /files/One.md; grep beta /files/Two.md")).json()
+    coverage = first["searches"][1]
+    assert coverage["files_searched"] == 0
+    assert coverage["has_more"] is True
+    assert coverage["next_command"]
+    second = (await _vfs(client, key, coverage["next_command"])).json()
+    assert second["exit_code"] == 0
+    assert second["stdout"] == "beta\n"
+    assert second["search_complete"] is True
+
+
 async def test_search_does_not_offer_an_overlong_continuation(client, monkeypatch):
     monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
     key, _ = await _register(client)
