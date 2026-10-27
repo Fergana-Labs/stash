@@ -12,6 +12,8 @@ const STAGE: Record<string, string> = {
 const SOURCE: Record<EvalRubricVersion["source"], string> = { written: "Written", revised: "Revised", edited: "Edited" };
 const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed", write: "Wrote", description: "Description", scoring: "Now scored by" };
 const buttonClass = "h-6 rounded border border-border px-2 text-[12px] hover:bg-surface disabled:opacity-50";
+/** A rubric's trait limit, as the API enforces it (revise.MAX_RUBRIC in the backend). */
+const MAX_TRAITS = 12;
 
 /** The eval's rubric, the living artifact: what the judge checks now, how well it agrees with
  * the person's labels, every version it has had and why, and the endpoint that scores with it. */
@@ -119,7 +121,7 @@ function RubricEditor({ traits: initial, onSave, onCancel }: { traits: EvalTrait
         <textarea aria-label="Bad" placeholder="Bad" rows={2} maxLength={400} value={t.bad} onChange={(e) => set(i, "bad", e.target.value)} className={cn(fieldClass, "resize-none")} />
       </fieldset>
     ))}
-    {traits.length < 10 && <button type="button" className={cn(buttonClass, "flex items-center gap-1")} onClick={() => setTraits([...traits, { name: "", good: "", bad: "" }])}><Plus className="size-3" />Add trait</button>}
+    {traits.length < MAX_TRAITS && <button type="button" className={cn(buttonClass, "flex items-center gap-1")} onClick={() => setTraits([...traits, { name: "", good: "", bad: "" }])}><Plus className="size-3" />Add trait</button>}
     {error && <p role="alert" className="text-[12px] text-destructive">{error}</p>}
     <div className="flex gap-1.5">
       <button type="button" disabled={saving || invalid} onClick={() => void save()} className="h-6 rounded bg-foreground px-2 text-[12px] text-background disabled:opacity-50">{saving ? "Saving" : "Save"}</button>

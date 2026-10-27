@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import UploadFile as FormFile
 
 from ..auth import get_current_user
-from ..services.evals import channel, judge, service
+from ..services.evals import channel, judge, revise, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -78,7 +78,7 @@ class Trait(Body):
 
 
 class EditRubric(Body):
-    traits: list[Trait] = Field(min_length=1, max_length=10)
+    traits: list[Trait] = Field(min_length=1, max_length=revise.MAX_RUBRIC)
     base: int = Field(ge=0, description="The version the edit was made on")
 
 

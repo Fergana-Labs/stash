@@ -108,6 +108,7 @@ def world(monkeypatch):
         gullible=False,
         proposer_error=None,
         per_trait=False,
+        written=None,
     )
 
     async def upload_file(owner, name, content, ctype):
@@ -137,7 +138,7 @@ def world(monkeypatch):
                 )
             if system == build.TRAITS_SYSTEM:
                 w.calls["traits"] += 1
-                return reply(json.dumps({"summary": "Red things", "traits": [COLOR]}))
+                return reply(json.dumps({"summary": "Red things", "traits": w.written or [COLOR]}))
             if system == revise.SYSTEM:
                 if w.proposer_error:
                     raise w.proposer_error
@@ -965,3 +966,64 @@ def test_the_trait_cap_never_cuts_the_persons_traits():
     capped = revise.cap(revise.keep_theirs([theirs], proposed))
     assert len(capped) == revise.MAX_TRAITS + 2 and theirs in capped
     assert [t["name"] for t in capped][-1] == "Tone"
+
+
+async def test_a_rubric_never_outgrows_what_the_editor_can_save(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    mine = [{"name": f"Mine {i}", "good": "g", "bad": "b"} for i in range(3)]
+    edited = await client.put(
+        f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": [COLOR, *mine], "base": 1}
+    )
+    assert edited.status_code == 200, edited.text
+    await eval_tasks.build_eval_async(UUID(eid))
+    world.written = [{"name": f"Written {i}", "good": "g", "bad": "b"} for i in range(10)]
+    await client.post(f"/api/v1/evals/{eid}/build?fresh=true", headers=auth)
+    await eval_tasks.build_eval_async(UUID(eid))
+    current = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"][0]
+    names = [t["name"] for t in current["traits"]]
+    assert len(names) == revise.MAX_RUBRIC and names[:3] == ["Mine 0", "Mine 1", "Mine 2"]
+    # The editor can save the rubric it shows, and no more.
+    traits = [{k: t[k] for k in ("name", "good", "bad")} for t in current["traits"]]
+    saved = await client.put(
+        f"/api/v1/evals/{eid}/rubric",
+        headers=auth,
+        json={
+            "traits": traits[:-1] + [{**traits[-1], "good": "changed"}],
+            "base": current["number"],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    too_many = traits + [{"name": "One more", "good": "g", "bad": "b"}]
+    rejected = await client.put(
+        f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": too_many, "base": 0}
+    )
+    assert rejected.status_code == 422
+
+
+async def test_a_restarted_build_still_reports_in_its_thread(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    model_id = UUID(eid)
+    first = (await _post(client, auth, eid, "first")).json()["message"]
+    second = (await _post(client, auth, eid, "second")).json()["message"]
+    await service.request_build(model_id, delay=0, reply_to=UUID(first["id"]))
+    assert (await service.claim_build(model_id))["reply_to"] == UUID(first["id"])
+    # The worker dies; the sweep restarts the build, which still knows its thread.
+    await get_pool().execute(
+        """UPDATE intuition_models
+              SET build = build || '{"stage": "checking", "at": "2020-01-01T00:00:00+00:00"}'
+            WHERE id=$1""",
+        model_id,
+    )
+    assert (await service.sweep())["builds"] == 1
+    assert (await service.claim_build(model_id))["reply_to"] == UUID(first["id"])
+    # Newer evidence while it runs: the build clears only its own thread when it finishes.
+    await service.request_build(model_id, reply_to=UUID(second["id"]))
+    await service.done_reporting(model_id, UUID(first["id"]))
+    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", model_id)
+    assert state["reply_to"] == second["id"]
+    await service.done_reporting(model_id, UUID(second["id"]))
+    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", model_id)
+    assert "reply_to" not in state

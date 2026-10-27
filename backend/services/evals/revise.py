@@ -45,7 +45,8 @@ PATIENCE = 2
 SHOW_WRONG = 8  # misses shown to the analysis model, with their files
 SHOW_RIGHT = 4
 KEEP_RIGHT = 8  # examples the current rubric gets right that a candidate is checked on
-MAX_TRAITS = 10
+MAX_TRAITS = 10  # traits a model writes
+MAX_RUBRIC = 12  # traits in a rubric, counting the person's own; the editor's limit too
 CONCURRENCY = 4
 SAID = 40
 NOTES = 40
@@ -302,7 +303,7 @@ def same(a: list[dict], b: list[dict]) -> bool:
     return fields(a) == fields(b)
 
 
-def cap(traits: list[dict], limit: int = MAX_TRAITS + 2) -> list[dict]:
+def cap(traits: list[dict], limit: int = MAX_RUBRIC) -> list[dict]:
     """At most `limit` traits, trimming from the end but never a trait the person wrote."""
     room = max(0, limit - sum(t.get("by") == versions.PERSON for t in traits))
     out = []

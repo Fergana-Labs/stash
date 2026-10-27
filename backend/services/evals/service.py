@@ -362,14 +362,15 @@ async def request_build(
 
 async def claim_build(eval_id: UUID) -> dict | None:
     """Take the queued build for this worker: {"fresh": bool, "reply_to": the thread to report
-    in, or None}, or None if another worker took it."""
+    in, or None}, or None if another worker took it. reply_to stays in the build state until
+    the build finishes (done_reporting), so a build the sweep restarts still reports."""
     row = await get_pool().fetchrow(
         """WITH old AS (
                SELECT build FROM intuition_models
                WHERE id=$1 AND build->>'stage' = 'queued' FOR UPDATE
            )
            UPDATE intuition_models m
-              SET build = (m.build - 'reply_to')
+              SET build = m.build
                           || jsonb_build_object('stage', 'starting', 'fresh', false, 'at', $2::text)
              FROM old WHERE m.id=$1
            RETURNING COALESCE((old.build->>'fresh')::boolean, false) AS fresh,
@@ -378,6 +379,16 @@ async def claim_build(eval_id: UUID) -> dict | None:
         _now(),
     )
     return {"fresh": row["fresh"], "reply_to": row["reply_to"]} if row else None
+
+
+async def done_reporting(eval_id: UUID, reply_to: UUID | None) -> None:
+    """The build reported in reply_to; a newer thread set while it ran is left for the next."""
+    if reply_to is not None:
+        await get_pool().execute(
+            "UPDATE intuition_models SET build = build - 'reply_to' WHERE id=$1 AND build->>'reply_to' = $2",
+            eval_id,
+            str(reply_to),
+        )
 
 
 async def finish_build(eval_id: UUID) -> None:

@@ -212,7 +212,7 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
         version = await versions.save(
             model_id,
             after=version["number"] if version else 0,
-            traits=revise.dedupe(theirs + written["traits"]),
+            traits=revise.cap(revise.dedupe(theirs + written["traits"])),
             refs=judge.pick_refs(learn, seed),
             instructions=model["instructions"],
             source="written",
