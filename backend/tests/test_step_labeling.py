@@ -92,7 +92,7 @@ def checks(monkeypatch):
 
     async def quality_check(client, chunks, chunk, label, rubric):
         asked.append((chunk["chunk_id"], rubric))
-        top = len(step_scoring.CHECKS[rubric][1]) - 1
+        top = len(step_scoring.check_question(rubric)[1]) - 1
         return {"rubric": rubric, "grader": "the grading model", "probabilities": {top: 1.0}}
 
     monkeypatch.setattr(step_labeling, "quality_check", quality_check)
@@ -154,35 +154,119 @@ def test_chunks_pair_tool_results_merge_double_logged_messages_and_spot_repeats(
     assert chunks[2]["result"] == "error: timeout" and chunks[2]["duplicate_of"] == "a1"
 
 
+def _answer(**fields):
+    defaults = dict(
+        type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1"
+    )
+    return _label("agent", **{**defaults, **fields})
+
+
+def _scores(steps):
+    """Score agent steps (label, reaction verdict or None, Jev answers) in one task."""
+    rows = [
+        {"chunk_id": f"a{i}", "task_id": "t1", "label": label, "checks": checks or {},
+         "reaction": None if verdict is None else {"verdict": verdict}}
+        for i, (label, verdict, checks) in enumerate(steps, start=1)
+    ]  # fmt: skip
+    return step_scoring.score_trace(rows)
+
+
+LOOKUP = _label("agent", type="tool_call", effect="read", result="data", args_match="match")
+
+
 def test_score_numbers_keep_their_order():
-    answer = _label(
-        "agent", type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1"
-    )
-    not_found = dict(answer, outcome="not_found")
-    best_unconfirmed = step_scoring.score_step(
-        answer, None, {"rubric": "answer_unconfirmed", "probabilities": {3: 1.0}}
-    )["outcome"]
-    worst_not_found = step_scoring.score_step(
-        not_found, None, {"rubric": "not_found_unconfirmed", "probabilities": {0: 1.0}}
-    )["outcome"]
-    # An answer nobody confirmed never beats one the user accepted; an honest "not found" always beats a rejected answer.
-    assert (
-        best_unconfirmed == pytest.approx(0.40)
-        and best_unconfirmed < step_scoring.ANSWER["implicit_positive"][1]
-    )
-    assert (
-        worst_not_found == pytest.approx(-0.35)
-        and worst_not_found > step_scoring.ANSWER["rejected"][1]
-    )
+    worst_cost = step_scoring.TASK_COST_CAP
+
+    def task(*steps):
+        return _scores(steps)[1][0]["score"]
+
+    # Guessing never pays: an unsourced claim scores below an honest "not found" after a lookup.
+    guess = task((_answer(grounding="no_source"), None, None))
+    honest = task((LOOKUP, None, None), (_answer(outcome="not_found"), None, None))
+    assert guess == pytest.approx(-0.40) and honest == pytest.approx(-0.28) and guess < honest
+    # Honesty beats being wrong, even with the maximum work cost.
+    worst_not_found = min(step_scoring.NOT_FOUND.values()) + worst_cost
+    assert worst_not_found > max(step_scoring.ANSWER["rejected"])
+    # Users outrank both models.
+    best_unreacted = max(max(g) for g in step_scoring.GROUNDING.values())
+    assert best_unreacted < min(step_scoring.ANSWER["implicit_positive"]) + worst_cost
+    # Hedging pays only when warranted.
+    assert step_scoring.ANSWER["rejected"][1] > step_scoring.ANSWER["rejected"][0]
+    assert step_scoring.ANSWER["confirmed"][1] < step_scoring.ANSWER["confirmed"][0]
+    assert step_scoring.GROUNDING["supported"][1] > step_scoring.GROUNDING["supported"][0]
+    # Work only breaks ties: a task's work cost is capped.
+    many = [(dict(LOOKUP, result="error"), None, None)] * 6
+    assert _scores([*many, (_answer(), "confirmed", None)])[1][0]["costs"] == worst_cost
     # Work is never rewarded: a lookup that was relied on becomes free, not positive.
-    lookup = _label("agent", type="tool_call", effect="read", result="data")
-    assert (
-        step_scoring.score_step(lookup, None, {"rubric": "tool", "probabilities": {4: 1.0}})["cost"]
-        == 0.0
+    rewards, _ = _scores([(LOOKUP, None, {"tool": {"grader": "g", "probabilities": {3: 1.0}}})])
+    assert rewards["a1"]["score"] == 0.0
+    # A verdict is ground truth; Jev is asked only about work and unclear labels.
+    assert step_scoring.checks_for(_answer(grounding="unclear"), {"verdict": "rejected"}) == []
+    assert step_scoring.checks_for(_answer(grounding="unclear"), None) == ["grounding"]
+    assert step_scoring.checks_for(_answer(), {"verdict": "unclear"}) == ["verdict"]
+    assert step_scoring.checks_for(dict(LOOKUP, args_match="unclear"), None) == [
+        "tool",
+        "args_match",
+    ]
+
+
+def test_credit_is_split_among_the_steps_that_caused_it_and_conserved():
+    # A confirmed answer that used two lookups: 70% stays, 30% split between them.
+    rewards, episodes = _scores(
+        [
+            (LOOKUP, None, None),
+            (LOOKUP, None, None),
+            (_answer(uses=["a1", "a2"]), "confirmed", None),
+        ]
     )
-    # A verdict is ground truth; no quality check is asked.
-    assert step_scoring.check_for(answer, "rejected") is None
-    assert step_scoring.check_for(answer, None) == "answer_unconfirmed"
+    assert rewards["a3"]["score"] == pytest.approx(0.70)
+    assert rewards["a1"]["total"] == pytest.approx(0.12) and rewards["a2"][
+        "total"
+    ] == pytest.approx(0.12)
+    assert sum(r["shared_total"] for r in rewards.values()) == pytest.approx(0.30)
+    assert episodes[0]["answer"] == 1.0  # sharing never changes the task score
+    # A rejected answer whose second lookup had the wrong arguments: the blame goes there.
+    wrong = dict(LOOKUP, args_match="mismatch")
+    rewards, _ = _scores(
+        [
+            (LOOKUP, None, None),
+            (wrong, None, None),
+            (LOOKUP, None, None),
+            (_answer(), "rejected", None),
+        ]
+    )
+    assert rewards["a2"]["total"] == pytest.approx(-0.43)
+    assert rewards["a4"]["score"] == pytest.approx(-0.70)
+    assert rewards["a1"]["total"] == rewards["a3"]["total"] == pytest.approx(-0.03)
+    # With no faulty step, the answer keeps all of the blame.
+    rewards, _ = _scores([(LOOKUP, None, None), (_answer(), "rejected", None)])
+    assert rewards["a2"]["score"] == -1.0 and rewards["a1"]["shared"] == []
+
+
+def test_partial_answers_not_found_and_earlier_rejections():
+    # Confirmed answer covering 1 of 2 items, after one lookup: 0.5 x 1.0 + 0.5 x -0.25.
+    rewards, _ = _scores(
+        [
+            (LOOKUP, None, None),
+            (_answer(outcome="partial_answer", coverage="1/2"), "confirmed", None),
+        ]
+    )
+    assert rewards["a2"]["base_parts"][0]["value"] == pytest.approx(0.375)
+    lookups = [(LOOKUP, None, None)] * 2
+    assert (
+        _scores([*lookups, (_answer(outcome="not_found", next_steps=True), None, None)])[1][0][
+            "answer"
+        ]
+        == -0.10
+    )
+    assert _scores([*lookups, (_answer(outcome="not_found"), None, None)])[1][0]["answer"] == -0.15
+    # Each earlier answer the user rejected costs the task 0.25.
+    _, episodes = _scores([(_answer(), "rejected", None), (_answer(), "confirmed", None)])
+    assert episodes[0]["score"] == pytest.approx(0.75)
+    # An unclear verdict is answered by Jev and its points are the weighted average.
+    unclear = {"verdict": {"grader": "g", "probabilities": {0: 0.5, 3: 0.5}}}
+    assert _scores([(_answer(), "unclear", unclear)])[1][0]["answer"] == pytest.approx(0.0)
+    assert _scores([(_answer(grounding="supported"), "unclear", None)])[1][0]["answer"] == 0.30
 
 
 async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, checks):
@@ -209,11 +293,11 @@ async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, c
         and steps[7]["metadata"]["label"]["verdict_target"] == "a3"
     )
     answer = steps[6]["metadata"]["reward"]
-    assert answer["is_answer"] and answer["score"] == -1.0  # asserted answer the user rejected
-    # Blame from the rejected answer: 0.3 x -1.0 x 0.8^k for the step k places back.
+    # An asserted answer the user rejected (-1.0) keeps 70%; the faulty call takes the rest.
+    assert answer["is_answer"] and answer["score"] == -0.7
     repeated = steps[4]["metadata"]["reward"]
-    assert repeated["shared"] == [{"from": "a3", "verdict": "rejected", "value": -0.24}]
-    assert steps[2]["metadata"]["reward"]["shared"][0]["value"] == pytest.approx(-0.192)
+    assert repeated["shared"] == [{"from": "a3", "verdict": "rejected", "value": -0.3}]
+    assert steps[2]["metadata"]["reward"]["shared"] == []  # the good lookup takes no blame
     # Lookup -0.03, error -0.10, repeat -0.10, quality check +0.03.
     assert repeated["base"] == pytest.approx(-0.23) and repeated["score"] == pytest.approx(-0.20)
     assert repeated["jev"]["short"] == "its result was used later"
@@ -223,7 +307,8 @@ async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, c
             "score": -1.0,
             "rubric_b_only": -1.0,
             "answer": -1.0,
-            "costs": -0.2,
+            "costs": -0.1,
+            "earlier_answers": 0.0,
             "has_answer": True,
         }
     ]
@@ -232,7 +317,7 @@ async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, c
     current = (await _evaluation(client, auth, trace_id))["current"]
     assert current["status"] == "completed" and current["outcome"] == "failure"
     credits = {c["index"]: c["expected_credit"] for c in current["credits"]}
-    assert credits[6] == -1.0
+    assert credits[6] == -0.7
     assert credits[4] == pytest.approx(repeated["score"] + repeated["shared_total"])
 
 
@@ -269,7 +354,7 @@ async def test_a_trace_that_arrives_labeled_is_never_sent_to_a_model(client, lab
     current = evaluation["current"]
     # Scored from the labels it came with: the rejected answer makes it a failure.
     assert current["status"] == "completed" and current["outcome"] == "failure"
-    assert {c["index"]: c["expected_credit"] for c in current["credits"]}[6] == -1.0
+    assert {c["index"]: c["expected_credit"] for c in current["credits"]}[6] == -0.7
     detail = await _detail(client, auth, trace_id)
     assert detail["steps"][6]["metadata"]["label"]["outcome"] == "answer"
 
