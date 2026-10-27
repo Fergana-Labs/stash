@@ -13,6 +13,7 @@ scored image-model fakes 0.98-1.00; these trait grades separated them (AUC 0.95,
 agent drafts) and moved about 0.05 when the same image was scored twice.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -70,6 +71,10 @@ def model() -> str:
     return settings.EVAL_JUDGE_MODEL
 
 
+def samples() -> int:
+    return max(1, settings.EVAL_JUDGE_SAMPLES)
+
+
 def aggregate(traits: list[dict], scoring: str = "mean") -> float:
     """One score from the trait grades (each 0-1): their mean, or with 'lowest' the lowest,
     for taste where one failing trait fails the work. The build picks whichever agrees better
@@ -107,7 +112,7 @@ async def rubric_key(model_id: UUID, version: dict) -> str:
         "traits": [{k: t.get(k, "") for k in ("name", "good", "bad")} for t in version["traits"]],
         "refs": [[str(r), labels[r]] for r in version["refs"] if r in labels],
         "instructions": version["instructions"],
-        "judge": [model(), SYSTEM, TRAITS_GIVEN],
+        "judge": [model(), SYSTEM, TRAITS_GIVEN, samples()],
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -232,10 +237,27 @@ async def grade(
     )
     system = SYSTEM % (TRAITS_GIVEN % _traits_text(traits) if traits else TRAITS_CHOSEN)
     content = await context(model_id, exclude, version)
+    # Everything before the submission is the same for every grade under this rubric.
+    content[-1] = {**content[-1], "cache_control": {"type": "ephemeral"}}
     content += [
         {"type": "text", "text": "The submission to judge:"},
         *await items.blocks(submission, 1024),
     ]
+    # The judge's grades vary from call to call, and sampling can't be turned off: it grades
+    # several times, so one off grade doesn't move a score across the line.
+    graded = [
+        g
+        for g in await asyncio.gather(
+            *(_grade_once(model_id, system, content) for _ in range(samples()))
+        )
+        if g is not None
+    ]
+    if not graded:
+        raise JudgeUnavailable("Couldn't score this right now; try again")
+    return combine(graded, version.get("scoring", "mean") if version else "mean", bool(traits))
+
+
+async def _grade_once(model_id: UUID, system: str, content: list[dict]) -> dict | None:
     for attempt in range(ATTEMPTS):
         try:
             reply = await llm._get_client().messages.create(
@@ -244,12 +266,30 @@ async def grade(
                 system=system,
                 messages=[{"role": "user", "content": content}],
             )
-            result = _parse("".join(b.text for b in reply.content if b.type == "text"))
-            if version and version.get("scoring", "mean") != "mean":
-                result["score"] = aggregate(result["traits"], version["scoring"])
-            return result
+            return _parse("".join(b.text for b in reply.content if b.type == "text"))
         except Exception:
             logger.warning(
                 "Eval judge failed for %s (attempt %d)", model_id, attempt + 1, exc_info=True
             )
-    raise JudgeUnavailable("Couldn't score this right now; try again")
+    return None
+
+
+def combine(graded: list[dict], scoring: str, given: bool) -> dict:
+    """One grade from several of the same submission: each trait's middle grade, the score
+    from those by the rubric's scoring rule, and the words of the grade closest to it. With
+    no traits given the judge chose its own each time, so the grade with the middle score
+    stands for all of them."""
+    if not given:
+        return sorted(graded, key=lambda g: aggregate(g["traits"], scoring))[len(graded) // 2]
+    by_trait: dict[str, list[dict]] = {}
+    for g in graded:
+        for t in g["traits"]:
+            by_trait.setdefault(t["trait"].strip().lower(), []).append(t)
+    traits = []
+    for seen in by_trait.values():
+        middle = float(np.median([t["score"] for t in seen]))
+        closest = min(seen, key=lambda t: abs(t["score"] - middle))
+        traits.append({"trait": seen[0]["trait"], "score": middle, "why": closest["why"]})
+    score = aggregate(traits, scoring)
+    words = min(graded, key=lambda g: abs(aggregate(g["traits"], scoring) - score))
+    return {**words, "score": score, "traits": traits}

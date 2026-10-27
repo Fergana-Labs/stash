@@ -110,6 +110,8 @@ def world(monkeypatch):
         per_trait=False,
         written=None,
         judge_ok=None,
+        judge_script=[],
+        judge_contents=[],
     )
 
     async def upload_file(owner, name, content, ctype):
@@ -159,6 +161,7 @@ def world(monkeypatch):
                     raise RuntimeError("Connection error.")
                 w.judge_ok -= 1
             w.calls["judge"] += 1
+            w.judge_contents.append(content)
             names = re.findall(r"^- (.+?): good = ", system, re.M) or ["Color"]
             start = next(
                 i for i, b in enumerate(content) if b.get("text") == "The submission to judge:"
@@ -178,6 +181,8 @@ def world(monkeypatch):
             # Per trait: each trait sees only its own property, so one flaw fails one trait.
             seen = {"Color": red, "Stripes": not striped}
             grades = {n: (5 if seen.get(n, ok) else 1) if w.per_trait else grade for n in names}
+            if w.judge_script:
+                grades = w.judge_script.pop(0)
             return reply(
                 json.dumps(
                     {
@@ -194,6 +199,9 @@ def world(monkeypatch):
     monkeypatch.setattr(storage_service, "upload_file", upload_file)
     monkeypatch.setattr(storage_service, "download_file", download_file)
     monkeypatch.setattr(judge.llm, "_get_client", lambda: SimpleNamespace(messages=Messages()))
+    # One grade per submission keeps these tests about what they test; the judge's own
+    # repeated grading has a test of its own.
+    monkeypatch.setattr(judge.settings, "EVAL_JUDGE_SAMPLES", 1)
     monkeypatch.setattr(
         eval_tasks.build_eval, "apply_async", lambda *a, **k: w.builds.append(k.get("countdown"))
     )
@@ -1185,3 +1193,57 @@ async def test_a_judge_outage_after_a_change_still_reports_the_change(client: As
         "Wrote rubric v2: 2 traits. "
         "The judge then graded only 0 of 8 examples, so the check stopped there."
     )
+
+
+async def test_the_judge_grades_three_times_and_takes_each_traits_middle_grade(
+    client: AsyncClient, world, monkeypatch
+):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    model_id = UUID(eid)
+    version = await versions.current(model_id)
+    once = await judge.rubric_key(model_id, version)
+    monkeypatch.setattr(judge.settings, "EVAL_JUDGE_SAMPLES", 3)
+    # Grades made one at a time are never served as grades made three at a time.
+    assert await judge.rubric_key(model_id, version) != once
+
+    example = (await build._examples(model_id))[0]
+    world.judge_contents.clear()
+    world.judge_script = [{"Color": 5}, {"Color": 1}, {"Color": 4}]
+    graded = await judge.grade(model_id, example["item"], exclude=example["id"], version=version)
+    assert len(world.judge_contents) == 3
+    assert [(t["trait"], t["score"]) for t in graded["traits"]] == [("Color", 0.75)]
+    assert graded["score"] == 0.75
+    # What comes before the submission is marked for the prompt cache, for every grade.
+    content = world.judge_contents[0]
+    start = next(i for i, b in enumerate(content) if b.get("text") == "The submission to judge:")
+    assert content[start - 1]["cache_control"] == {"type": "ephemeral"}
+    assert all("cache_control" not in b for b in content[start:])
+
+
+def test_combined_grades_take_each_traits_middle_and_score_by_the_rubric():
+    def grade(color: int, stripes: int, why: str, name: str = "stripes ") -> dict:
+        return {
+            "score": 0.0,
+            "traits": [
+                {"trait": "Color", "score": (color - 1) / 4, "why": f"color {why}"},
+                {"trait": name, "score": (stripes - 1) / 4, "why": f"stripes {why}"},
+            ],
+            "explanation": why,
+            "fixes": [],
+            "keep": [],
+        }
+
+    graded = [grade(5, 3, "a", name="Stripes"), grade(2, 3, "b"), grade(4, 2, "c")]
+    combined = judge.combine(graded, "lowest", given=True)
+    # Names match whatever their case and spacing; the first grade's spelling is kept.
+    assert [(t["trait"], t["score"]) for t in combined["traits"]] == [
+        ("Color", 0.75),
+        ("Stripes", 0.5),
+    ]
+    assert combined["score"] == 0.5
+    assert combined["traits"][0]["why"] == "color c"
+    assert combined["explanation"] == "a"
+    # A judge that chose its own traits each time: the grade with the middle score stands.
+    assert judge.combine(graded, "mean", given=False)["explanation"] == "c"

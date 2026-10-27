@@ -97,6 +97,7 @@ def fakes(monkeypatch):
     monkeypatch.setattr(storage_service, "upload_file", upload_file)
     monkeypatch.setattr(storage_service, "download_file", download_file)
     monkeypatch.setattr(judge.llm, "_get_client", lambda: SimpleNamespace(messages=Messages()))
+    monkeypatch.setattr(judge.settings, "EVAL_JUDGE_SAMPLES", 1)
     monkeypatch.setattr(eval_tasks.build_eval, "apply_async", lambda *a, **k: None)
     monkeypatch.setattr(eval_tasks.read_channel, "delay", lambda *a, **k: None)
     return calls
