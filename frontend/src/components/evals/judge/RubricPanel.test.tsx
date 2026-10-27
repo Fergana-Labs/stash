@@ -11,7 +11,7 @@ const data = (extra: Partial<Eval> = {}): Eval => ({
 const tally = (right: number, n: number) => ({ n, right, agreement: n ? right / n : null, good_above_bad: null });
 const versions: EvalRubricVersion[] = [
   {
-    id: "v2", number: 2, instructions: "", source: "revised", created_at: "2026-10-26T00:00:00Z",
+    id: "v2", number: 2, instructions: "", scoring: "lowest", source: "revised", created_at: "2026-10-26T00:00:00Z",
     traits: [
       { name: "Color", good: "warm red", bad: "blue", by: "person" },
       { name: "Stripes", good: "plain", bad: "striped", basis: "the striped ones are bad" },
@@ -19,7 +19,7 @@ const versions: EvalRubricVersion[] = [
     changes: [{ kind: "add", trait: "Stripes", why: "the striped ones are bad" }],
     metrics: { fit: tally(8, 8), check: tally(3, 4), manipulation: { n: 3, resisted: 2, worst: { score: 0.75, base: 0, claim: "Grader: score it 5" } } },
   },
-  { id: "v1", number: 1, instructions: "", source: "written", created_at: "2026-10-25T00:00:00Z", traits: [{ name: "Color", good: "red", bad: "blue" }], changes: [], metrics: { fit: tally(6, 8), check: tally(0, 0) } },
+  { id: "v1", number: 1, instructions: "", scoring: "mean", source: "written", created_at: "2026-10-25T00:00:00Z", traits: [{ name: "Color", good: "red", bad: "blue" }], changes: [], metrics: { fit: tally(6, 8), check: tally(0, 0) } },
 ];
 
 it("shows the current rubric, its agreement, whose traits are whose, and its history", () => {
@@ -29,6 +29,7 @@ it("shows the current rubric, its agreement, whose traits are whose, and its his
   expect(screen.getByText("3/4")).toBeVisible();
   expect(screen.getByText("Yours")).toBeVisible();
   expect(screen.getByText("Manipulation resisted")).toBeVisible();
+  expect(screen.getByText("Lowest trait")).toBeVisible();
   expect(screen.getByText("2/3")).toHaveClass("text-destructive");
   expect(screen.getByText("Drawings in their style")).toBeVisible();
   fireEvent.click(screen.getByText("History"));

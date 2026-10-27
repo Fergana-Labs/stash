@@ -16,7 +16,7 @@ async def build_eval_async(eval_id: UUID) -> None:
     if claimed is None:
         return  # another worker took this build
     try:
-        await build.run(eval_id, fresh=claimed["fresh"])
+        await build.run(eval_id, fresh=claimed["fresh"], reply_to=claimed["reply_to"])
     except Exception as exc:
         await build._set(eval_id, stage="failed", error=str(exc)[-ERROR_CHARS:])
         raise

@@ -66,6 +66,7 @@ export interface EvalMessage {
     choices?: string[];
     about?: string;
     uploading?: boolean;
+    via?: string;
     version?: number;
     changes?: EvalChange[];
     metrics?: EvalMetrics | null;
@@ -80,6 +81,8 @@ export interface EvalRubricVersion {
   number: number;
   traits: EvalTrait[];
   instructions: string;
+  /** How trait grades become one score: their mean, or the lowest (one failing trait fails the work). */
+  scoring: "mean" | "lowest";
   source: "written" | "revised" | "edited";
   changes: EvalChange[];
   metrics: EvalMetrics | null;

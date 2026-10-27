@@ -23,7 +23,7 @@ export default function NewEvalChannel() {
       <input value={name} onChange={(e) => setName(e.target.value)} maxLength={160}
         placeholder="Name (optional)" aria-label="Eval name"
         className="w-full rounded border border-border bg-background px-3 py-1.5 text-[13px]" />
-      <EvalChannel evalId="" messages={[]} busy={false} onSend={send} onLabel={async () => {}} />
+      <EvalChannel evalId="" messages={[]} onSend={send} onLabel={async () => {}} />
     </div>
   );
 }

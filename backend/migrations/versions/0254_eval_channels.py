@@ -7,8 +7,10 @@ top-level message) when it can't tell. intuition_models.channel_busy_since marks
 agent so only one reads a channel at a time.
 
 eval_rubric_versions keeps every rubric a judge eval has had: its traits, the reference
-examples and description the judge reads with them, how it changed and why, and how well
-it agreed with the labels. intuition_models.traits stays the current version's traits.
+examples and description the judge reads with them, how its trait grades become one score
+(scoring: their mean, or the lowest, so one failing trait fails the work), how it changed
+and why, and how well it agreed with the labels. intuition_models.traits stays the current
+version's traits.
 
 eval_grades caches the judge's grade of one example under one rubric (rubric_key hashes
 everything the judge reads), so checking a rubric against new evidence grades only the
@@ -50,6 +52,7 @@ def upgrade() -> None:
         traits jsonb NOT NULL,
         refs uuid[] NOT NULL DEFAULT '{}',
         instructions text NOT NULL DEFAULT '',
+        scoring text NOT NULL DEFAULT 'mean' CHECK (scoring IN ('mean', 'lowest')),
         source text NOT NULL CHECK (source IN ('written', 'revised', 'edited')),
         changes jsonb NOT NULL DEFAULT '[]'::jsonb,
         metrics jsonb,

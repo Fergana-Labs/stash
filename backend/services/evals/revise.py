@@ -15,6 +15,10 @@ examples the current rubric gets right and on the held-out ones, and is kept onl
 more learned-from examples right without getting fewer held-out ones right. Passes stop after
 PATIENCE without a gain.
 
+The scoring rule is part of the rubric too: a score is the mean of the trait grades, or the
+lowest, for taste where one failing trait fails the work. Each build tries the other rule on
+the grades it already has (no judge calls) and switches under the same test as an edit.
+
 Changes the person asks for in the channel are applied as asked whatever the agreement does,
 and reported with it. Traits the person wrote or changed are kept word for word by every
 revision that wasn't asked for.
@@ -41,7 +45,7 @@ PATIENCE = 2
 SHOW_WRONG = 8  # misses shown to the analysis model, with their files
 SHOW_RIGHT = 4
 KEEP_RIGHT = 8  # examples the current rubric gets right that a candidate is checked on
-MAX_TRAITS = 8
+MAX_TRAITS = 10
 CONCURRENCY = 4
 SAID = 40
 NOTES = 40
@@ -65,9 +69,9 @@ summary, a part of the screenshot)
 Each trait names one property you can see in the work, never the verdict itself, and says \
 concretely what good and bad look like here, specific enough that two judges would grade the \
 same work the same way. Ground every edit in the evidence: its why names the examples or the \
-person's words it comes from. Keep traits that work unchanged, word for word. Traits marked \
-(the person's) are theirs: keep them exactly. 3-8 traits in total. Nothing about signatures, \
-handles or watermarks.
+person's words it comes from. Keep traits that work unchanged, word for word. Traits listed \
+as the person's are theirs: keep them exactly, name included. Trait names are just the name, \
+with no notes in them. 3-10 traits in total. Nothing about signatures, handles or watermarks.
 
 Return only JSON: {"changes": [{"kind": "add"|"tighten"|"fix"|"point"|"remove", "trait": str \
 (the trait's name), "why": str (one sentence: the evidence)}], "traits": [{"name": str (2-4 \
@@ -138,7 +142,15 @@ async def grades(
 
     await asyncio.gather(*(one(e) for e in todo))
     await versions.remember(model_id, rubric_key, fresh)
-    return {**have, **fresh}
+    # Trait grades don't depend on the scoring rule, so the cache serves either rule.
+    return rescore({**have, **fresh}, version.get("scoring", "mean"))
+
+
+def rescore(grades: dict, scoring: str) -> dict:
+    return {k: {**g, "score": judge.aggregate(g["traits"], scoring)} for k, g in grades.items()}
+
+
+SCORING = {"lowest": "the lowest trait", "mean": "the average of its traits"}
 
 
 async def said(model_id: UUID) -> list[str]:
@@ -161,12 +173,17 @@ async def said(model_id: UUID) -> list[str]:
 
 
 def _traits_text(traits: list[dict]) -> str:
-    return "\n".join(
-        f"- {t['name']}{' (the person' + chr(39) + 's)' if t.get('by') == versions.PERSON else ''}: "
-        f"good = {t.get('good', '')}; bad = {t.get('bad', '')}"
-        + (f"; basis: {t['basis']}" if t.get("basis") else "")
-        for t in traits
-    )
+    def line(t: dict) -> str:
+        return f"- {t['name']}: good = {t.get('good', '')}; bad = {t.get('bad', '')}" + (
+            f"; basis: {t['basis']}" if t.get("basis") else ""
+        )
+
+    mine = [t for t in traits if t.get("by") == versions.PERSON]
+    text = "\n".join(line(t) for t in traits if t.get("by") != versions.PERSON)
+    if mine:
+        # Listed apart, not tagged in the name: a tag in the name gets copied into the name.
+        text += "\nThe person's own traits (keep exactly):\n" + "\n".join(line(t) for t in mine)
+    return text.strip()
 
 
 async def _content(
@@ -233,12 +250,32 @@ async def _content(
     return content
 
 
+# A note a model copied into a trait's name, such as "(the person's)".
+NAME_NOTE = re.compile(r"\s*[(\[][^)\]]*(?:person|yours|theirs)[^)\]]*[)\]]\s*$", re.I)
+
+
+def key(name: str) -> str:
+    """A trait's name for matching: case, punctuation and copied notes don't matter."""
+    return re.sub(r"[^a-z0-9]", "", NAME_NOTE.sub("", name).lower())
+
+
+def dedupe(traits: list[dict]) -> list[dict]:
+    """One trait per name, keeping the first (callers put the person's first where it matters)."""
+    seen: set[str] = set()
+    out = []
+    for t in traits:
+        if key(t["name"]) not in seen:
+            seen.add(key(t["name"]))
+            out.append(t)
+    return out
+
+
 def parse(text: str) -> tuple[list[dict], list[dict]]:
     """(traits, changes) from the analysis model's reply."""
     parsed = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
     traits = [
         {
-            "name": str(t["name"]).strip()[:60],
+            "name": NAME_NOTE.sub("", str(t["name"])).strip()[:60],
             "good": str(t.get("good", ""))[:400],
             "bad": str(t.get("bad", ""))[:400],
             "basis": str(t.get("basis", ""))[:300],
@@ -265,23 +302,36 @@ def same(a: list[dict], b: list[dict]) -> bool:
     return fields(a) == fields(b)
 
 
+def cap(traits: list[dict], limit: int = MAX_TRAITS + 2) -> list[dict]:
+    """At most `limit` traits, trimming from the end but never a trait the person wrote."""
+    room = max(0, limit - sum(t.get("by") == versions.PERSON for t in traits))
+    out = []
+    for t in traits:
+        if t.get("by") == versions.PERSON:
+            out.append(t)
+        elif room > 0:
+            out.append(t)
+            room -= 1
+    return out
+
+
 def keep_theirs(current: list[dict], proposed: list[dict]) -> list[dict]:
     """The proposal with the person's own traits exactly as they wrote them, put back if dropped."""
-    theirs = {t["name"].lower(): t for t in current if t.get("by") == versions.PERSON}
-    out = [theirs.get(t["name"].lower(), t) for t in proposed]
-    named = {t["name"].lower() for t in out}
-    return out + [t for key, t in theirs.items() if key not in named]
+    theirs = {key(t["name"]): t for t in current if t.get("by") == versions.PERSON}
+    out = [theirs.get(key(t["name"]), t) for t in proposed]
+    named = {key(t["name"]) for t in out}
+    return dedupe(out + [t for k, t in theirs.items() if k not in named])
 
 
 def mark_theirs(current: list[dict], proposed: list[dict]) -> list[dict]:
     """After a change the person asked for: the traits it added or changed are theirs."""
-    old = {t["name"].lower(): t for t in current}
+    old = {key(t["name"]): t for t in current}
     out = []
     for t in proposed:
-        prior = old.get(t["name"].lower())
-        unchanged = prior and all(prior.get(k, "") == t.get(k, "") for k in ("name", "good", "bad"))
+        prior = old.get(key(t["name"]))
+        unchanged = prior and all(prior.get(k, "") == t.get(k, "") for k in ("good", "bad"))
         out.append(prior if unchanged else {**t, "by": versions.PERSON})
-    return out
+    return dedupe(out)
 
 
 async def propose(
@@ -346,7 +396,7 @@ async def apply_requests(
     traits, changes = await propose(
         model_id, version, [], [], [], await said(model_id), notes, request=" / ".join(requests)
     )
-    traits = mark_theirs(version["traits"], traits)[: MAX_TRAITS + 2]
+    traits = cap(mark_theirs(version["traits"], traits))
     if same(traits, version["traits"]):
         return {**done, "unchanged": list(requests)}
 
@@ -373,6 +423,7 @@ async def apply_requests(
         ]
         or [{"kind": "request", "trait": "", "why": " / ".join(requests), "asked": True}],
         metrics={"fit": tally(fit, after), "check": tally(check, after)},
+        scoring=version["scoring"],
     )
     if new is None:
         return {**done, "conflict": True}
@@ -405,6 +456,34 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
 
     await progress("checking", 0, len(measured))
     current = await grades(model_id, version, measured, checking)
+    other = "lowest" if version["scoring"] == "mean" else "mean"
+    alt = rescore(current, other)
+    gain = tally(fit, alt)["right"] - tally(fit, current)["right"]
+    if gain > 0 and tally(check, alt)["right"] >= tally(check, current)["right"]:
+        new = await versions.save(
+            model_id,
+            after=version["number"],
+            traits=version["traits"],
+            refs=version["refs"],
+            instructions=version["instructions"],
+            source="revised",
+            changes=[
+                {
+                    "kind": "scoring",
+                    "trait": SCORING[other],
+                    "why": f"Scoring by {SCORING[other]} gets {gain} more of the examples it "
+                    "learned from right, with the same trait grades.",
+                }
+            ],
+            metrics={"fit": tally(fit, alt), "check": tally(check, alt)},
+            scoring=other,
+        )
+        if new is None:
+            return {**done, "version": version, "conflict": True}
+        saved.append(
+            {**new, "before": {"fit": tally(fit, current), "check": tally(check, current)}}
+        )
+        version, current = new, alt
     tried: list[str] = []
     stale = 0
     for n in range(1, MAX_PASSES + 1):
@@ -432,7 +511,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             log.warning("Rubric proposal failed for %s (pass %d)", model_id, n, exc_info=True)
             stale += 1
             continue
-        traits = keep_theirs(version["traits"], traits)[: MAX_TRAITS + 2]
+        traits = cap(keep_theirs(version["traits"], traits))
         if same(traits, version["traits"]):
             tried.append(_tried(changes, 0, len(wrong)) + " (no change to the rubric)")
             stale += 1
@@ -441,6 +520,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             "traits": traits,
             "refs": judge.pick_refs(fit_all, seed),
             "instructions": version["instructions"],
+            "scoring": version["scoring"],
         }
         # The misses first: a rubric that fixes none of them isn't worth grading further.
         new_grades = await grades(model_id, candidate, wrong)
@@ -472,6 +552,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             source="revised",
             changes=changes,
             metrics={"fit": tally(fit, new_grades), "check": tally(check, new_grades)},
+            scoring=version["scoring"],
         )
         if new is None:
             return {**done, "version": version, "conflict": True}

@@ -7,9 +7,10 @@ their files and returns one structured update: labels for attachments, thread re
 (questions, with quick-reply choices), a rewritten description when the person says what
 the eval is for, and rubric change requests for the next build. New labels queue a build
 (service.request_build), so the rubric keeps up with the evidence; the build posts what
-changed back here (build.announce). One agent reads a channel at a time
-(intuition_models.channel_busy_since); one that finds the channel taken leaves the new
-messages to the agent already reading it.
+changed as a reply in the thread its evidence came from (build.announce). Like a bot in a
+Slack channel, the agent only ever replies in threads, and only when it has something to
+say. One agent reads a channel at a time (intuition_models.channel_busy_since); one that
+finds the channel taken leaves the new messages to the agent already reading it.
 """
 
 import asyncio
@@ -258,10 +259,12 @@ async def post_agent(
     model_id: UUID,
     text: str,
     *,
-    thread_id: UUID | None = None,
+    thread_id: UUID,
     kind: str = "message",
     data: dict | None = None,
 ) -> None:
+    """The agent's post: always a reply in a thread, like a bot in a Slack channel; the top of
+    the channel is the person's."""
     await get_pool().execute(
         """INSERT INTO eval_messages (model_id, thread_id, author, kind, text, data, handled_at)
            VALUES ($1, $2, 'agent', $3, $4, $5, now())""",
@@ -339,7 +342,7 @@ async def _handle(model_id: UUID, batch: list) -> None:
             timeout=CALL_TIMEOUT,
         )
         update = parse("".join(b.text for b in reply.content if b.type == "text"))
-        await _apply(model_id, context, update)
+        await _apply(model_id, context, update, batch)
     except Exception:
         log.exception("Eval channel agent failed for %s", model_id)
         last = batch[-1]
@@ -522,7 +525,7 @@ def _text(value, limit: int) -> str | None:
     return (str(value).strip()[:limit] or None) if value else None
 
 
-async def _apply(model_id: UUID, context: dict, update: dict) -> None:
+async def _apply(model_id: UUID, context: dict, update: dict, batch: list) -> None:
     changed = False
     for lab in update["labels"]:
         targets: list[UUID] = []
@@ -574,4 +577,6 @@ async def _apply(model_id: UUID, context: dict, update: dict) -> None:
         )
         changed = True
     if changed:
-        await service.request_build(model_id)
+        # The build reports in the thread of the newest message it learned from.
+        newest = batch[-1]
+        await service.request_build(model_id, reply_to=newest["thread_id"] or newest["id"])

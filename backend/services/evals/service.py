@@ -158,6 +158,7 @@ async def set_instructions(eval_id: UUID, instructions: str) -> None:
             instructions=instructions,
             source="edited",
             changes=[{"kind": "description", "trait": "", "why": "The description changed"}],
+            scoring=version["scoring"],
         )
     await request_build(eval_id)
 
@@ -244,7 +245,11 @@ async def edit_example(
     )
     if row is None:
         raise NotFound("Example not found")
-    await request_build(eval_id)
+    # A label set on a dropped file is reported in that drop's thread.
+    thread = await get_pool().fetchval(
+        "SELECT COALESCE(thread_id, id) FROM eval_messages WHERE id=$1", row["message_id"]
+    )
+    await request_build(eval_id, reply_to=thread)
     return dict(row)
 
 
@@ -296,11 +301,17 @@ def _live(build: dict) -> bool:
 
 
 async def request_build(
-    eval_id: UUID, *, fresh: bool = False, delay: int = DEBOUNCE_SECONDS
+    eval_id: UUID,
+    *,
+    fresh: bool = False,
+    delay: int = DEBOUNCE_SECONDS,
+    reply_to: UUID | None = None,
 ) -> bool:
     """Bring the rubric up to date with the evidence: queue a build, or have the running one
     go again when it finishes. fresh rewrites the rubric from scratch instead of revising it.
-    Returns whether a new build was queued."""
+    reply_to is the channel thread the evidence came from: the build reports there, and
+    evidence from outside the channel leaves the report to the rubric panel. Returns whether a
+    new build was queued."""
     from ...tasks import evals as eval_tasks
 
     async with get_pool().acquire() as conn, conn.transaction():
@@ -332,6 +343,8 @@ async def request_build(
             flags = {"fresh": True} if fresh else {}
             if build["stage"] != "queued":
                 flags["again"] = True
+        if reply_to is not None:
+            flags["reply_to"] = str(reply_to)
         if flags:
             await conn.execute(
                 """UPDATE intuition_models SET build = COALESCE(build, '{}'::jsonb) || $2::jsonb
@@ -348,20 +361,23 @@ async def request_build(
 
 
 async def claim_build(eval_id: UUID) -> dict | None:
-    """Take the queued build for this worker: {"fresh": bool}, or None if another took it."""
+    """Take the queued build for this worker: {"fresh": bool, "reply_to": the thread to report
+    in, or None}, or None if another worker took it."""
     row = await get_pool().fetchrow(
         """WITH old AS (
                SELECT build FROM intuition_models
                WHERE id=$1 AND build->>'stage' = 'queued' FOR UPDATE
            )
            UPDATE intuition_models m
-              SET build = m.build || jsonb_build_object('stage', 'starting', 'fresh', false, 'at', $2::text)
+              SET build = (m.build - 'reply_to')
+                          || jsonb_build_object('stage', 'starting', 'fresh', false, 'at', $2::text)
              FROM old WHERE m.id=$1
-           RETURNING COALESCE((old.build->>'fresh')::boolean, false) AS fresh""",
+           RETURNING COALESCE((old.build->>'fresh')::boolean, false) AS fresh,
+                     (old.build->>'reply_to')::uuid AS reply_to""",
         eval_id,
         _now(),
     )
-    return {"fresh": row["fresh"]} if row else None
+    return {"fresh": row["fresh"], "reply_to": row["reply_to"]} if row else None
 
 
 async def finish_build(eval_id: UUID) -> None:
@@ -436,6 +452,7 @@ async def edit_rubric(owner: UUID, eval_id: UUID, traits: list[dict], base: int)
         instructions=row["instructions"],
         source="edited",
         changes=changes,
+        scoring=version["scoring"] if version else "mean",
     )
     if saved is None:
         raise Conflict("The rubric changed while you were editing; reload and try again")
@@ -536,8 +553,17 @@ async def label_call(
     )
     if call is None:
         raise NotFound("Call not found")
-    have = await get_pool().fetchval(
-        "SELECT count(*) FROM intuition_examples WHERE model_id=$1", eval_id
+    # A relabel keeps the split the example already had; a new label takes the next one.
+    split = (
+        await get_pool().fetchval(
+            "SELECT split FROM intuition_examples WHERE id=$1", call["example_id"]
+        )
+        or splits(
+            await get_pool().fetchval(
+                "SELECT count(*) FROM intuition_examples WHERE model_id=$1", eval_id
+            ),
+            1,
+        )[0]
     )
     async with get_pool().acquire() as conn, conn.transaction():
         if call["example_id"]:
@@ -550,7 +576,7 @@ async def label_call(
                 eval_id,
                 call["input"],
                 label,
-                splits(have, 1)[0],
+                split,
                 note.strip()[:2000],
             )
         await conn.execute(

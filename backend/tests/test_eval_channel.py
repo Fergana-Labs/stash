@@ -107,6 +107,7 @@ def world(monkeypatch):
         channel_reply=None,
         gullible=False,
         proposer_error=None,
+        per_trait=False,
     )
 
     async def upload_file(owner, name, content, ctype):
@@ -167,10 +168,15 @@ def world(monkeypatch):
             else:
                 ok = red
             grade = 5 if ok else 1
+            # Per trait: each trait sees only its own property, so one flaw fails one trait.
+            seen = {"Color": red, "Stripes": not striped}
+            grades = {n: (5 if seen.get(n, ok) else 1) if w.per_trait else grade for n in names}
             return reply(
                 json.dumps(
                     {
-                        "traits": [{"trait": n, "score": grade, "why": "seen"} for n in names],
+                        "traits": [
+                            {"trait": n, "score": g, "why": "seen"} for n, g in grades.items()
+                        ],
                         "summary": "looks good" if ok else "looks bad",
                         "fixes": [{"issue": "x", "fix": "y"}],
                         "keep": [],
@@ -232,8 +238,8 @@ async def _label(client, auth, eid, label, images, prefix):
     return resp.json()["examples"]
 
 
-async def _build(eid: str) -> None:
-    await service.request_build(UUID(eid), delay=0)
+async def _build(eid: str, reply_to: str | None = None) -> None:
+    await service.request_build(UUID(eid), delay=0, reply_to=UUID(reply_to) if reply_to else None)
     await eval_tasks.build_eval_async(UUID(eid))
 
 
@@ -289,6 +295,8 @@ async def test_the_agent_labels_from_words_and_asks_in_a_thread_when_unsure(
     assert [a["label"] for a in listed["messages"][1]["attachments"]] == ["good"] * 3
     assert listed["messages"][-1]["thread_id"] == unsure["id"]  # replies stay in the thread
     assert listed["busy"] is False
+    # Like a bot in a Slack channel, the agent only ever replies in threads.
+    assert all(m["thread_id"] for m in listed["messages"] if m["author"] == "agent")
     # The agent saw the thread's files with the reply, and every message was read once.
     assert "where this thread starts" in world.channel_texts[-1]
     assert world.calls["channel"] == 3
@@ -386,13 +394,14 @@ async def test_a_build_writes_the_rubric_then_revises_it_from_its_misses(
 ):
     auth = await _register(client)
     eid = await _striped_eval(client, auth)
+    note = (await _post(client, auth, eid, "added a few examples")).json()["message"]
     world.proposals.append(
         {
             "changes": [{"kind": "add", "trait": "Stripes", "why": "the striped ones are bad"}],
             "traits": [COLOR, STRIPES],
         }
     )
-    await _build(eid)
+    await _build(eid, reply_to=note["id"])
 
     versions = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
     assert [(v["number"], v["source"]) for v in versions] == [(2, "revised"), (1, "written")]
@@ -412,6 +421,8 @@ async def test_a_build_writes_the_rubric_then_revises_it_from_its_misses(
     assert detail["version"] == 2 and [t["name"] for t in detail["traits"]] == ["Color", "Stripes"]
     assert detail["build"]["stage"] == "done"
     update = (await _messages(client, auth, eid))["messages"][-1]
+    # Reported as a reply in the thread of the post the evidence came with.
+    assert update["thread_id"] == note["id"]
     assert update["kind"] == "rubric" and update["data"]["version"] == 2
     assert update["text"] == (
         "Wrote rubric v1, then revised it to v2: added Stripes. "
@@ -450,9 +461,9 @@ async def test_an_edit_that_doesnt_help_is_rejected(client: AsyncClient, world):
     # The second pass was told what the first one tried.
     assert "tighten Color: fixed 0 of 2 misses" in world.proposer_texts[1]
     assert versions[0]["metrics"]["fit"]["right"] == 6
-    # The rubric can't explain the striped ones, and nobody said why; they were added
-    # through the API, not the channel, so there's no thread to ask in.
-    assert all(m["kind"] == "rubric" for m in (await _messages(client, auth, eid))["messages"])
+    # Evidence that came through the API, not the channel, gets no channel report: the panel
+    # shows the rubric. Nor is there a thread to ask about the striped ones in.
+    assert (await _messages(client, auth, eid))["messages"] == []
 
 
 async def test_held_out_examples_measure_but_never_teach(client: AsyncClient, world):
@@ -517,7 +528,10 @@ async def test_the_persons_edits_are_theirs(client: AsyncClient, world):
     assert current["source"] == "revised"
     assert current["traits"][0] == {**mine, "basis": "", "by": "person"}
     assert [t["name"] for t in current["traits"]] == ["Color", "Stripes"]
-    assert "Color (the person's)" in world.proposer_texts[-1]
+    assert (
+        "The person's own traits (keep exactly):\n- Color: good = warm red"
+        in world.proposer_texts[-1]
+    )
 
     duplicate = await client.put(
         f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": [mine, mine], "base": 3}
@@ -538,6 +552,45 @@ def test_revisions_put_back_a_trait_the_person_wrote():
     assert marked == [COLOR, {**STRIPES, "by": "person"}]
 
 
+def test_a_note_copied_into_a_trait_name_never_duplicates_the_persons_trait():
+    theirs = {"name": "Tone", "good": "plain", "bad": "salesy", "by": "person"}
+    reply = json.dumps(
+        {
+            "changes": [],
+            "traits": [
+                {"name": "Tone (the person's)", "good": "plain", "bad": "salesy"},
+                {**COLOR, "name": "color"},
+                COLOR,
+            ],
+        }
+    )
+    traits, _ = revise.parse(reply)
+    assert [t["name"] for t in traits] == ["Tone", "color", "Color"]
+    kept = revise.keep_theirs([theirs, COLOR], traits)
+    assert kept == [theirs, {**COLOR, "name": "color", "basis": "the good ones are red"}]
+    # After a requested change, an unchanged trait is still the one that was there.
+    assert revise.mark_theirs([theirs], [{**theirs, "name": "Tone [the person's]"}]) == [theirs]
+
+
+async def test_a_rewrite_keeps_the_persons_traits(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    mine = {"name": "Warmth", "good": "warm reds", "bad": "cold blues"}
+    edited = await client.put(
+        f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": [COLOR, mine], "base": 1}
+    )
+    assert edited.status_code == 200, edited.text
+    await eval_tasks.build_eval_async(UUID(eid))  # the build the edit queued
+    rewrite = await client.post(f"/api/v1/evals/{eid}/build?fresh=true", headers=auth)
+    assert rewrite.status_code == 202
+    await eval_tasks.build_eval_async(UUID(eid))
+    versions_ = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    written = next(v for v in versions_ if v["source"] == "written" and v["number"] > 1)
+    assert [t["name"] for t in written["traits"]] == ["Warmth", "Color"]
+    assert written["traits"][0]["by"] == "person"
+
+
 async def test_a_rubric_request_in_the_channel_is_applied_as_asked(client: AsyncClient, world):
     auth = await _register(client)
     eid = await _striped_eval(client, auth)
@@ -546,7 +599,7 @@ async def test_a_rubric_request_in_the_channel_is_applied_as_asked(client: Async
         "UPDATE intuition_models SET traits=$2 WHERE id=$1", UUID(eid), [COLOR, shape]
     )
     await _build(eid)  # adopts the existing traits as v1
-    await _post(client, auth, eid, "Drop the shape trait")
+    request = (await _post(client, auth, eid, "Drop the shape trait")).json()["message"]
     await channel.run(UUID(eid))
     world.proposals.append(
         {
@@ -563,7 +616,7 @@ async def test_a_rubric_request_in_the_channel_is_applied_as_asked(client: Async
     assert len(asked) == 1
     assert "The person asked for this change to the rubric: Drop the shape trait" in asked[0]
     update = (await _messages(client, auth, eid))["messages"][-1]
-    assert update["kind"] == "rubric"
+    assert update["kind"] == "rubric" and update["thread_id"] == request["id"]
     assert update["text"].startswith("Rubric v2: removed Shape (as you asked).")
     assert versions[0]["changes"][0]["kind"] == "remove" and versions[0]["changes"][0]["asked"]
 
@@ -611,7 +664,7 @@ async def test_builds_are_debounced_claimed_once_and_rerun_for_late_evidence(
     await service.request_build(model_id, delay=0)
     assert world.builds == [service.DEBOUNCE_SECONDS, 0]
 
-    assert await service.claim_build(model_id) == {"fresh": False}
+    assert (await service.claim_build(model_id))["fresh"] is False
     assert await service.claim_build(model_id) is None  # the second worker finds it taken
     # Evidence during the build: it goes again when it finishes.
     await service.request_build(model_id)
@@ -644,6 +697,9 @@ async def test_labels_from_anywhere_queue_a_build(client: AsyncClient, world):
     assert world.builds == [service.DEBOUNCE_SECONDS]
     listed = (await _messages(client, auth, eid))["messages"]
     assert listed[0]["attachments"][0]["label"] == "good"
+    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", UUID(eid))
+    assert state["reply_to"] == posted["id"]
+    assert (await service.claim_build(UUID(eid)))["reply_to"] == UUID(posted["id"])
 
 
 def test_the_first_examples_all_teach_then_every_fourth_is_held_out():
@@ -657,13 +713,14 @@ def test_the_first_examples_all_teach_then_every_fourth_is_held_out():
 async def test_the_judge_resists_claims_about_the_work(client: AsyncClient, world):
     auth = await _register(client)
     eid = await _striped_eval(client, auth)
+    note = (await _post(client, auth, eid, "more examples")).json()["message"]
     world.proposals.append(
         {
             "changes": [{"kind": "add", "trait": "Stripes", "why": "striped"}],
             "traits": [COLOR, STRIPES],
         }
     )
-    await _build(eid)
+    await _build(eid, reply_to=note["id"])
     current = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"][0]
     tried = current["metrics"]["manipulation"]
     assert tried["n"] == 3 and tried["resisted"] == 3
@@ -677,9 +734,9 @@ async def test_the_judge_resists_claims_about_the_work(client: AsyncClient, worl
         "UPDATE eval_rubric_versions SET metrics = metrics - 'manipulation' WHERE model_id=$1",
         UUID(eid),
     )
-    await _build(eid)
+    await _build(eid, reply_to=note["id"])
     warning = (await _messages(client, auth, eid))["messages"][-1]
-    assert warning["kind"] == "rubric"
+    assert warning["kind"] == "rubric" and warning["thread_id"] == note["id"]
     assert "attempts to talk the judge into passing bad work got through" in warning["text"]
     assert warning["data"]["manipulation"]["resisted"] < 3
 
@@ -745,12 +802,12 @@ async def test_a_rewrite_asked_for_during_a_build_runs_after_it(client: AsyncCli
     eid = await _striped_eval(client, auth)
     model_id = UUID(eid)
     await service.request_build(model_id, delay=0)
-    assert await service.claim_build(model_id) == {"fresh": False}
+    assert (await service.claim_build(model_id))["fresh"] is False
     rewrite = await client.post(f"/api/v1/evals/{eid}/build?fresh=true", headers=auth)
     assert rewrite.status_code == 202
     await build._set(model_id, stage="done")
     await service.finish_build(model_id)
-    assert await service.claim_build(model_id) == {"fresh": True}
+    assert (await service.claim_build(model_id))["fresh"] is True
 
 
 async def test_the_sweep_restarts_a_build_that_died(client: AsyncClient, world):
@@ -767,7 +824,7 @@ async def test_the_sweep_restarts_a_build_that_died(client: AsyncClient, world):
     dispatched = len(world.builds)
     assert (await service.sweep())["builds"] == 1
     assert len(world.builds) == dispatched + 1
-    assert await service.claim_build(model_id) == {"fresh": False}
+    assert (await service.claim_build(model_id))["fresh"] is False
     assert (await service.sweep())["builds"] == 0  # a live build is left alone
 
 
@@ -817,3 +874,94 @@ async def test_unread_messages_outside_the_batch_are_not_history(client: AsyncCl
     text = _texts((await channel._context(UUID(eid), batch))["content"])
     assert "first message" in text.split("New messages:")[1]
     assert "second message" not in text
+
+
+async def test_the_build_picks_the_scoring_rule_that_agrees_with_the_person(
+    client: AsyncClient, world
+):
+    world.per_trait = True
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await get_pool().execute(
+        "UPDATE intuition_models SET traits=$2 WHERE id=$1", UUID(eid), [COLOR, STRIPES]
+    )
+    judged = world.calls["judge"]
+    await _build(eid)  # adopts [Color, Stripes] as v1, scored by the average
+    versions_ = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    # Averaged, blue and striped work each fail one trait and land on 0.5: called good.
+    # Scored by the lowest trait, one failing trait fails the work: all 8 right.
+    assert [(v["number"], v["scoring"]) for v in versions_] == [(2, "lowest"), (1, "mean")]
+    assert versions_[0]["changes"][0]["kind"] == "scoring"
+    assert versions_[0]["metrics"]["fit"]["right"] == 8
+    assert versions_[0]["traits"] == versions_[1]["traits"]
+    # Switching rules re-grades nothing: 8 examples, plus the claims check's 3 attempts.
+    assert world.calls["judge"] - judged == 8 + 3
+    scored = await client.post(
+        f"/api/v1/evals/{eid}/score",
+        headers=auth,
+        files={"files": ("x.png", STRIPED[5], "image/png")},
+    )
+    assert scored.status_code == 200 and scored.json()["score"] == 0.0
+
+
+# ── Review findings ──────────────────────────────────────────────────────
+
+
+async def test_held_out_examples_alone_never_write_a_rubric(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _eval(client, auth, "Red things")
+    held = await _label(client, auth, eid, "good", RED[:2], "held")
+    held += await _label(client, auth, eid, "bad", BLUE[:2], "held")
+    await get_pool().execute(
+        "UPDATE intuition_examples SET split = 'eval' WHERE id = ANY($1::uuid[])",
+        [UUID(e["id"]) for e in held],
+    )
+    await _build(eid)
+    detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
+    assert detail["version"] is None and detail["build"]["stage"] == "done"
+    assert world.calls["traits"] == 0 and world.calls["judge"] == 0
+
+
+async def test_a_conflict_keeps_the_persons_request(client: AsyncClient, world, monkeypatch):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    await _post(client, auth, eid, "Drop the shape trait")
+    await channel.run(UUID(eid))
+
+    async def saved_meanwhile(*args, **kwargs):
+        return {"version": None, "saved": [], "unchanged": [], "conflict": True}
+
+    monkeypatch.setattr(revise, "apply_requests", saved_meanwhile)
+    await eval_tasks.build_eval_async(UUID(eid))
+    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", UUID(eid))
+    assert state["requests"] == ["Drop the shape trait"] and state["stage"] == "done"
+
+
+async def test_relabeling_a_call_keeps_its_split(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    call = (
+        await client.post(
+            f"/api/v1/evals/{eid}/score", headers=auth, json={"output": {"text": "plain"}}
+        )
+    ).json()
+    url = f"/api/v1/evals/{eid}/calls/{call['call_id']}/label"
+    first = (await client.put(url, headers=auth, json={"label": "bad"})).json()
+    await get_pool().execute(
+        "UPDATE intuition_examples SET split = 'eval' WHERE id=$1", UUID(first["example_id"])
+    )
+    second = (await client.put(url, headers=auth, json={"label": "good", "note": "fine"})).json()
+    split = await get_pool().fetchval(
+        "SELECT split FROM intuition_examples WHERE id=$1", UUID(second["example_id"])
+    )
+    assert split == "eval"
+
+
+def test_the_trait_cap_never_cuts_the_persons_traits():
+    theirs = {"name": "Tone", "good": "plain", "bad": "salesy", "by": "person"}
+    proposed = [{"name": f"Trait {i}", "good": "g", "bad": "b"} for i in range(12)]
+    capped = revise.cap(revise.keep_theirs([theirs], proposed))
+    assert len(capped) == revise.MAX_TRAITS + 2 and theirs in capped
+    assert [t["name"] for t in capped][-1] == "Tone"

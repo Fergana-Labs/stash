@@ -22,6 +22,7 @@ def _version(row) -> dict:
         "traits": row["traits"],
         "refs": list(row["refs"]),
         "instructions": row["instructions"],
+        "scoring": row["scoring"],
         "source": row["source"],
         "changes": row["changes"],
         "metrics": row["metrics"],
@@ -54,6 +55,7 @@ async def save(
     source: str,
     changes: list[dict],
     metrics: dict | None = None,
+    scoring: str = "mean",
 ) -> dict | None:
     """Save a new current version on top of version number `after` (0 when there is none).
 
@@ -69,8 +71,8 @@ async def save(
             return None
         row = await conn.fetchrow(
             """INSERT INTO eval_rubric_versions
-               (model_id, number, traits, refs, instructions, source, changes, metrics)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *""",
+               (model_id, number, traits, refs, instructions, source, changes, metrics, scoring)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *""",
             model_id,
             latest + 1,
             traits,
@@ -79,6 +81,7 @@ async def save(
             source,
             changes,
             metrics,
+            scoring,
         )
         await conn.execute(
             "UPDATE intuition_models SET traits=$2, updated_at=now() WHERE id=$1", model_id, traits

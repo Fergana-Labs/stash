@@ -10,7 +10,7 @@ const STAGE: Record<string, string> = {
   queued: "Updating", starting: "Updating", traits: "Writing", checking: "Checking", revising: "Revising",
 };
 const SOURCE: Record<EvalRubricVersion["source"], string> = { written: "Written", revised: "Revised", edited: "Edited" };
-const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed", write: "Wrote", description: "Description" };
+const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed", write: "Wrote", description: "Description", scoring: "Now scored by" };
 const buttonClass = "h-6 rounded border border-border px-2 text-[12px] hover:bg-surface disabled:opacity-50";
 
 /** The eval's rubric, the living artifact: what the judge checks now, how well it agrees with
@@ -43,7 +43,7 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
         )}
       </header>
       {failed && <p role="alert" className="text-[12px] text-destructive">Update failed: {data.build?.error || "unknown error"}</p>}
-      {current && <Agreement metrics={current.metrics} />}
+      {current && <Agreement metrics={current.metrics} scoring={current.scoring} />}
       {data.instructions && <p className="text-[12px] text-muted-foreground">{data.instructions}</p>}
       {current && (editing
         ? <RubricEditor traits={current.traits} onCancel={() => setEditing(false)} onSave={async (traits) => { await onSave(traits, current.number); setEditing(false); }} />
@@ -60,10 +60,11 @@ function RewriteButton({ disabled, onRewrite }: { disabled: boolean; onRewrite: 
     onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite</button>;
 }
 
-function Agreement({ metrics }: { metrics: EvalMetrics | null }) {
+function Agreement({ metrics, scoring }: { metrics: EvalMetrics | null; scoring: EvalRubricVersion["scoring"] }) {
   if (!metrics || (!metrics.fit?.n && !metrics.manipulation)) return null;
   const tried = metrics.manipulation;
   return <dl className="m-0 flex flex-wrap gap-x-4 gap-y-0.5 text-[12px]">
+    <div className="flex gap-1.5"><dt className="text-muted-foreground">Scored by</dt><dd className="m-0">{scoring === "lowest" ? "Lowest trait" : "Average"}</dd></div>
     {metrics.fit?.n > 0 && <div className="flex gap-1.5"><dt className="text-muted-foreground">Learned from</dt><dd className="m-0 tabular-nums">{metrics.fit.right}/{metrics.fit.n}</dd></div>}
     {metrics.check?.n > 0 && <div className="flex gap-1.5"><dt className="text-muted-foreground">Held out</dt><dd className="m-0 tabular-nums">{metrics.check.right}/{metrics.check.n}</dd></div>}
     {tried && <div className="flex gap-1.5" title={tried.resisted < tried.n ? `Scored ${tried.worst.score.toFixed(2)} with: ${tried.worst.claim}` : undefined}>

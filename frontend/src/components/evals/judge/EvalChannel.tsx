@@ -11,12 +11,12 @@ import { evalExampleFilePath, type EvalAttachment, type EvalLabel, type EvalMess
 
 export interface Send { text: string; files: File[]; threadId?: string }
 
-/** The eval's channel: people drop examples and say what they think; the agent labels them
- * from their words and asks in threads when it can't tell. Threads open inline. */
-export default function EvalChannel({ evalId, messages, busy, onSend, onLabel }: {
+/** The eval's channel, like a Slack channel: the person's posts run down the middle, and the
+ * agent, like a bot, only ever replies in a post's thread, and only when it has something to
+ * say. Threads stay folded behind their reply count until opened. */
+export default function EvalChannel({ evalId, messages, onSend, onLabel }: {
   evalId: string;
   messages: EvalMessage[];
-  busy: boolean;
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
 }) {
@@ -65,7 +65,6 @@ export default function EvalChannel({ evalId, messages, busy, onSend, onLabel }:
         {top.length === 0
           ? <UploadBox title="Drop screenshots of good and bad agent work" disabled={false} onFiles={setDropped} />
           : top.map((m) => <Message key={m.id} evalId={evalId} message={m} replies={replies.get(m.id) ?? []} onSend={onSend} onLabel={onLabel} />)}
-        {busy && <p role="status" className="flex items-center gap-1.5 pl-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Reading</p>}
         <div ref={bottom} />
       </div>
       <div className="sticky bottom-0 border-t border-border bg-background p-2">
@@ -79,6 +78,7 @@ function Author({ message }: { message: EvalMessage }) {
   const agent = message.author === "agent";
   return <div className="flex items-baseline gap-2 text-[12px]">
     <span className={cn("font-semibold", agent ? "text-violet-600 dark:text-violet-400" : "text-blue-600 dark:text-blue-400")}>{agent ? "Agent" : "You"}</span>
+    {message.data.via && <span className="text-muted-foreground">via {message.data.via}</span>}
     <time className="text-muted-foreground" dateTime={message.created_at}>{relativeTime(message.created_at)}</time>
   </div>;
 }
@@ -90,24 +90,27 @@ function Message({ evalId, message, replies, onSend, onLabel }: {
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
 }) {
-  // A thread whose last word is the agent's is waiting on the person: it opens itself, until
-  // they hide it (and again when the agent says something new there).
+  // Folded like a Slack thread: the reply count, who replied last and when. When the agent's
+  // last word is a question, it's waiting on the person, so the count stands out; a rubric
+  // report isn't waiting on anyone.
+  const [open, setOpen] = useState(false);
   const last = replies.at(-1);
-  const waiting = last?.author === "agent";
-  const [toggle, setToggle] = useState<{ open: boolean; at?: string }>({ open: false });
-  const shown = toggle.open || (waiting && toggle.at !== last?.id);
-  const setOpen = (open: boolean) => setToggle(open ? { open: true } : { open: false, at: last?.id });
+  const waiting = !!last && last.author === "agent" && last.kind === "message"
+    && (!!last.data.choices?.length || !!last.data.about || last.text.trim().endsWith("?"));
+  const count = replies.length === 1 ? "1 reply" : `${replies.length} replies`;
   return (
     <article className="group rounded px-1 py-1.5 hover:bg-surface/40">
       <Author message={message} />
       <Body evalId={evalId} message={message} onLabel={onLabel} />
-      {replies.length > 0 && (
-        <button type="button" onClick={() => setOpen(!shown)} className="mt-1 text-[12px] text-brand-600 hover:underline">
-          {shown ? "Hide replies" : replies.length === 1 ? "1 reply" : `${replies.length} replies`}
+      {last && (
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+          className="mt-1 flex items-baseline gap-2 text-[12px] hover:underline">
+          <span className={cn("text-brand-600", waiting && !open && "font-semibold")}>{open ? "Hide replies" : count}</span>
+          {!open && <span className="text-muted-foreground">{last.author === "agent" ? "Agent" : "You"} {relativeTime(last.created_at)}</span>}
         </button>
       )}
-      {(shown || replies.length === 0) && (
-        <Thread evalId={evalId} message={message} replies={replies} open={shown} onSend={onSend} onLabel={onLabel} />
+      {(open || replies.length === 0) && (
+        <Thread evalId={evalId} message={message} replies={replies} open={open} onSend={onSend} onLabel={onLabel} />
       )}
     </article>
   );
@@ -127,7 +130,7 @@ function Body({ evalId, message, onLabel }: { evalId: string; message: EvalMessa
   </>;
 }
 
-const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed" };
+const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed", scoring: "Now scored by" };
 
 function RubricUpdate({ message }: { message: EvalMessage }) {
   const changes = (message.data.changes ?? []).filter((c) => c.trait);

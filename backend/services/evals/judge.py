@@ -70,6 +70,16 @@ def model() -> str:
     return settings.EVAL_JUDGE_MODEL
 
 
+def aggregate(traits: list[dict], scoring: str = "mean") -> float:
+    """One score from the trait grades (each 0-1): their mean, or with 'lowest' the lowest,
+    for taste where one failing trait fails the work. The build picks whichever agrees better
+    with the person's labels."""
+    grades = [t["score"] for t in traits]
+    if not grades:
+        return 0.0
+    return round(min(grades) if scoring == "lowest" else float(np.mean(grades)), 4)
+
+
 def _traits_text(traits: list[dict]) -> str:
     return "\n".join(
         f"- {t['name']}: good = {t.get('good', '')}; bad = {t.get('bad', '')}" for t in traits
@@ -234,7 +244,10 @@ async def grade(
                 system=system,
                 messages=[{"role": "user", "content": content}],
             )
-            return _parse("".join(b.text for b in reply.content if b.type == "text"))
+            result = _parse("".join(b.text for b in reply.content if b.type == "text"))
+            if version and version.get("scoring", "mean") != "mean":
+                result["score"] = aggregate(result["traits"], version["scoring"])
+            return result
         except Exception:
             logger.warning(
                 "Eval judge failed for %s (attempt %d)", model_id, attempt + 1, exc_info=True
