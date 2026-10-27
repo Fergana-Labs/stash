@@ -33,6 +33,13 @@ def code_fingerprint():
     return hashlib.sha256(json.dumps(hashes).encode()).hexdigest()
 
 
+def is_index_title(title: str) -> bool:
+    normalized = title.strip().casefold()
+    if normalized.endswith(".md"):
+        normalized = normalized[:-3].strip()
+    return normalized in {"index", "readme", "wiki index"}
+
+
 async def run(args):
     code_sha256 = code_fingerprint()
     if args.apply and args.expected_code_sha256 != code_sha256:
@@ -68,7 +75,7 @@ async def run(args):
                 if args.manifest_sha256 != digest or not 1 <= len(pages) <= args.max_pages:
                     raise ValueError("Manifest changed or page limit exceeded; make a fresh plan")
                 counts = Counter()
-                indexes = [p for p in pages if p["name"].strip().casefold() in {"index", "readme"}]
+                indexes = [p for p in pages if is_index_title(p["name"])]
                 index_ids = {p["id"] for p in indexes}
                 queue = asyncio.Queue()
                 for page in pages:

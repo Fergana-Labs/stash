@@ -12,6 +12,14 @@ from .test_scoped_curation import dataset as dataset
 from .test_scoped_curation import scope
 
 
+@pytest.mark.parametrize("title", ["Index", "README.md", " Wiki Index ", "wiki index.MD"])
+def test_operator_recognizes_navigation_pages(title):
+    from backend.scripts.review_shared_wiki import is_index_title
+
+    assert is_index_title(title)
+    assert not is_index_title("Indexing diagnostic codes")
+
+
 @pytest.mark.asyncio
 async def test_operator_rejects_unverified_code_before_database_access(monkeypatch):
     from backend.scripts import review_shared_wiki as operator
