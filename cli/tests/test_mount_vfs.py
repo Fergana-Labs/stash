@@ -600,6 +600,31 @@ def test_prefetch_fetches_bodies_concurrently():
     assert client.overlapped
 
 
+def test_metered_scan_prefetch_keeps_later_loads_concurrent():
+    client = FakeClient()
+    client.remaining_document_reads = lambda: 3
+    model = StashVfsModel(client, include_computer=False)
+    model.refresh()
+    model._add_dir("/metered")
+    started = []
+    barrier = threading.Barrier(2, timeout=1.0)
+
+    def load(index):
+        started.append(index)
+        if index:
+            # After the first ordered load, these two must still overlap.
+            barrier.wait()
+        return str(index).encode()
+
+    paths = [f"/metered/{index}.txt" for index in range(3)]
+    for index, path in enumerate(paths):
+        model._add_file(path, loader=lambda index=index: load(index))
+    model.prefetch(paths, for_scan=True)
+    assert started[0] == 0
+    assert sorted(started) == [0, 1, 2]
+    assert [model.read_for_scan(path) for path in paths] == [b"0", b"1", b"2"]
+
+
 def test_prefetch_left_serial_does_not_overlap():
     """The control. Proves the barrier above is actually detecting concurrency
     rather than always releasing."""

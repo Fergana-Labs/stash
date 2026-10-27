@@ -9,6 +9,7 @@ not part of the tree.
 
 import io
 import json
+import threading
 from uuid import UUID
 
 import pytest
@@ -292,6 +293,38 @@ async def test_nonrecursive_continuation_preserves_filename_prefix(client, monke
     second = (await _vfs(client, key, first["searches"][0]["next_command"])).json()
     assert first["stdout"] == "/files/One.md:alpha\n"
     assert second["stdout"] == "/files/Two.md:alpha\n"
+
+
+async def test_search_cursor_advances_when_later_prefetch_would_win_budget(client, monkeypatch):
+    from backend.services.vfs_service import InProcessVfsClient
+
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    first_id = await _make_page(client, key, "One", "alpha")
+    second_id = await _make_page(client, key, "Two", "beta")
+    later_finished = threading.Event()
+    original = InProcessVfsClient.get_page
+
+    def delayed_first(self, page_id):
+        if page_id == first_id:
+            # Force a later worker to spend the only slot if both are submitted
+            # concurrently. An ordered first load proceeds after the timeout.
+            later_finished.wait(0.5)
+        result = original(self, page_id)
+        if page_id == second_id:
+            later_finished.set()
+        return result
+
+    monkeypatch.setattr(InProcessVfsClient, "get_page", delayed_first)
+    first = (await _vfs(client, key, "grep -ri 'alpha|beta' /files")).json()
+    coverage = first["searches"][0]
+    assert coverage["files_searched"] == 1
+    assert coverage["next_offset"] == 1
+    assert "One.md:alpha" in first["stdout"]
+    second = (await _vfs(client, key, coverage["next_command"])).json()
+    assert second["searches"][0]["next_offset"] == 2
+    assert second["searches"][0]["has_more"] is False
+    assert "Two.md:beta" in second["stdout"]
 
 
 async def test_wildcard_continuation_rechecks_original_scope(client, monkeypatch):
