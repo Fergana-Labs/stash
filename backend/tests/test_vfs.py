@@ -294,6 +294,20 @@ async def test_nonrecursive_continuation_preserves_filename_prefix(client, monke
     assert second["stdout"] == "/files/Two.md:alpha\n"
 
 
+async def test_wildcard_continuation_rechecks_original_scope(client, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "alpha")
+    first = (await _vfs(client, key, "grep alpha /files/*.md")).json()
+    command = first["searches"][0]["next_command"]
+    assert "/files/*.md" in command
+    await _make_page(client, key, "Three", "alpha")
+    second = (await _vfs(client, key, command)).json()
+    assert second["exit_code"] == 2
+    assert "changed search scope" in second["stderr"]
+
+
 async def test_search_can_continue_after_an_earlier_command_spent_budget(client, monkeypatch):
     monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
     key, _ = await _register(client)

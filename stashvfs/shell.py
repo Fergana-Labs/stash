@@ -154,7 +154,7 @@ class SkillAppVfsShell:
             previous = arg
         return expanded
 
-    def _glob(self, path: str) -> list[str]:
+    def _glob(self, path: str, listed_roots: list[str] | None = None) -> list[str]:
         """Every existing path matching this pattern, walking it a segment at a
         time so a wildcard in the middle expands like one at the end."""
         segments = [segment for segment in path.split("/") if segment]
@@ -173,6 +173,8 @@ class SkillAppVfsShell:
                     names = sorted(self.model.list_dir(base))
                 except (FileNotFoundError, NotADirectoryError, MountError):
                     continue
+                if listed_roots is not None:
+                    listed_roots.append(base)
                 widened.extend(
                     posixpath.join(base, name)
                     for name in names
@@ -189,6 +191,8 @@ class SkillAppVfsShell:
         return True
 
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
+        if name in ("grep", "rg"):
+            return self._grep(name, args, stdin)
         args = self._expand_globs(args)
         if name == "pwd":
             return f"{self.cwd}\n"
@@ -202,8 +206,6 @@ class SkillAppVfsShell:
             return self._find(args)
         if name == "tree":
             return self._tree(args)
-        if name in ("grep", "rg"):
-            return self._grep(name, args, stdin)
         if name == "sed":
             return self._sed(args, stdin)
         if name == "head":
@@ -577,6 +579,17 @@ class SkillAppVfsShell:
         matches = []
         roots = []
         directory_roots = []
+        # Preserve the original wildcard in continuation commands and bind the
+        # cursor to its fresh expansion. Patterns are regexes, not path globs.
+        expanded_paths = []
+        for path in paths:
+            hits = (
+                self._glob(self._resolve_path(path), listed_roots=directory_roots)
+                if any(ch in path for ch in "*?[")
+                else []
+            )
+            expanded_paths.extend(hits or [path])
+        paths = expanded_paths
         # Resolve every root before reading anything (listings are unbudgeted),
         # so a budget stop can say how much of the sweep went unsearched.
         sweep: list[list[str]] = []
