@@ -86,6 +86,16 @@ class StashClient:
             json={"pattern": pattern, "roots": roots, "docs_scanned": docs_scanned},
         )
 
+    def search_wiki(self, query: str, scope: str, limit: int) -> dict:
+        return self._get(
+            "/api/v1/me/vfs/wiki-search",
+            params={
+                "query": query,
+                "scope": scope,
+                "limit": limit,
+            },
+        )
+
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}

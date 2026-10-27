@@ -206,6 +206,8 @@ class SkillAppVfsShell:
             return self._find(args)
         if name == "tree":
             return self._tree(args)
+        if name == "search":
+            return self._search_wiki(args, stdin)
         if name == "sed":
             return self._sed(args, stdin)
         if name == "head":
@@ -468,6 +470,45 @@ class SkillAppVfsShell:
             )
         return rows
 
+    def _search_wiki(self, args: list[str], stdin: str | None) -> str:
+        if stdin is not None or not args:
+            raise VfsShellError(
+                "usage: search 'query' [--scope wiki|shared|private] [--limit 20]", 2
+            )
+        query, *options = args
+        scope, limit = "wiki", 20
+        while options:
+            if len(options) < 2:
+                raise VfsShellError("search options require a value", 2)
+            option, value, *options = options
+            if option == "--scope" and value in ("wiki", "shared", "private"):
+                scope = value
+            elif option == "--limit" and value.isdigit() and 1 <= int(value) <= 50:
+                limit = int(value)
+            else:
+                raise VfsShellError("invalid search option or value", 2)
+        if not query.strip() or len(query) > 256:
+            raise VfsShellError("search query must contain 1 to 256 characters", 2)
+        response = self.model.client.search_wiki(query, scope, limit)
+        paths = {node.app_url: node.path for node in self.model.nodes.values() if node.app_url}
+        results = [{**hit, "path": paths.get(f"/p/{hit['id']}")} for hit in response["results"]]
+        self._searches.append(
+            {
+                "kind": "indexed_wiki",
+                "pattern": query,
+                "scope": scope,
+                "complete": not response["has_more"],
+                "has_more": response["has_more"],
+                "returned": len(results),
+                "coverage": response["coverage"],
+            }
+        )
+        if response["has_more"]:
+            self._warn(
+                "More wiki candidates matched; refine the query or increase --limit (maximum 50)."
+            )
+        return json.dumps({**response, "results": results}, ensure_ascii=False) + "\n"
+
     def _grep(self, name: str, args: list[str], stdin: str | None) -> str:
         resume = None
         original_args = list(args)
@@ -702,6 +743,10 @@ class SkillAppVfsShell:
         )
         if next_command:
             self._warn(f"Continue in a new request: {next_command}")
+        if budget_hit and hasattr(self.model.client, "_end_user"):
+            self._warn(
+                "For wiki candidates first, use search 'part number or topic'; then read the strongest matches."
+            )
         if start:
             self._warn(
                 "Continuation page only: combine with earlier pages; this is not a snapshot."
@@ -1244,6 +1289,7 @@ def _help_text() -> str:
             "Supported commands (read-only):",
             "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc,",
             "  sort, uniq, cut, xargs, echo, printf, stat",
+            "  search 'query' [--scope wiki|shared|private] [--limit 20] (developer wiki candidates)",
             "  pipes with |, command chaining with && or ;",
             "",
         ]

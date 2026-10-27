@@ -4,6 +4,7 @@ Same surface as `stash vfs "<command>"`, for agents with no shell to install the
 CLI into. Read-only: the shell has no write commands and rejects redirects.
 """
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -13,6 +14,7 @@ from stashvfs import MountError
 
 from ..auth import get_current_user
 from ..services import (
+    customer_wiki_search,
     end_user_service,
     security_audit_service,
     shared_wiki_privacy,
@@ -96,6 +98,31 @@ class VfsSearch(BaseModel):
     pattern: str = Field(max_length=MAX_SCRIPT_LENGTH)
     roots: list[str] = Field(max_length=64)
     docs_scanned: int = Field(ge=0)
+
+
+@router.get("/wiki-search")
+async def search_customer_wiki(
+    query: str = Query(min_length=1, max_length=256),
+    user_id: str | None = Query(None, max_length=128),
+    scope: Literal["wiki", "shared", "private"] = "wiki",
+    limit: int = Query(20, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+):
+    context = await _external_vfs_ctx(current_user, user_id)
+    if context is None:
+        raise HTTPException(
+            status_code=400, detail="Indexed wiki search requires a developer workspace"
+        )
+    if not query.strip():
+        raise HTTPException(status_code=422, detail="query must contain search terms")
+    return await customer_wiki_search.search(
+        context["workspace_id"],
+        context["external_id"],
+        query.strip(),
+        scope,
+        limit,
+        current_user["id"],
+    )
 
 
 @router.get("/pages/{page_id}")

@@ -120,6 +120,9 @@ class InProcessVfsClient:
     def _get(self, endpoint: str, **params) -> dict | list:
         return self._request("GET", endpoint, **params).json()
 
+    def search_wiki(self, query: str, scope: str, limit: int) -> dict:
+        return self._get("/api/v1/me/vfs/wiki-search", query=query, scope=scope, limit=limit)
+
     def _read_document(self, method: str, endpoint: str, **params) -> httpx.Response:
         """A fetch of a node's bytes, as opposed to a listing. Only these are
         budgeted: listings are bounded by the model's own entry ceiling."""
@@ -256,6 +259,12 @@ class ExternalVfsClient(InProcessVfsClient):
             shared_wiki_privacy.published_for_workspace(self._end_user["workspace_id"], page_id),
             self._loop,
         ).result()
+
+    def search_wiki(self, query: str, scope: str, limit: int) -> dict:
+        params = {"query": query, "scope": scope, "limit": limit}
+        if self._end_user["external_id"] is not None:
+            params["user_id"] = self._end_user["external_id"]
+        return self._get("/api/v1/me/vfs/wiki-search", **params)
 
     def get_page(self, page_id: str) -> dict:
         if page_id not in self._shared_page_ids | self._private_page_ids:
