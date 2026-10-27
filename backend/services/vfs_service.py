@@ -25,6 +25,8 @@ import httpx
 
 from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError, VfsScanBudget
 
+from . import shared_wiki_privacy
+
 # A `grep -r /` loads every document it walks, one nested request each. Past this
 # many the budget is spent: a grep stops its sweep and returns partial results
 # with a loud truncation warning (VfsScanBudget), while direct reads — a `cat`
@@ -121,6 +123,10 @@ class InProcessVfsClient:
     def _read_document(self, method: str, endpoint: str, **params) -> httpx.Response:
         """A fetch of a node's bytes, as opposed to a listing. Only these are
         budgeted: listings are bounded by the model's own entry ceiling."""
+        self._consume_document_read()
+        return self._request(method, endpoint, **params)
+
+    def _consume_document_read(self) -> None:
         with self._reads_lock:
             self._document_reads += 1
             over_budget = self._document_reads > MAX_DOCUMENT_READS
@@ -131,7 +137,6 @@ class InProcessVfsClient:
                 f"command read more than {MAX_DOCUMENT_READS} documents; "
                 "scope it to a subdirectory or use search"
             )
-        return self._request(method, endpoint, **params)
 
     # ── Listings, walked during refresh() ──────────────────────────────
 
@@ -238,6 +243,25 @@ class ExternalVfsClient(InProcessVfsClient):
     def __init__(self, http, loop, end_user_ctx: dict) -> None:
         super().__init__(http, loop)
         self._end_user = end_user_ctx
+        self._shared_page_ids: set[str] = set()
+        self._private_page_ids: set[str] = set()
+
+    def _published(self, page_id: str | None = None) -> list[dict]:
+        return asyncio.run_coroutine_threadsafe(
+            shared_wiki_privacy.published_for_workspace(self._end_user["workspace_id"], page_id),
+            self._loop,
+        ).result()
+
+    def get_page(self, page_id: str) -> dict:
+        if page_id not in self._shared_page_ids | self._private_page_ids:
+            raise VfsClientError("Page is unavailable in this customer scope")
+        # Recheck both publication and private ownership on each read. A page
+        # changed/moved after the listing must not inherit its previous access.
+        # Re-enter the API so revoking the credential also stops nested reads.
+        params = {}
+        if self._end_user["external_id"] is not None:
+            params["user_id"] = self._end_user["external_id"]
+        return self._read_document("GET", f"/api/v1/me/vfs/pages/{page_id}", **params).json()
 
     def get_memory_folder(self) -> dict:
         return {"id": self._end_user["shared_wiki_folder_id"]}
@@ -257,15 +281,24 @@ class ExternalVfsClient(InProcessVfsClient):
         tree = overview.get("files", {})
         folders = tree.get("folders", [])
 
-        # Descendant closure of the shared-wiki and user-wiki roots. Everything
-        # else in the workspace — other users' wikis included — is invisible.
+        # Only private folders retain their names/hierarchy. Shared folder names
+        # and attachments have not been reviewed; project approved pages directly
+        # into a generic shared root instead of exposing that unreviewed metadata.
         children: dict[str | None, list[dict]] = {}
         for folder in folders:
             children.setdefault(folder["parent_folder_id"], []).append(folder)
+        shared_ids: set[str] = set()
+        frontier = [self._end_user["shared_wiki_folder_id"]]
+        while frontier:
+            folder_id = frontier.pop()
+            if folder_id in shared_ids:
+                continue
+            shared_ids.add(folder_id)
+            frontier.extend(f["id"] for f in children.get(folder_id, []))
         kept_ids: set[str] = set()
         # A customer with no wiki folder yet has not been written for — they still
         # read the shared wiki, they just own nothing.
-        frontier = [self._end_user["shared_wiki_folder_id"]]
+        frontier = []
         if self._end_user["wiki_folder_id"]:
             frontier.append(self._end_user["wiki_folder_id"])
         while frontier:
@@ -285,6 +318,15 @@ class ExternalVfsClient(InProcessVfsClient):
                 folder = {**folder, "parent_folder_id": None, "name": "wiki"}
             kept_folders.append(folder)
 
+        shared_root = self._end_user["shared_wiki_folder_id"]
+        kept_folders.append(
+            {"id": shared_root, "parent_folder_id": None, "name": "Shared knowledge"}
+        )
+        published = self._published()
+        self._shared_page_ids = {p["id"] for p in published}
+        private_pages = [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids]
+        self._private_page_ids = {p["id"] for p in private_pages}
+
         return {
             **overview,
             "sessions": (
@@ -299,12 +341,17 @@ class ExternalVfsClient(InProcessVfsClient):
             "skills": [],
             "files": {
                 "folders": kept_folders,
-                "pages": [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids],
+                "pages": private_pages + published,
                 "files": [
                     f
                     for f in tree.get("files", [])
-                    if f["folder_id"] in kept_ids
-                    or (external_id is not None and f.get("end_user_external_id") == external_id)
+                    if f["folder_id"] not in shared_ids
+                    and (
+                        f["folder_id"] in kept_ids
+                        or (
+                            external_id is not None and f.get("end_user_external_id") == external_id
+                        )
+                    )
                 ],
             },
         }

@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Shared developer wikis require an independent privacy review of each complete
+  page before customer retrieval. Existing unreviewed pages are quarantined,
+  edits invalidate prior approval, and customer views omit raw provenance,
+  unreviewed folder names and shared attachments. Private wikis remain available.
+
 - Developer wiki curation can edit a small passage without regenerating an entire
   page. Runs start from new input, skip scopes with no new documents, and use
   smaller responses to reduce timeout and truncation failures.

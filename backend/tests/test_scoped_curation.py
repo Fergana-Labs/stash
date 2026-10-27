@@ -14,12 +14,17 @@ from backend.services import end_user_service, source_service
 from backend.services import scoped_curation_service as curation
 
 from .conftest import unique_name
+from .shared_wiki_helpers import approve_fixture_pages
 from .test_developer_platform import _developer, _event, _mint_workspace_key, _push
 from .test_permissions import _auth
 
 
 @pytest_asyncio.fixture
-async def dataset(client, pool):
+async def dataset(client, pool, monkeypatch):
+    async def approve(**kwargs):
+        return curation.shared_wiki_privacy.PrivacyReview(approved=True, issues=[])
+
+    monkeypatch.setattr(curation.shared_wiki_privacy.llm, "complete_structured", approve)
     api_key, _, workspace = await _developer(client)
     key = await _mint_workspace_key(client, api_key, workspace)
     events = [
@@ -91,6 +96,8 @@ async def dataset(client, pool):
 
 
 async def scope(data, purpose, user="public"):
+    async with curation.get_pool().acquire() as conn:
+        await approve_fixture_pages(conn, data.workspace)
     if purpose == "shared":
         destination = data.workspace["external_wiki_folder_id"]
         users = [data.users["public"]["id"]]

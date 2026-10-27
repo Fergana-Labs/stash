@@ -1754,14 +1754,17 @@ async def _embed_page(page_id: UUID, content: str) -> None:
     pool = get_pool()
     if embedding is None:
         await pool.execute(
-            "UPDATE pages SET embed_stale = TRUE WHERE id = $1",
+            "UPDATE pages SET embed_stale = TRUE WHERE id = $1 AND content_hash=$2",
             page_id,
+            _content_hash(content),
         )
         return
     await pool.execute(
-        "UPDATE pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        "UPDATE pages SET embedding = $1, embed_stale = FALSE "
+        "WHERE id = $2 AND content_hash=$3 AND deleted_at IS NULL",
         embedding,
         page_id,
+        _content_hash(content),
     )
 
 

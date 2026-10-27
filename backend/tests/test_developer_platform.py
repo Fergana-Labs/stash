@@ -24,6 +24,7 @@ import pytest
 from httpx import AsyncClient
 
 from .conftest import unique_name
+from .shared_wiki_helpers import approve_fixture_pages
 from .test_permissions import _auth, _register_with_email
 
 
@@ -214,6 +215,7 @@ async def test_user_vfs_isolates_users(client: AsyncClient, pool):
             folder_id,
         )
 
+    await approve_fixture_pages(pool, workspace)
     resp = await client.post(
         "/api/v1/me/vfs",
         json={"script": "find / -type f", "user_id": "org_acme"},
@@ -273,6 +275,7 @@ async def test_developer_workspace_without_user_id_reads_only_shared_wiki(
             folder_id,
         )
 
+    await approve_fixture_pages(pool, workspace)
     resp = await client.post(
         "/api/v1/me/vfs",
         json={"script": "find / -type f"},
@@ -305,6 +308,7 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
         uuid.UUID(workspace["external_wiki_folder_id"]),
     )
 
+    await approve_fixture_pages(pool, workspace)
     resp = await client.post(
         "/api/v1/me/vfs",
         json={"script": "find / -type f", "user_id": "org_never_seen"},
