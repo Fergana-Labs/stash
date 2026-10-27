@@ -255,8 +255,9 @@ async def edit_example(
 
 async def delete_example(owner: UUID, eval_id: UUID, example_id: UUID) -> None:
     """Take an example out of the eval. A channel post that was only there for its files (a
-    drop with no words, or one an agent added) goes with its last one, threads and all; a
-    post with the person's own words keeps them."""
+    drop with no words, or one an agent added) goes with its last one, thread and all, once
+    nothing of the person's is left in that thread: no files still in the eval, and no words.
+    A post with the person's own words keeps them."""
     await _owned(owner, eval_id)
     row = await get_pool().fetchrow(
         "DELETE FROM intuition_examples WHERE id=$1 AND model_id=$2 RETURNING item, label, message_id",
@@ -266,11 +267,23 @@ async def delete_example(owner: UUID, eval_id: UUID, example_id: UUID) -> None:
     if row is None:
         raise NotFound("Example not found")
     if row["message_id"]:
-        await get_pool().execute(
-            """DELETE FROM eval_messages m WHERE m.id=$1 AND (m.text = '' OR m.data ? 'via')
-                 AND NOT EXISTS (SELECT 1 FROM intuition_examples e WHERE e.message_id = m.id)""",
-            row["message_id"],
+        parent = await get_pool().fetchval(
+            "SELECT thread_id FROM eval_messages WHERE id=$1", row["message_id"]
         )
+        # The post the file was in, then the post that one replied to.
+        for message_id in (row["message_id"], parent):
+            if message_id is None:
+                continue
+            await get_pool().execute(
+                """DELETE FROM eval_messages m WHERE m.id=$1 AND (m.text = '' OR m.data ? 'via')
+                     AND NOT EXISTS (
+                         SELECT 1 FROM eval_messages r
+                         WHERE r.thread_id = m.id AND r.author = 'user' AND r.text <> '')
+                     AND NOT EXISTS (
+                         SELECT 1 FROM intuition_examples e JOIN eval_messages r ON r.id = e.message_id
+                         WHERE r.id = m.id OR r.thread_id = m.id)""",
+                message_id,
+            )
     if row["label"]:
         await request_build(eval_id)
 

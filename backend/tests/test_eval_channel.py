@@ -1080,3 +1080,33 @@ async def test_removing_a_file_takes_its_post_along_only_when_nothing_else_is_le
     )
     await remove(added["message"]["attachments"][0])
     assert await ids() == [worded["id"]]
+
+
+async def test_removing_a_file_never_hides_what_its_thread_still_holds(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _eval(client, auth)
+
+    async def remove(attachment: dict) -> None:
+        resp = await client.delete(
+            f"/api/v1/evals/{eid}/examples/{attachment['example_id']}", headers=auth
+        )
+        assert resp.status_code == 204
+
+    async def ids() -> set[str]:
+        return {m["id"] for m in (await _messages(client, auth, eid))["messages"]}
+
+    # A wordless drop stays while a file posted in its thread is still in the eval.
+    drop = (await _post(client, auth, eid, "", RED[:1])).json()["message"]
+    reply = (await _post(client, auth, eid, "", BLUE[:1], thread_id=drop["id"])).json()["message"]
+    await remove(drop["attachments"][0])
+    assert {drop["id"], reply["id"]} <= await ids()
+    # That file gone too, the wordless reply goes, and the drop with it.
+    await remove(reply["attachments"][0])
+    assert not {drop["id"], reply["id"]} & await ids()
+    # The person's words in its thread keep a wordless drop.
+    drop = (await _post(client, auth, eid, "", RED[1:2])).json()["message"]
+    said = (await _post(client, auth, eid, "this one is bad", thread_id=drop["id"])).json()[
+        "message"
+    ]
+    await remove(drop["attachments"][0])
+    assert {drop["id"], said["id"]} <= await ids()
