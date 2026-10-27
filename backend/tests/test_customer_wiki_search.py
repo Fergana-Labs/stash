@@ -65,7 +65,7 @@ async def test_search_matches_only_approved_shared_and_selected_private(dataset,
     data = await _search(client, dataset, "fan hub")
     assert {p["id"] for p in data["results"]} == {str(own["id"]), str(shared["id"])}
     assert "SECRET" not in json.dumps(data)
-    assert data["results"][0]["scope"] == "private"
+    assert {p["scope"] for p in data["results"]} == {"private", "shared"}
     assert data["has_more"] is False
     shared_only = await _search(client, dataset, "fan hub", scope="shared")
     assert [p["id"] for p in shared_only["results"]] == [str(shared["id"])]
@@ -128,6 +128,26 @@ async def test_part_number_match_does_not_accept_lookalikes(dataset, pool, clien
     data = await _search(client, dataset, "lf17537")
     assert [p["id"] for p in data["results"]] == [str(exact["id"])]
     assert "LF17537" in data["results"][0]["excerpt"]
+
+
+async def test_specific_page_outranks_repeated_mentions_in_long_index(dataset, pool, client):
+    await _page(
+        pool,
+        dataset,
+        "Wiki Index",
+        "\n".join(f"Oil filter reference {i} and unrelated workshop context." for i in range(200)),
+    )
+    specific = await _page(
+        pool, dataset, "Oil filter identification", "Oil filter requires the engine model."
+    )
+    data = await _search(client, dataset, "oil filter")
+    assert data["results"][0]["id"] == str(specific["id"])
+
+
+async def test_private_scope_breaks_equal_relevance_ties(dataset, pool, client):
+    own = await _page(pool, dataset, "Fan hub", "Fan hub needs a diagram")
+    await _page(pool, dataset, "Fan hub", "Fan hub needs a diagram", shared=True, approve=True)
+    assert (await _search(client, dataset, "fan hub"))["results"][0]["id"] == str(own["id"])
 
 
 async def test_indexed_command_finds_page_beyond_scan_budget(dataset, pool, client, monkeypatch):

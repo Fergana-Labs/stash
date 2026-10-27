@@ -40,7 +40,8 @@ Omitting `user_id` searches approved shared knowledge only.
 The PostgreSQL index covers titles and body text, including part/model numbers;
 it excludes editable metadata. Customer ownership and current publication
 approval apply before ranking and limiting. Exact phrase occurrences rank ahead
-of other term matches, with private knowledge preferred within that group.
+of other term matches. Relevance is normalized by document length so long index
+pages do not dominate through repetition; private knowledge breaks relevance ties.
 Candidates include paths and bounded excerpts. Read the best candidates through
 VFS before answering; each read checks current access again.
 

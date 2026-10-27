@@ -52,12 +52,12 @@ async def search(
             "(shared.id IS NOT NULL AND $6 IN ('wiki','shared') AND r.page_id IS NOT NULL "
             "AND p.content_type='markdown' AND p.end_user_id IS NULL))) "
             "SELECT id,name,scope,owner_user_id,"
-            f"ts_rank(({SEARCH_VECTOR}),q) AS rank, "
+            f"ts_rank(({SEARCH_VECTOR}),q,2) AS rank, "
             f"strpos(lower(COALESCE(name,'') || E'\\n' || ({BODY_TEXT})),lower($3))>0 AS exact, "
             f"left(ts_headline('english',({BODY_TEXT}),q,"
             "'MaxWords=45,MinWords=15,StartSel=<<,StopSel=>>'),2000) AS excerpt "
             f"FROM eligible CROSS JOIN query WHERE ({SEARCH_VECTOR}) @@ q "
-            "ORDER BY exact DESC,(scope='private') DESC,rank DESC,id LIMIT $7",
+            "ORDER BY exact DESC,rank DESC,(scope='private') DESC,id LIMIT $7",
             UUID(workspace_id),
             external_id,
             query,
@@ -89,5 +89,5 @@ async def search(
             for r in rows[:limit]
         ],
         "coverage": "Ranked wiki candidates only; files, transcripts and connected sources are not searched.",
-        "guidance": "Read the strongest candidates before answering. If inconclusive, narrow the query or search files/transcripts. An empty candidate list does not prove absence of the information.",
+        "guidance": "Read the strongest candidates and verify equipment, component and fitment context before answering. If inconclusive, add the model/part number, or search files/transcripts. A lexical match is not confirmed fitment; an empty candidate list does not prove absence of the information.",
     }

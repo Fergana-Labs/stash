@@ -193,6 +193,8 @@ class SkillAppVfsShell:
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
         if name in ("grep", "rg"):
             return self._grep(name, args, stdin)
+        if name == "search":
+            return self._search_wiki(args, stdin)
         args = self._expand_globs(args)
         if name == "pwd":
             return f"{self.cwd}\n"
@@ -206,8 +208,6 @@ class SkillAppVfsShell:
             return self._find(args)
         if name == "tree":
             return self._tree(args)
-        if name == "search":
-            return self._search_wiki(args, stdin)
         if name == "sed":
             return self._sed(args, stdin)
         if name == "head":
