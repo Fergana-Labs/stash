@@ -1159,3 +1159,29 @@ async def test_a_judge_outage_leaves_a_new_rubric_unmeasured(client: AsyncClient
     )
     detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
     assert detail["build"]["error"] == "The judge graded 0 of 8 examples; the rubric is unchanged"
+
+
+async def test_a_judge_outage_after_a_change_still_reports_the_change(client: AsyncClient, world):
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    await _build(eid)
+    note = (await _post(client, auth, eid, "start over")).json()["message"]
+    # The rewrite is saved, then the judge is unreachable for the check that follows.
+    world.written = [COLOR, STRIPES]
+    world.judge_ok = 0
+    await service.request_build(UUID(eid), fresh=True, delay=0, reply_to=UUID(note["id"]))
+    await eval_tasks.build_eval_async(UUID(eid))
+    versions = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    assert (versions[0]["number"], versions[0]["source"], versions[0]["metrics"]) == (
+        2,
+        "written",
+        None,
+    )
+    detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
+    assert detail["build"]["stage"] == "done"
+    update = (await _messages(client, auth, eid))["messages"][-1]
+    assert update["thread_id"] == note["id"] and update["kind"] == "rubric"
+    assert update["text"] == (
+        "Wrote rubric v2: 2 traits. "
+        "The judge then graded only 0 of 8 examples, so the check stopped there."
+    )

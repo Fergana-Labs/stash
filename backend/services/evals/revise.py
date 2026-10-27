@@ -113,14 +113,13 @@ def tally(examples: list[dict], grades: dict) -> dict:
     }
 
 
-def _enough(examples: list[dict], grades: dict) -> None:
-    """Stop the build, leaving the rubric as it is, unless the judge graded most of `examples`:
-    with the judge unreachable, a comparison would rest on the few grades that got through."""
+def _short(examples: list[dict], grades: dict) -> dict | None:
+    """{"graded", "of"} when the judge graded too few of `examples` to decide anything on (it
+    was unreachable, and a comparison would rest on the grades that got through); else None."""
     graded = sum(e["id"] in grades for e in examples)
-    if graded < MIN_GRADED * len(examples):
-        raise judge.JudgeUnavailable(
-            f"The judge graded {graded} of {len(examples)} examples; the rubric is unchanged"
-        )
+    if graded >= MIN_GRADED * len(examples):
+        return None
+    return {"graded": graded, "of": len(examples)}
 
 
 def _both(examples: list[dict], a: dict, b: dict) -> list[dict]:
@@ -422,6 +421,9 @@ async def apply_requests(
         if both_labels
         else {}
     )
+    if both_labels and (_short(measured, before) or _short(measured, after)):
+        # Applied as asked all the same; measuring it waits for a judge that answers.
+        before, after = {}, {}
     new = await versions.save(
         model_id,
         after=version["number"],
@@ -457,7 +459,13 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
     channel = await said(model_id)
     notes = [f"({e['label']}) {e['note']}" for e in fit_all if e.get("note")][-NOTES:]
     saved: list[dict] = []
-    done: dict = {"version": version, "saved": saved, "misses": [], "conflict": False}
+    done: dict = {
+        "version": version,
+        "saved": saved,
+        "misses": [],
+        "conflict": False,
+        "cut_short": None,
+    }
 
     async def checking(d: int, t: int) -> None:
         await progress("checking", d, t)
@@ -468,7 +476,9 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
 
     await progress("checking", 0, len(measured))
     current = await grades(model_id, version, measured, checking)
-    _enough(measured, current)
+    if short := _short(measured, current):
+        # Too few grades to measure this rubric, let alone to compare another with it.
+        return {**done, "metrics": None, "cut_short": short}
     other = "lowest" if version["scoring"] == "mean" else "mean"
     alt = rescore(current, other)
     gain = tally(fit, alt)["right"] - tally(fit, current)["right"]
@@ -499,6 +509,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
         version, current = new, alt
     tried: list[str] = []
     stale = 0
+    short = None
     for n in range(1, MAX_PASSES + 1):
         wrong = [e for e in fit if e["id"] in current and not right(e, current[e["id"]])]
         if not wrong or stale >= PATIENCE:
@@ -537,7 +548,8 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
         }
         # The misses first: a rubric that fixes none of them isn't worth grading further.
         new_grades = await grades(model_id, candidate, wrong)
-        _enough(wrong, new_grades)
+        if short := _short(wrong, new_grades):
+            break
         fixed = sum(right(e, new_grades[e["id"]]) for e in wrong if e["id"] in new_grades)
         if fixed == 0:
             tried.append(_tried(changes, 0, len(wrong)))
@@ -545,7 +557,8 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             continue
         keep = sample(correct, KEEP_RIGHT, f"{seed}:{n}")
         new_grades |= await grades(model_id, candidate, keep + check)
-        _enough(wrong + keep + check, new_grades)
+        if short := _short(wrong + keep + check, new_grades):
+            break
         on_fit = _both(wrong + keep, current, new_grades)
         on_check = _both(check, current, new_grades)
         gained = tally(on_fit, new_grades)["right"] > tally(on_fit, current)["right"]
@@ -558,7 +571,8 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             continue
         # Kept: measure it on everything the current rubric was measured on, then save it.
         new_grades |= await grades(model_id, candidate, measured)
-        _enough(measured, new_grades)
+        if short := _short(measured, new_grades):
+            break
         new = await versions.save(
             model_id,
             after=version["number"],
@@ -582,4 +596,4 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
     misses = [
         (e, current[e["id"]]) for e in fit if e["id"] in current and not right(e, current[e["id"]])
     ]
-    return {**done, "version": version, "metrics": metrics, "misses": misses}
+    return {**done, "version": version, "metrics": metrics, "misses": misses, "cut_short": short}

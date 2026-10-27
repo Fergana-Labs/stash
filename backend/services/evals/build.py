@@ -263,6 +263,13 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
     if result["conflict"]:
         await _set(model_id, stage="done", metrics=_legacy(result.get("metrics")))
         return result
+    short = result["cut_short"]
+    latest = await versions.current(model_id)
+    if short and (latest or {}).get("number") == (start or {}).get("number"):
+        # The judge went away before anything changed: a failed build, and the panel says so.
+        raise judge.JudgeUnavailable(
+            f"The judge graded {short['graded']} of {short['of']} examples; the rubric is unchanged"
+        )
     await progress("checking")
     try:
         manipulation = await check_manipulation(model_id, examples)
@@ -366,6 +373,11 @@ async def announce(
         text = f"Rubric v{final['number']}: {edits or 'updated'}."
     before = first["before"] if first else None
     text += _agrees(result.get("metrics"), before)
+    if short := result.get("cut_short"):
+        text += (
+            f" The judge then graded only {short['graded']} of {short['of']} examples,"
+            " so the check stopped there."
+        )
     await channel.post_agent(
         model_id,
         text,
