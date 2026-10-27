@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import fnmatch
+import hashlib
+import json
 import posixpath
 import re
 import shlex
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from .client import VfsClientError, VfsScanBudget
@@ -20,6 +23,7 @@ class VfsCommandResult:
     stderr: str = ""
     exit_code: int = 0
     cwd: str = "/"
+    searches: list[dict] = field(default_factory=list)
 
 
 class SkillAppVfsShell:
@@ -27,9 +31,11 @@ class SkillAppVfsShell:
         self.model = model
         self.cwd = self._resolve_path(cwd)
         self._warnings: list[str] = []
+        self._searches: list[dict] = []
         self._require_dir(self.cwd)
 
     def run(self, script: str) -> VfsCommandResult:
+        self._searches = []
         stdout_parts = []
         stderr_parts = []
         for command in _split_unquoted(script, "&&"):
@@ -46,10 +52,24 @@ class SkillAppVfsShell:
                     result.stdout = "".join(stdout_parts)
                     result.stderr = "".join(stderr_parts)
                     result.cwd = self.cwd
-                    return result
-        return VfsCommandResult(
-            stdout="".join(stdout_parts), stderr="".join(stderr_parts), cwd=self.cwd
+                    return self._finish(result)
+        return self._finish(
+            VfsCommandResult(
+                stdout="".join(stdout_parts), stderr="".join(stderr_parts), cwd=self.cwd
+            )
         )
+
+    def _finish(self, result: VfsCommandResult) -> VfsCommandResult:
+        # Keep coverage even when a later pipe/command succeeds or exits early.
+        result.searches = list(self._searches)
+        if any(not search["complete"] for search in result.searches):
+            result.exit_code = 2
+            result.stderr = (
+                "INCOMPLETE SEARCH: results do not cover the whole requested scope. "
+                "Continue the search or disclose this limitation; absence of a match "
+                "does not establish absence of the information.\n" + result.stderr
+            )
+        return result
 
     def _run_pipeline(self, script: str) -> VfsCommandResult:
         stdin = ""
@@ -447,6 +467,16 @@ class SkillAppVfsShell:
         return rows
 
     def _grep(self, name: str, args: list[str], stdin: str | None) -> str:
+        resume = None
+        original_args = list(args)
+        option_args = args[: args.index("--")] if "--" in args else args
+        if "--continue" in option_args:
+            position = args.index("--continue")
+            if position + 1 >= len(option_args) or option_args.count("--continue") != 1:
+                raise VfsShellError("--continue requires one search cursor", exit_code=2)
+            resume = args[position + 1]
+            args = args[:position] + args[position + 2 :]
+            original_args = list(args)
         ignore_case = False
         recursive = name == "rg"
         show_line_numbers = name == "rg"
@@ -527,6 +557,8 @@ class SkillAppVfsShell:
                 raise VfsShellError(str(e)) from e
 
         if stdin is not None and not paths:
+            if resume is not None:
+                raise VfsShellError("a search cursor cannot resume piped input", exit_code=2)
             output = _grep_text(
                 regex,
                 stdin,
@@ -557,7 +589,29 @@ class SkillAppVfsShell:
                 raise VfsShellError(f"{raw_path}: is a directory")
             sweep.append(file_paths)
             total_files += len(file_paths)
+        file_paths = list(dict.fromkeys(path for group in sweep for path in group))
+        total_files = len(file_paths)
+        signature = hashlib.sha256(
+            json.dumps([name, original_args, self.cwd, file_paths], ensure_ascii=False).encode()
+        ).hexdigest()
+        start = 0
+        if resume is not None:
+            try:
+                cursor = json.loads(base64.urlsafe_b64decode(resume))
+                start = cursor["offset"]
+                valid = (
+                    cursor["signature"] == signature
+                    and type(start) is int
+                    and 0 <= start < total_files
+                )
+            except (ValueError, KeyError, TypeError):
+                valid = False
+            if not valid:
+                raise VfsShellError(
+                    "invalid or changed search scope; restart without --continue", exit_code=2
+                )
         docs_scanned = 0
+        unreadable = 0
         scanned: list[str] = []
         budget_hit = False
         # The per-document reads below are the mechanics of one search, not
@@ -565,7 +619,7 @@ class SkillAppVfsShell:
         # skip them, and record_search writes the single search event that
         # stands in for the whole sweep.
         with self.model.client.scan_calls():
-            for file_paths in sweep:
+            for file_paths in [file_paths[start:]]:
                 if budget_hit:
                     break
                 self.model.prefetch(file_paths, for_scan=True)
@@ -580,6 +634,7 @@ class SkillAppVfsShell:
                         break
                     except VfsClientError as e:
                         docs_scanned += 1
+                        unreadable += 1
                         self._warn(f"{name}: {file_path}: {e.detail}")
                         continue
                     docs_scanned += 1
@@ -596,6 +651,38 @@ class SkillAppVfsShell:
                         )
                     )
         self.model.client.record_search(pattern, roots, docs_scanned)
+        next_offset = start + docs_scanned
+        next_command = None
+        if budget_hit and next_offset > start:
+            token = base64.urlsafe_b64encode(
+                json.dumps({"offset": next_offset, "signature": signature}).encode()
+            ).decode()
+            next_command = shlex.join([name, "--continue", token, *original_args])
+        listing_incomplete = any(
+            self.model.truncated_roots_under(root) or self.model.truncated_root_containing(root)
+            for root in roots
+        )
+        self._searches.append(
+            {
+                "pattern": pattern,
+                "roots": roots,
+                "total_files": total_files,
+                "start_offset": start,
+                "next_offset": next_offset,
+                "files_searched": len(scanned),
+                "unreadable_files": unreadable,
+                "complete": not (budget_hit or unreadable or listing_incomplete or start),
+                "has_more": budget_hit,
+                "listing_complete": not listing_incomplete,
+                "next_command": next_command,
+            }
+        )
+        if next_command:
+            self._warn(f"Continue in a new request: {next_command}")
+        if start:
+            self._warn(
+                "Continuation page only: combine with earlier pages; this is not a snapshot."
+            )
         for file_path in scanned:
             shortfall = self.model.truncated_transcript(file_path)
             if not shortfall:

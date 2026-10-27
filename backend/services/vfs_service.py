@@ -383,6 +383,10 @@ def _run_script(
         "stderr": result.stderr,
         "exit_code": result.exit_code,
         "cwd": result.cwd,
+        "searches": result.searches,
+        "search_complete": (
+            all(search["complete"] for search in result.searches) if result.searches else None
+        ),
     }
 
 

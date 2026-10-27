@@ -237,6 +237,64 @@ async def test_scan_budget_makes_grep_partial_and_loud(client: AsyncClient, monk
     body = resp.json()
     assert "of 2 files" in body["stderr"]
     assert "partial" in body["stderr"]
+    assert body["exit_code"] == 2
+    assert body["search_complete"] is False
+    assert body["searches"][0]["has_more"] is True
+    assert body["searches"][0]["next_command"]
+
+
+async def test_search_continuation_finds_answer_beyond_400_reads(client, pool):
+    api_key, owner = await _register(client)
+    await pool.executemany(
+        "INSERT INTO pages (owner_user_id,name,content_type,content_markdown,created_by) "
+        "VALUES ($1,$2,'markdown',$3,$1)",
+        [(owner, f"Page {i:04}", "needle" if i == 404 else "unrelated") for i in range(405)],
+    )
+    first = (await _vfs(client, api_key, "grep -ri needle /files | head -n 10")).json()
+    assert first["exit_code"] == 2
+    assert first["search_complete"] is False
+    coverage = first["searches"][0]
+    assert coverage["total_files"] == 405
+    assert coverage["files_searched"] <= 400
+    assert coverage["has_more"]
+    assert "needle" not in first["stdout"]
+    second = (await _vfs(client, api_key, coverage["next_command"])).json()
+    assert "Page 0404.md:needle" in second["stdout"]
+    tail = second["searches"][0]
+    assert tail["start_offset"] == coverage["next_offset"]
+    assert tail["next_offset"] == 405
+    assert tail["has_more"] is False
+    assert tail["next_command"] is None
+    # A continuation is explicitly a page of results, never a standalone full search.
+    assert second["search_complete"] is False
+
+
+async def test_search_cursor_rejects_changed_scope(client, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "alpha")
+    first = (await _vfs(client, key, "grep -ri alpha /files")).json()
+    command = first["searches"][0]["next_command"]
+    await _make_page(client, key, "Three", "alpha")
+    second = (await _vfs(client, key, command)).json()
+    assert second["exit_code"] == 2
+    assert "changed search scope" in second["stderr"]
+    assert second["stdout"] == ""
+
+
+async def test_complete_negative_search_is_distinct_from_partial(client, monkeypatch):
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "beta")
+    complete = (await _vfs(client, key, "grep -ri missing /files")).json()
+    assert complete["exit_code"] == 1
+    assert complete["search_complete"] is True
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    partial = (await _vfs(client, key, "grep -ri missing /files")).json()
+    assert partial["exit_code"] == 2
+    assert partial["search_complete"] is False
+    assert "absence of a match" in partial["stderr"]
 
 
 async def test_document_read_budget_still_aborts_direct_reads(client: AsyncClient, monkeypatch):
