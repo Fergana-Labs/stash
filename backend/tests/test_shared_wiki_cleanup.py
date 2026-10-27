@@ -1,6 +1,7 @@
 """Cleanup preserves originals and publishes only independently reviewed revisions."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,42 @@ from backend.services import shared_wiki_privacy as privacy
 
 from .test_scoped_curation import dataset as dataset
 from .test_scoped_curation import scope
+
+
+@pytest.mark.asyncio
+async def test_operator_rejects_unverified_code_before_database_access(monkeypatch):
+    from backend.scripts import review_shared_wiki as operator
+
+    async def unexpected_database_access():
+        pytest.fail("Unverified cleanup must not access the database")
+
+    monkeypatch.setattr(operator.database, "init_pool", unexpected_database_access)
+    with pytest.raises(ValueError, match="Runtime code differs"):
+        await operator.run(SimpleNamespace(apply=True, expected_code_sha256="wrong"))
+
+
+@pytest.mark.parametrize("option,value", [("--max-pages", "0"), ("--concurrency", "5")])
+def test_operator_rejects_unbounded_arguments(monkeypatch, option, value):
+    from backend.scripts import review_shared_wiki as operator
+
+    identity = "00000000-0000-0000-0000-000000000001"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "review_shared_wiki",
+            "--workspace",
+            identity,
+            "--owner",
+            identity,
+            "--root",
+            identity,
+            option,
+            value,
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        operator.main()
+    assert exc.value.code == 2
 
 
 async def original(pool, data):

@@ -76,9 +76,22 @@ async def run(args):
                         queue.put_nowait(page)
 
                 async def process(source, *, refresh_index=False):
-                    result = await cleanup.clean_page(
-                        pool, workspace, source, refresh_index=refresh_index
-                    )
+                    try:
+                        result = await cleanup.clean_page(
+                            pool, workspace, source, refresh_index=refresh_index
+                        )
+                    except Exception as exc:
+                        print(
+                            json.dumps(
+                                {
+                                    "event": "PAGE_REVIEW_FAILED",
+                                    "page_id": str(source["id"]),
+                                    "error_type": type(exc).__name__,
+                                }
+                            ),
+                            flush=True,
+                        )
+                        raise
                     counts[result["status"]] += 1
                     print(json.dumps({"event": "PAGE_REVIEWED", **result}), flush=True)
 
