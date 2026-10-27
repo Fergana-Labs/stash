@@ -6,15 +6,37 @@ never original or generated text. No automatic retry or persistent budget change
 
 import argparse
 import asyncio
+import hashlib
 import json
 from collections import Counter
+from pathlib import Path
 from uuid import UUID
 
 from backend import database
 from backend.services import shared_wiki_cleanup as cleanup
 
 
+def code_fingerprint():
+    root = Path(__file__).resolve().parents[2]
+    paths = [
+        "backend/scripts/review_shared_wiki.py",
+        "backend/services/shared_wiki_cleanup.py",
+        "backend/services/shared_wiki_privacy.py",
+        "backend/services/scoped_curation_service.py",
+        "backend/services/vfs_service.py",
+        "backend/routers/vfs.py",
+        "backend/services/files_tree_service.py",
+        "backend/tasks/embeddings.py",
+        "backend/migrations/versions/0254_shared_wiki_reviews.py",
+    ]
+    hashes = [(path, hashlib.sha256((root / path).read_bytes()).hexdigest()) for path in paths]
+    return hashlib.sha256(json.dumps(hashes).encode()).hexdigest()
+
+
 async def run(args):
+    code_sha256 = code_fingerprint()
+    if args.apply and args.expected_code_sha256 != code_sha256:
+        raise ValueError("Runtime code differs from the reviewed release")
     await database.init_pool()
     pool = database.get_pool()
     try:
@@ -31,7 +53,14 @@ async def run(args):
                 )
                 digest = cleanup.manifest_hash(pages)
                 print(
-                    json.dumps({"event": "PLAN", "pages": len(pages), "manifest_sha256": digest}),
+                    json.dumps(
+                        {
+                            "event": "PLAN",
+                            "pages": len(pages),
+                            "manifest_sha256": digest,
+                            "code_sha256": code_sha256,
+                        }
+                    ),
                     flush=True,
                 )
                 if not args.apply:
@@ -81,6 +110,7 @@ def main():
     parser.add_argument("--max-pages", type=int, default=300)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--manifest-sha256")
+    parser.add_argument("--expected-code-sha256")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.max_pages <= 1000:

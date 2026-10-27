@@ -28,8 +28,8 @@ Use `python -m backend.scripts.review_shared_wiki --workspace UUID --owner UUID
 --root UUID` on the deployed worker to produce a bounded plan. It reads only that
 workspace's current shared root and prints a manifest hash and page count. Inspect
 the private source snapshot and confirm the intended workspace before applying.
-Add `--apply --manifest-sha256 HASH` to apply that exact plan (default maximum 300
-pages, hard maximum 1000). One workspace cleanup may run at a time. Each page gets
+Add `--apply --manifest-sha256 HASH --expected-code-sha256 CODE_HASH` to apply that exact plan and verified release (default maximum 300
+pages, hard maximum 1000). Model concurrency defaults to three, with a hard maximum of four. One workspace cleanup may run at a time. Each page gets
 at most one rewrite and one independent privacy/fidelity review, each bounded to
 90 seconds; the command does not automatically retry failures.
 
