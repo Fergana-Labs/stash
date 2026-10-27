@@ -10,16 +10,23 @@ import { droppedFiles } from "./dropped-files";
 import { evalExampleFilePath, type EvalAttachment, type EvalLabel, type EvalMessage } from "@/lib/evals-api";
 
 export interface Send { text: string; files: File[]; threadId?: string }
+/** What the person can do to a dropped file from the channel. */
+interface AttachmentActions {
+  label: (exampleId: string, label: EvalLabel | null) => Promise<void>;
+  remove: (exampleId: string) => Promise<void>;
+}
 
 /** The eval's channel, like a Slack channel: the person's posts run down the middle, and the
  * agent, like a bot, only ever replies in a post's thread, and only when it has something to
  * say. Threads stay folded behind their reply count until opened. */
-export default function EvalChannel({ evalId, messages, onSend, onLabel }: {
+export default function EvalChannel({ evalId, messages, onSend, onLabel, onRemove }: {
   evalId: string;
   messages: EvalMessage[];
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
+  onRemove: (exampleId: string) => Promise<void>;
 }) {
+  const actions = useMemo<AttachmentActions>(() => ({ label: onLabel, remove: onRemove }), [onLabel, onRemove]);
   const [over, setOver] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
   const list = useRef<HTMLDivElement>(null);
@@ -64,7 +71,7 @@ export default function EvalChannel({ evalId, messages, onSend, onLabel }: {
       <div ref={list} className="scroll-thin flex-1 space-y-1 px-3 py-3 lg:overflow-y-auto">
         {top.length === 0
           ? <UploadBox title="Drop screenshots of good and bad agent work" disabled={false} onFiles={setDropped} />
-          : top.map((m) => <Message key={m.id} evalId={evalId} message={m} replies={replies.get(m.id) ?? []} onSend={onSend} onLabel={onLabel} />)}
+          : top.map((m) => <Message key={m.id} evalId={evalId} message={m} replies={replies.get(m.id) ?? []} onSend={onSend} actions={actions} />)}
         <div ref={bottom} />
       </div>
       <div className="sticky bottom-0 border-t border-border bg-background p-2">
@@ -83,12 +90,12 @@ function Author({ message }: { message: EvalMessage }) {
   </div>;
 }
 
-function Message({ evalId, message, replies, onSend, onLabel }: {
+function Message({ evalId, message, replies, onSend, actions }: {
   evalId: string;
   message: EvalMessage;
   replies: EvalMessage[];
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
-  onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
+  actions: AttachmentActions;
 }) {
   // Folded like a Slack thread: the reply count, who replied last and when. When the agent's
   // last word is a question, it's waiting on the person, so the count stands out; a rubric
@@ -101,7 +108,7 @@ function Message({ evalId, message, replies, onSend, onLabel }: {
   return (
     <article className="group rounded px-1 py-1.5 hover:bg-surface/40">
       <Author message={message} />
-      <Body evalId={evalId} message={message} onLabel={onLabel} />
+      <Body evalId={evalId} message={message} actions={actions} />
       {last && (
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
           className="mt-1 flex items-baseline gap-2 text-[12px] hover:underline">
@@ -110,20 +117,20 @@ function Message({ evalId, message, replies, onSend, onLabel }: {
         </button>
       )}
       {(open || replies.length === 0) && (
-        <Thread evalId={evalId} message={message} replies={replies} open={open} onSend={onSend} onLabel={onLabel} />
+        <Thread evalId={evalId} message={message} replies={replies} open={open} onSend={onSend} actions={actions} />
       )}
     </article>
   );
 }
 
-function Body({ evalId, message, onLabel }: { evalId: string; message: EvalMessage; onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void> }) {
+function Body({ evalId, message, actions }: { evalId: string; message: EvalMessage; actions: AttachmentActions }) {
   if (message.kind === "rubric") return <RubricUpdate message={message} />;
   return <>
     {message.text && <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5">{message.text}</p>}
-    {message.about && <div className="mt-1 w-16"><Attachment evalId={evalId} attachment={message.about} onLabel={onLabel} /></div>}
+    {message.about && <div className="mt-1 w-16"><Attachment evalId={evalId} attachment={message.about} actions={actions} /></div>}
     {message.attachments.length > 0 && (
       <div className="mt-1.5 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
-        {message.attachments.map((a) => <Attachment key={a.example_id} evalId={evalId} attachment={a} onLabel={onLabel} />)}
+        {message.attachments.map((a) => <Attachment key={a.example_id} evalId={evalId} attachment={a} actions={actions} />)}
       </div>
     )}
     {message.data.uploading && <p role="status" className="mt-1 text-[12px] text-muted-foreground">Uploading</p>}
@@ -144,18 +151,26 @@ function RubricUpdate({ message }: { message: EvalMessage }) {
   </div>;
 }
 
-function Attachment({ evalId, attachment, onLabel }: { evalId: string; attachment: EvalAttachment; onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void> }) {
+function Attachment({ evalId, attachment, actions }: { evalId: string; attachment: EvalAttachment; actions: AttachmentActions }) {
   const [saving, setSaving] = useState(false);
   const set = async (label: EvalLabel) => {
     setSaving(true);
-    try { await onLabel(attachment.example_id, attachment.label === label ? null : label); } finally { setSaving(false); }
+    try { await actions.label(attachment.example_id, attachment.label === label ? null : label); } finally { setSaving(false); }
+  };
+  const remove = async () => {
+    setSaving(true);
+    try { await actions.remove(attachment.example_id); } catch { setSaving(false); }
   };
   const image = attachment.content_type.startsWith("image/");
   // The reason usually repeats what the message says, so it shows on hover, not under each file.
-  return <figure className="m-0 min-w-0" title={attachment.note || undefined}>
+  return <figure className="group/attachment relative m-0 min-w-0" title={attachment.note || undefined}>
     {image
       ? <FileThumb path={evalExampleFilePath(evalId, attachment.example_id, 0)} alt={attachment.name} className="aspect-square w-full" />
       : <div title={attachment.name} className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-sm border border-border px-1 text-center text-[10px] text-muted-foreground"><FileText className="size-4" /><span className="line-clamp-2 break-all">{attachment.name}</span></div>}
+    <button type="button" aria-label={`Remove ${attachment.name}`} title="Remove from the eval" disabled={saving} onClick={() => void remove()}
+      className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-sm border border-border bg-background/95 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:opacity-60 group-hover/attachment:opacity-100 max-sm:opacity-100">
+      <X className="size-3" />
+    </button>
     <figcaption className="mt-1">
       <div role="group" aria-label={`Label ${attachment.name}`} className="inline-flex h-5 overflow-hidden rounded-sm border border-border text-[10px]">
         {(["good", "bad"] as const).map((label) => (
@@ -172,13 +187,13 @@ function Attachment({ evalId, attachment, onLabel }: { evalId: string; attachmen
   </figure>;
 }
 
-function Thread({ evalId, message, replies, open, onSend, onLabel }: {
+function Thread({ evalId, message, replies, open, onSend, actions }: {
   evalId: string;
   message: EvalMessage;
   replies: EvalMessage[];
   open: boolean;
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
-  onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
+  actions: AttachmentActions;
 }) {
   const [replying, setReplying] = useState(false);
   const last = replies.at(-1);
@@ -191,7 +206,7 @@ function Thread({ evalId, message, replies, open, onSend, onLabel }: {
       : <button type="button" onClick={() => setReplying(true)} className="mt-0.5 text-[12px] text-muted-foreground opacity-0 hover:underline focus:opacity-100 group-hover:opacity-100">Reply</button>;
   }
   return <div className="mt-1.5 space-y-1.5 border-l-2 border-border pl-3">
-    {replies.map((r) => <div key={r.id}><Author message={r} /><Body evalId={evalId} message={r} onLabel={onLabel} /></div>)}
+    {replies.map((r) => <div key={r.id}><Author message={r} /><Body evalId={evalId} message={r} actions={actions} /></div>)}
     {choices.length > 0 && <div className="flex flex-wrap gap-1.5">{choices.map((c) => <ChoiceButton key={c} onClick={() => reply(c)}>{c}</ChoiceButton>)}</div>}
     <ThreadComposer onSend={reply} />
   </div>;

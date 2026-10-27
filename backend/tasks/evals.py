@@ -17,11 +17,11 @@ async def build_eval_async(eval_id: UUID) -> None:
         return  # another worker took this build
     try:
         await build.run(eval_id, fresh=claimed["fresh"], reply_to=claimed["reply_to"])
-        await service.done_reporting(eval_id, claimed["reply_to"])
     except Exception as exc:
         await build._set(eval_id, stage="failed", error=str(exc)[-ERROR_CHARS:])
         raise
     finally:
+        await service.done_reporting(eval_id, claimed["reply_seq"])
         await service.finish_build(eval_id)
 
 

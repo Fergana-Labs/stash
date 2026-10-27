@@ -81,6 +81,10 @@ export default function EvalDetail({ id }: { id: string }) {
     await evalEditExample(id, exampleId, value);
     await load();
   };
+  const remove = async (exampleId: string) => {
+    try { await evalDeleteExample(id, exampleId); } catch (e) { setError(errorMessage(e)); throw e; }
+    await load();
+  };
 
   if (!data) return <EvalPageFrame title="Eval"><p role={error ? "alert" : "status"} className="text-sm text-muted-foreground">{error || "Loading"}</p></EvalPageFrame>;
   const panel = versions.length > 0 || building || data.build?.stage === "failed";
@@ -109,7 +113,7 @@ export default function EvalDetail({ id }: { id: string }) {
         <div className="flex min-w-0 flex-col gap-2 lg:min-h-0">
           {(error || notice) && <p role="alert" className="text-[12px] text-destructive">{error || notice}</p>}
           {busy && <p role="status" className="text-[12px] text-muted-foreground">{busy}</p>}
-          {tab === "channel" && <EvalChannel evalId={id} messages={messages} onSend={send} onLabel={label} />}
+          {tab === "channel" && <EvalChannel evalId={id} messages={messages} onSend={send} onLabel={label} onRemove={remove} />}
           {tab !== "channel" && <div className="scroll-thin lg:min-h-0 lg:overflow-y-auto">
             {tab === "examples" && <Examples id={id} examples={examples} disabled={!!busy} onUpload={(l, f) => void upload(l, f)}
               onDelete={(exampleId) => void run("Removing", () => evalDeleteExample(id, exampleId))} />}

@@ -254,14 +254,23 @@ async def edit_example(
 
 
 async def delete_example(owner: UUID, eval_id: UUID, example_id: UUID) -> None:
+    """Take an example out of the eval. A channel post that was only there for its files (a
+    drop with no words, or one an agent added) goes with its last one, threads and all; a
+    post with the person's own words keeps them."""
     await _owned(owner, eval_id)
     row = await get_pool().fetchrow(
-        "DELETE FROM intuition_examples WHERE id=$1 AND model_id=$2 RETURNING item, label",
+        "DELETE FROM intuition_examples WHERE id=$1 AND model_id=$2 RETURNING item, label, message_id",
         example_id,
         eval_id,
     )
     if row is None:
         raise NotFound("Example not found")
+    if row["message_id"]:
+        await get_pool().execute(
+            """DELETE FROM eval_messages m WHERE m.id=$1 AND (m.text = '' OR m.data ? 'via')
+                 AND NOT EXISTS (SELECT 1 FROM intuition_examples e WHERE e.message_id = m.id)""",
+            row["message_id"],
+        )
     if row["label"]:
         await request_build(eval_id)
 
@@ -344,7 +353,10 @@ async def request_build(
             if build["stage"] != "queued":
                 flags["again"] = True
         if reply_to is not None:
+            # Numbered, so a build can tell evidence that came in after it started, even in
+            # the same thread, from the evidence it reported.
             flags["reply_to"] = str(reply_to)
+            flags["reply_seq"] = int(build.get("reply_seq") or 0) + 1
         if flags:
             await conn.execute(
                 """UPDATE intuition_models SET build = COALESCE(build, '{}'::jsonb) || $2::jsonb
@@ -374,20 +386,25 @@ async def claim_build(eval_id: UUID) -> dict | None:
                           || jsonb_build_object('stage', 'starting', 'fresh', false, 'at', $2::text)
              FROM old WHERE m.id=$1
            RETURNING COALESCE((old.build->>'fresh')::boolean, false) AS fresh,
-                     (old.build->>'reply_to')::uuid AS reply_to""",
+                     (old.build->>'reply_to')::uuid AS reply_to,
+                     (old.build->>'reply_seq')::int AS reply_seq""",
         eval_id,
         _now(),
     )
-    return {"fresh": row["fresh"], "reply_to": row["reply_to"]} if row else None
+    if row is None:
+        return None
+    return {"fresh": row["fresh"], "reply_to": row["reply_to"], "reply_seq": row["reply_seq"]}
 
 
-async def done_reporting(eval_id: UUID, reply_to: UUID | None) -> None:
-    """The build reported in reply_to; a newer thread set while it ran is left for the next."""
-    if reply_to is not None:
+async def done_reporting(eval_id: UUID, reply_seq: int | None) -> None:
+    """A build is over, reported or failed: forget the thread it claimed, unless evidence came
+    in after it started (even in the same thread), which the next build reports."""
+    if reply_seq is not None:
         await get_pool().execute(
-            "UPDATE intuition_models SET build = build - 'reply_to' WHERE id=$1 AND build->>'reply_to' = $2",
+            """UPDATE intuition_models SET build = build - 'reply_to'
+               WHERE id=$1 AND (build->>'reply_seq')::int = $2""",
             eval_id,
-            str(reply_to),
+            reply_seq,
         )
 
 

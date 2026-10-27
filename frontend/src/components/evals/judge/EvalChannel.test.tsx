@@ -15,12 +15,14 @@ const message = (id: string, extra: Partial<EvalMessage> = {}): EvalMessage => (
 
 let onSend: Mock<(send: Send, onProgress: (sent: number) => void) => Promise<void>>;
 let onLabel: Mock<(exampleId: string, label: EvalLabel | null) => Promise<void>>;
+let onRemove: Mock<(exampleId: string) => Promise<void>>;
 beforeEach(() => {
+  onRemove = vi.fn<(exampleId: string) => Promise<void>>().mockResolvedValue(undefined);
   onSend = vi.fn<(send: Send, onProgress: (sent: number) => void) => Promise<void>>().mockResolvedValue(undefined);
   onLabel = vi.fn<(exampleId: string, label: EvalLabel | null) => Promise<void>>().mockResolvedValue(undefined);
 });
 const show = (messages: EvalMessage[]) =>
-  render(<EvalChannel evalId="e" messages={messages} onSend={onSend} onLabel={onLabel} />);
+  render(<EvalChannel evalId="e" messages={messages} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
 
 it("folds the agent's reply into a thread, like Slack, and a choice answers in that thread", async () => {
   show([
@@ -62,6 +64,13 @@ it("labels an attachment from its buttons, and clicking the active label clears 
   await waitFor(() => expect(onLabel).toHaveBeenCalledWith("a1", "bad"));
   fireEvent.click(within(group).getByRole("button", { name: "Good" }));
   await waitFor(() => expect(onLabel).toHaveBeenCalledWith("a1", null));
+});
+
+it("takes a file out of the eval with its X", async () => {
+  show([message("m1", { attachments: [attachment("a1", "good"), attachment("a2", "bad")] })]);
+  fireEvent.click(screen.getByRole("button", { name: "Remove a2.png" }));
+  await waitFor(() => expect(onRemove).toHaveBeenCalledWith("a2"));
+  expect(onLabel).not.toHaveBeenCalled();
 });
 
 it("shows what a rubric update changed and why, as a reply in the thread", () => {

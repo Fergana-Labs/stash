@@ -1018,12 +1018,65 @@ async def test_a_restarted_build_still_reports_in_its_thread(client: AsyncClient
         model_id,
     )
     assert (await service.sweep())["builds"] == 1
-    assert (await service.claim_build(model_id))["reply_to"] == UUID(first["id"])
-    # Newer evidence while it runs: the build clears only its own thread when it finishes.
+    claimed = await service.claim_build(model_id)
+    assert claimed["reply_to"] == UUID(first["id"])
+
+    async def thread_kept() -> str | None:
+        state = await get_pool().fetchval(
+            "SELECT build FROM intuition_models WHERE id=$1", model_id
+        )
+        return state.get("reply_to")
+
+    # More evidence in the same thread while it runs: the build that follows reports there.
+    await service.request_build(model_id, reply_to=UUID(first["id"]))
+    await service.done_reporting(model_id, claimed["reply_seq"])
+    assert await thread_kept() == first["id"]
+    # A newer thread is kept for the next build the same way.
+    await build._set(model_id, stage="done")
+    await service.request_build(model_id, delay=0)
+    claimed = await service.claim_build(model_id)
     await service.request_build(model_id, reply_to=UUID(second["id"]))
-    await service.done_reporting(model_id, UUID(first["id"]))
-    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", model_id)
-    assert state["reply_to"] == second["id"]
-    await service.done_reporting(model_id, UUID(second["id"]))
-    state = await get_pool().fetchval("SELECT build FROM intuition_models WHERE id=$1", model_id)
-    assert "reply_to" not in state
+    await service.done_reporting(model_id, claimed["reply_seq"])
+    assert await thread_kept() == second["id"]
+    # Nothing new since the build started: its thread is forgotten, failed or not.
+    await build._set(model_id, stage="done")
+    await service.request_build(model_id, delay=0)
+    claimed = await service.claim_build(model_id)
+    await service.done_reporting(model_id, claimed["reply_seq"])
+    assert await thread_kept() is None
+
+
+async def test_removing_a_file_takes_its_post_along_only_when_nothing_else_is_left(
+    client: AsyncClient, world
+):
+    auth = await _register(client)
+    eid = await _eval(client, auth)
+
+    async def remove(attachment: dict) -> None:
+        resp = await client.delete(
+            f"/api/v1/evals/{eid}/examples/{attachment['example_id']}", headers=auth
+        )
+        assert resp.status_code == 204
+
+    async def ids() -> list[str]:
+        return [m["id"] for m in (await _messages(client, auth, eid))["messages"]]
+
+    # Words of the person's own stay, with their other file, and with no file at all.
+    worded = (await _post(client, auth, eid, "these two are bad", BLUE[:2])).json()["message"]
+    await remove(worded["attachments"][0])
+    assert worded["id"] in await ids()
+    await remove(worded["attachments"][1])
+    assert worded["id"] in await ids()
+    # A drop with no words, and its thread, go with its last file.
+    wordless = (await _post(client, auth, eid, "", RED[:1])).json()["message"]
+    await channel.post_agent(UUID(eid), "Good or bad?", thread_id=UUID(wordless["id"]))
+    await remove(wordless["attachments"][0])
+    assert await ids() == [worded["id"]]
+    # So does a post an agent added on the person's behalf.
+    added = (await _post(client, auth, eid, "“make it look like this”", RED[1:2])).json()
+    await get_pool().execute(
+        """UPDATE eval_messages SET data = data || '{"via": "Claude Code"}' WHERE id=$1""",
+        UUID(added["message"]["id"]),
+    )
+    await remove(added["message"]["attachments"][0])
+    assert await ids() == [worded["id"]]
