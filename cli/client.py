@@ -89,11 +89,9 @@ class StashClient:
     def search_wiki(self, query: str, scope: str, limit: int) -> dict:
         return self._get(
             "/api/v1/me/vfs/wiki-search",
-            params={
-                "query": query,
-                "scope": scope,
-                "limit": limit,
-            },
+            query=query,
+            scope=scope,
+            limit=limit,
         )
 
     def _headers(self) -> dict[str, str]:
