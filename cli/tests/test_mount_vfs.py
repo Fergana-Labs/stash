@@ -652,5 +652,7 @@ def test_a_failed_read_still_warns_per_file_and_does_not_abort():
 
     result = SkillAppVfsShell(model).run("grep -ri needle /sources/gmail")
 
-    assert result.exit_code == 1  # grep found nothing, rather than crashing
+    assert result.exit_code == 2  # unreadable files make this a partial negative result
+    assert result.searches[0]["complete"] is False
+    assert result.searches[0]["unreadable_files"] == 2
     assert result.stderr.count("cannot read") == 2
