@@ -262,29 +262,44 @@ def test_large_page_is_rejected_without_truncating_review():
 
 
 @pytest.mark.asyncio
-async def test_shared_folder_names_and_attachments_are_not_published(dataset, pool, client):
-    folder = await pool.fetchval(
-        "INSERT INTO folders (owner_user_id,created_by,parent_folder_id,name) "
-        "VALUES ($1,$1,$2,'Customer fleet dossier') RETURNING id",
-        dataset.owner,
-        dataset.workspace["external_wiki_folder_id"],
-    )
+@pytest.mark.parametrize("in_subfolder", [False, True])
+@pytest.mark.parametrize("tagged", [False, True])
+async def test_shared_folder_names_and_attachments_are_not_published(
+    dataset, pool, client, in_subfolder, tagged
+):
+    folder = dataset.workspace["external_wiki_folder_id"]
+    if in_subfolder:
+        folder = await pool.fetchval(
+            "INSERT INTO folders (owner_user_id,created_by,parent_folder_id,name) "
+            "VALUES ($1,$1,$2,'Customer fleet dossier') RETURNING id",
+            dataset.owner,
+            folder,
+        )
     await pool.execute("UPDATE pages SET folder_id=$2 WHERE id=$1", dataset.shared, folder)
     await scope(dataset, "shared")
     await pool.execute(
-        "INSERT INTO files (owner_user_id,folder_id,name,content_type,size_bytes,storage_key,uploaded_by) "
-        "VALUES ($1,$2,'Customer invoice.pdf','application/pdf',10,'fake-test-key',$1)",
+        "INSERT INTO files (owner_user_id,folder_id,name,content_type,size_bytes,storage_key,uploaded_by,end_user_id) "
+        "VALUES ($1,$2,'Customer invoice.pdf','application/pdf',10,'fake-test-key',$1,$3)",
         dataset.owner,
         folder,
+        dataset.users["private"]["id"] if tagged else None,
+    )
+    await pool.execute(
+        "INSERT INTO files (owner_user_id,folder_id,name,content_type,size_bytes,storage_key,uploaded_by,end_user_id) "
+        "VALUES ($1,$2,'Own attachment.pdf','application/pdf',10,'fake-private-key',$1,$3)",
+        dataset.owner,
+        dataset.users["private"]["wiki_folder_id"],
+        dataset.users["private"]["id"],
     )
     response = await client.post(
         "/api/v1/me/vfs",
-        json={"script": "find /memory -type f"},
+        json={"script": "find / -type f", "user_id": "private"},
         headers=_auth(dataset.key),
     )
     assert response.status_code == 200, response.text
     assert "Index.md" in response.text
     assert "dossier" not in response.text and "invoice" not in response.text
+    assert "Own attachment.pdf" in response.text
 
 
 @pytest.mark.asyncio

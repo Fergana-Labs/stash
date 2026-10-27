@@ -287,6 +287,14 @@ class ExternalVfsClient(InProcessVfsClient):
         children: dict[str | None, list[dict]] = {}
         for folder in folders:
             children.setdefault(folder["parent_folder_id"], []).append(folder)
+        shared_ids: set[str] = set()
+        frontier = [self._end_user["shared_wiki_folder_id"]]
+        while frontier:
+            folder_id = frontier.pop()
+            if folder_id in shared_ids:
+                continue
+            shared_ids.add(folder_id)
+            frontier.extend(f["id"] for f in children.get(folder_id, []))
         kept_ids: set[str] = set()
         # A customer with no wiki folder yet has not been written for — they still
         # read the shared wiki, they just own nothing.
@@ -337,8 +345,13 @@ class ExternalVfsClient(InProcessVfsClient):
                 "files": [
                     f
                     for f in tree.get("files", [])
-                    if f["folder_id"] in kept_ids
-                    or (external_id is not None and f.get("end_user_external_id") == external_id)
+                    if f["folder_id"] not in shared_ids
+                    and (
+                        f["folder_id"] in kept_ids
+                        or (
+                            external_id is not None and f.get("end_user_external_id") == external_id
+                        )
+                    )
                 ],
             },
         }
