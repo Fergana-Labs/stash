@@ -27,6 +27,7 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from anyio import CancelScope
+from pydantic import ValidationError
 
 from ...config import settings
 from ...database import get_pool
@@ -184,6 +185,18 @@ def _tool(
             "required": required or [],
         },
     }
+
+
+def _error_text(exc: Exception) -> str:
+    """Readable tool error: pydantic's own messages without its type tags and doc links."""
+    if isinstance(exc, ValidationError):
+        return "; ".join(
+            ": ".join(
+                filter(None, (".".join(map(str, e["loc"])), e["msg"].removeprefix("Value error, ")))
+            )
+            for e in exc.errors()
+        )
+    return str(exc)
 
 
 LABEL_SCHEMA = {
@@ -1037,8 +1050,8 @@ async def stream_turn(
                     probes.ProbeUnavailable,
                 ) as exc:
                     activity["status"] = "error"
-                    activity["error"] = str(exc)
-                    content, is_error = f"Error: {exc}", True
+                    activity["error"] = _error_text(exc)
+                    content, is_error = f"Error: {activity['error']}", True
                 except Exception as exc:  # noqa: BLE001 -- surface to the wizard, keep the chat alive
                     log.exception("wizard tool %s failed", use.name)
                     activity["status"] = "error"
