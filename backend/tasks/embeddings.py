@@ -33,10 +33,8 @@ def _text_hash(text: str) -> str:
 async def _reconcile_pages() -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, LEFT(content_markdown, $2) AS content_markdown FROM pages "
-        "WHERE embed_stale AND deleted_at IS NULL LIMIT $1",
+        "SELECT id, content_markdown FROM pages WHERE embed_stale AND deleted_at IS NULL LIMIT $1",
         BATCH_SIZE,
-        TEXT_LIMIT,
     )
     if not rows:
         return 0
@@ -45,20 +43,23 @@ async def _reconcile_pages() -> int:
     empty_ids = [r["id"] for r in rows if not r["content_markdown"]]
     if empty_ids:
         await pool.execute(
-            "UPDATE pages SET embedding = NULL, embed_stale = FALSE WHERE id = ANY($1)",
+            "UPDATE pages SET embedding = NULL, embed_stale = FALSE "
+            "WHERE id = ANY($1) AND content_markdown='' AND deleted_at IS NULL",
             empty_ids,
         )
     rows = [r for r in rows if r["content_markdown"]]
     if not rows:
         return len(empty_ids)
     ids = [r["id"] for r in rows]
-    texts = [r["content_markdown"] for r in rows]
+    originals = [r["content_markdown"] for r in rows]
+    texts = [text[:TEXT_LIMIT] for text in originals]
     vecs = await embedding_service.embed_batch(texts)
     if not vecs:
         return len(empty_ids)
     await pool.executemany(
-        "UPDATE pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
-        list(zip(vecs, ids)),
+        "UPDATE pages SET embedding = $1, embed_stale = FALSE "
+        "WHERE id = $2 AND content_markdown=$3 AND deleted_at IS NULL",
+        list(zip(vecs, ids, originals)),
     )
     return len(empty_ids) + len(ids)
 

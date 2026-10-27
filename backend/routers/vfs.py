@@ -4,13 +4,21 @@ Same surface as `stash vfs "<command>"`, for agents with no shell to install the
 CLI into. Read-only: the shell has no write commands and rejects redirects.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import end_user_service, security_audit_service, source_service, vfs_service
+from ..services import (
+    end_user_service,
+    security_audit_service,
+    shared_wiki_privacy,
+    source_service,
+    vfs_service,
+)
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -57,6 +65,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
         )
     if user_id is None:
         return {
+            "workspace_id": str(workspace["id"]),
             "external_id": None,
             "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
             "wiki_folder_id": None,
@@ -65,6 +74,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
     end_user = await end_user_service.find_end_user(workspace["id"], user_id)
     if end_user is None:
         return {
+            "workspace_id": str(workspace["id"]),
             "external_id": user_id,
             "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
             "wiki_folder_id": None,
@@ -74,6 +84,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
         current_user["id"], end_user_id=end_user["id"]
     )
     return {
+        "workspace_id": str(workspace["id"]),
         "external_id": end_user["external_id"],
         "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
         "wiki_folder_id": str(end_user["wiki_folder_id"]),
@@ -85,6 +96,29 @@ class VfsSearch(BaseModel):
     pattern: str = Field(max_length=MAX_SCRIPT_LENGTH)
     roots: list[str] = Field(max_length=64)
     docs_scanned: int = Field(ge=0)
+
+
+@router.get("/pages/{page_id}")
+async def read_customer_page(
+    page_id: UUID,
+    user_id: str | None = Query(None, max_length=128),
+    current_user: dict = Depends(get_current_user),
+):
+    """Nested VFS reads reauthenticate before checking current publication/scope."""
+    workspace = await end_user_service.workspace_for_scope(current_user["id"])
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        raise HTTPException(status_code=404, detail="Page unavailable in this customer scope")
+    page = await shared_wiki_privacy.customer_page(
+        str(workspace["id"]),
+        str(page_id),
+        user_id,
+        via=security_audit_service.request_via.get() or "ask",
+    )
+    if page is None:
+        raise HTTPException(
+            status_code=404, detail="Page unavailable pending privacy or scope review"
+        )
+    return page
 
 
 @router.post("")
