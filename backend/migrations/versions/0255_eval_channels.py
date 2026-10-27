@@ -16,14 +16,14 @@ eval_grades caches the judge's grade of one example under one rubric (rubric_key
 everything the judge reads), so checking a rubric against new evidence grades only the
 new examples.
 
-Revision ID: 0254
-Revises: 0253
+Revision ID: 0255
+Revises: 0254
 """
 
 from alembic import op
 
-revision = "0254"
-down_revision = "0253"
+revision = "0255"
+down_revision = "0254"
 branch_labels = None
 depends_on = None
 

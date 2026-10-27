@@ -63,3 +63,21 @@ def test_every_parent_exists():
     graph = _graph()
     missing = {rev: down for rev, down in graph.items() if down is not None and down not in graph}
     assert not missing, f"down_revision points at a revision that doesn't exist: {missing}"
+
+
+def test_eval_channels_follows_deployed_shared_wiki_reviews():
+    """Production applied the privacy migration as 0254 before evals merged.
+
+    Preserve that identity so upgrading the existing database creates the eval
+    tables instead of skipping them or replaying the privacy schema.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(VERSIONS.parent))
+    scripts = ScriptDirectory.from_config(cfg)
+    deployed = scripts.get_revision("0254")
+    assert Path(deployed.path).name == "0254_shared_wiki_reviews.py"
+    pending = list(scripts.iterate_revisions("0255", "0254"))
+    assert [Path(revision.path).name for revision in pending] == ["0255_eval_channels.py"]
