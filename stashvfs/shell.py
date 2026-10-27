@@ -658,6 +658,13 @@ class SkillAppVfsShell:
                 json.dumps({"offset": next_offset, "signature": signature}).encode()
             ).decode()
             next_command = shlex.join([name, "--continue", token, *original_args])
+            # The HTTP VFS accepts scripts up to 4096 characters. Do not offer
+            # a continuation the server would reject after adding the cursor.
+            if len(next_command) > 4096:
+                next_command = None
+                self._warn(
+                    "Continuation exceeds the command length limit; shorten the query or narrow the paths."
+                )
         listing_incomplete = any(
             self.model.truncated_roots_under(root) or self.model.truncated_root_containing(root)
             for root in roots

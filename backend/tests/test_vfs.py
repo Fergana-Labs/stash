@@ -283,6 +283,21 @@ async def test_search_cursor_rejects_changed_scope(client, monkeypatch):
     assert second["stdout"] == ""
 
 
+async def test_search_does_not_offer_an_overlong_continuation(client, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    key, _ = await _register(client)
+    await _make_page(client, key, "One", "alpha")
+    await _make_page(client, key, "Two", "alpha")
+    command = "grep -rF '" + "x" * 4000 + "' /files"
+    response = await _vfs(client, key, command)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["exit_code"] == 2
+    assert data["searches"][0]["has_more"] is True
+    assert data["searches"][0]["next_command"] is None
+    assert "shorten the query" in data["stderr"]
+
+
 async def test_complete_negative_search_is_distinct_from_partial(client, monkeypatch):
     key, _ = await _register(client)
     await _make_page(client, key, "One", "alpha")
