@@ -254,7 +254,7 @@ async def grade(
     ]
     if not graded:
         raise JudgeUnavailable("Couldn't score this right now; try again")
-    return combine(graded, version.get("scoring", "mean") if version else "mean", bool(traits))
+    return combine(graded, version.get("scoring", "mean") if version else "mean", traits or [])
 
 
 async def _grade_once(model_id: UUID, system: str, content: list[dict]) -> dict | None:
@@ -274,22 +274,30 @@ async def _grade_once(model_id: UUID, system: str, content: list[dict]) -> dict 
     return None
 
 
-def combine(graded: list[dict], scoring: str, given: bool) -> dict:
-    """One grade from several of the same submission: each trait's middle grade, the score
-    from those by the rubric's scoring rule, and the words of the grade closest to it. With
-    no traits given the judge chose its own each time, so the grade with the middle score
-    stands for all of them."""
-    if not given:
+def combine(graded: list[dict], scoring: str, rubric: list[dict]) -> dict:
+    """One grade from several of the same submission: each of the rubric's traits takes its
+    middle grade (a trait a call made up or misspelled doesn't count), the score follows from
+    those by the rubric's scoring rule, and the words come from the grade closest to it.
+    Without rubric traits to go by (none given, or none the judge named), the grade with the
+    middle score stands for all of them."""
+
+    def key(name: str) -> str:
+        return name.strip().lower()
+
+    names = {key(t["name"]): t["name"] for t in rubric}
+
+    def own(g: dict) -> list[dict]:
+        return [t for t in g["traits"] if key(t["trait"]) in names]
+
+    if not any(own(g) for g in graded):
         return sorted(graded, key=lambda g: aggregate(g["traits"], scoring))[len(graded) // 2]
-    by_trait: dict[str, list[dict]] = {}
-    for g in graded:
-        for t in g["traits"]:
-            by_trait.setdefault(t["trait"].strip().lower(), []).append(t)
     traits = []
-    for seen in by_trait.values():
-        middle = float(np.median([t["score"] for t in seen]))
-        closest = min(seen, key=lambda t: abs(t["score"] - middle))
-        traits.append({"trait": seen[0]["trait"], "score": middle, "why": closest["why"]})
+    for k, name in names.items():
+        seen = [t for g in graded for t in own(g) if key(t["trait"]) == k]
+        if seen:
+            middle = float(np.median([t["score"] for t in seen]))
+            closest = min(seen, key=lambda t: abs(t["score"] - middle))
+            traits.append({"trait": name, "score": middle, "why": closest["why"]})
     score = aggregate(traits, scoring)
-    words = min(graded, key=lambda g: abs(aggregate(g["traits"], scoring) - score))
+    words = min(graded, key=lambda g: abs(aggregate(own(g), scoring) - score))
     return {**words, "score": score, "traits": traits}

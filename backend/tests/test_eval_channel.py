@@ -1223,21 +1223,28 @@ async def test_the_judge_grades_three_times_and_takes_each_traits_middle_grade(
 
 
 def test_combined_grades_take_each_traits_middle_and_score_by_the_rubric():
-    def grade(color: int, stripes: int, why: str, name: str = "stripes ") -> dict:
+    def grade(color: int, stripes: int, why: str, name: str = "stripes ", extra=None) -> dict:
+        traits = [
+            {"trait": "Color", "score": (color - 1) / 4, "why": f"color {why}"},
+            {"trait": name, "score": (stripes - 1) / 4, "why": f"stripes {why}"},
+        ]
         return {
             "score": 0.0,
-            "traits": [
-                {"trait": "Color", "score": (color - 1) / 4, "why": f"color {why}"},
-                {"trait": name, "score": (stripes - 1) / 4, "why": f"stripes {why}"},
-            ],
+            "traits": traits + ([extra] if extra else []),
             "explanation": why,
             "fixes": [],
             "keep": [],
         }
 
-    graded = [grade(5, 3, "a", name="Stripes"), grade(2, 3, "b"), grade(4, 2, "c")]
-    combined = judge.combine(graded, "lowest", given=True)
-    # Names match whatever their case and spacing; the first grade's spelling is kept.
+    rubric = [{"name": "Color"}, {"name": "Stripes"}]
+    made_up = {"trait": "Shadows", "score": 0.0, "why": "a trait no one asked for"}
+    graded = [
+        grade(5, 3, "a", name="Stripes"),
+        grade(2, 3, "b", extra=made_up),
+        grade(4, 2, "c"),
+    ]
+    combined = judge.combine(graded, "lowest", rubric)
+    # Names match whatever their case and spacing; a trait one call made up doesn't count.
     assert [(t["trait"], t["score"]) for t in combined["traits"]] == [
         ("Color", 0.75),
         ("Stripes", 0.5),
@@ -1245,5 +1252,6 @@ def test_combined_grades_take_each_traits_middle_and_score_by_the_rubric():
     assert combined["score"] == 0.5
     assert combined["traits"][0]["why"] == "color c"
     assert combined["explanation"] == "a"
-    # A judge that chose its own traits each time: the grade with the middle score stands.
-    assert judge.combine(graded, "mean", given=False)["explanation"] == "c"
+    # No rubric, or none of its traits named: the grade with the middle score stands.
+    assert judge.combine(graded, "mean", [])["explanation"] == "c"
+    assert judge.combine(graded, "mean", [{"name": "Texture"}])["explanation"] == "c"
