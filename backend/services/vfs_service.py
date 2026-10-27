@@ -138,6 +138,11 @@ class InProcessVfsClient:
                 "scope it to a subdirectory or use search"
             )
 
+    def remaining_document_reads(self) -> int:
+        """Optional prefetch capability: this client meters document loads."""
+        with self._reads_lock:
+            return max(0, MAX_DOCUMENT_READS - self._document_reads)
+
     # ── Listings, walked during refresh() ──────────────────────────────
 
     def get_overview(self) -> dict:
@@ -383,6 +388,10 @@ def _run_script(
         "stderr": result.stderr,
         "exit_code": result.exit_code,
         "cwd": result.cwd,
+        "searches": result.searches,
+        "search_complete": (
+            all(search["complete"] for search in result.searches) if result.searches else None
+        ),
     }
 
 

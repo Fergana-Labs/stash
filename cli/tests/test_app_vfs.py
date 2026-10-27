@@ -383,9 +383,57 @@ def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
 
     result = shell.run("grep -r Plan /")
 
-    assert result.exit_code == 0
+    assert result.exit_code == 2
+    assert result.searches[0]["complete"] is False
+    assert result.searches[0]["unreadable_files"] > 0
     assert "Plan" in result.stdout
     assert "Transcript not found" in result.stderr
+
+
+def test_search_metadata_survives_multiple_commands_and_resets_between_runs():
+    shell, _client = _shell(DeadTranscriptClient())
+    result = shell.run("grep -r Plan / | head -n 1; echo done")
+    assert result.exit_code == 2
+    assert result.searches and not result.searches[0]["complete"]
+    assert "done" in result.stdout
+    assert shell.run("echo fresh").searches == []
+
+
+def test_continue_literal_after_option_separator_is_a_pattern():
+    shell, _client = _shell()
+    result = shell.run("grep -r -- --continue /memory")
+    assert result.exit_code == 1
+    assert result.searches[0]["pattern"] == "--continue"
+
+
+def test_grep_reports_truncated_source_listing_as_partial():
+    shell, _client = _shell()
+    shell.model.list_dir("/sources/gmail")
+    shell.model._truncated["/sources/gmail"] = 1
+    result = shell.run("grep -r . /sources/gmail")
+    assert result.exit_code == 2
+    assert result.searches[0]["listing_complete"] is False
+    assert result.searches[0]["complete"] is False
+
+
+def test_explicit_file_search_does_not_inherit_parent_listing_truncation():
+    shell, _client = _shell()
+    shell.model.list_dir("/sources/gmail")
+    shell.model._truncated["/sources/gmail"] = 1
+    result = shell.run("grep . '/sources/gmail/Welcome email'")
+    assert result.exit_code == 0
+    assert result.searches[0]["listing_complete"] is True
+    assert result.searches[0]["complete"] is True
+
+
+def test_wildcard_search_retains_listing_truncation():
+    shell, _client = _shell()
+    shell.model.list_dir("/sources/gmail")
+    shell.model._truncated["/sources/gmail"] = 1
+    result = shell.run("grep . /sources/gmail/Welcome*")
+    assert result.exit_code == 2
+    assert result.searches[0]["listing_complete"] is False
+    assert result.searches[0]["complete"] is False
 
 
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():

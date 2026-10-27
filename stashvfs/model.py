@@ -254,17 +254,31 @@ class StashVfsModel:
             except (VfsClientError, VfsScanBudget) as e:
                 return node, e
 
+        def cache(node: VfsNode, result: bytes | VfsClientError | VfsScanBudget) -> None:
+            if isinstance(result, (VfsClientError, VfsScanBudget)):
+                node.error = result
+            elif for_scan and node.scan_loader is not None:
+                node.scan_content = result
+            else:
+                node.content = result
+                node.size_hint = len(result)
+
+        # Metered clients must give the first pending file its turn before
+        # later workers can spend the budget. Otherwise a slow first worker
+        # can lose every slot and return the same continuation offset forever.
+        # The remaining bodies still load concurrently; unmetered CLI clients
+        # retain their fully concurrent prefetch behavior.
+        remaining = getattr(self.client, "remaining_document_reads", None)
+        if for_scan and remaining is not None and remaining() is not None:
+            node, result = load(pending.pop(0))
+            cache(node, result)
+            if isinstance(result, VfsScanBudget):
+                return
+
         workers = min(PREFETCH_CONCURRENCY, len(pending))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for node, result in pool.map(load, pending):
-                if isinstance(result, (VfsClientError, VfsScanBudget)):
-                    node.error = result
-                    continue
-                if for_scan and node.scan_loader is not None:
-                    node.scan_content = result
-                    continue
-                node.content = result
-                node.size_hint = len(result)
+                cache(node, result)
 
     def getattr(self, path: str) -> dict:
         node = self._get_node(path)
