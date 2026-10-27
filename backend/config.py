@@ -332,6 +332,8 @@ class Settings:
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     # Scores judge evals (services/evals). The trait-grading judge was benchmarked on Opus.
     EVAL_JUDGE_MODEL: str = os.getenv("EVAL_JUDGE_MODEL", "claude-opus-5-5")
+    # Grades per submission; each trait takes the middle one (sampling can't be turned off).
+    EVAL_JUDGE_SAMPLES: int = int(os.getenv("EVAL_JUDGE_SAMPLES", "3"))
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
     # --- Agent Workbench rubric grading (TypeSafe Jev) ---

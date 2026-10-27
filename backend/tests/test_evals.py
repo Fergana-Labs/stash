@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from PIL import Image
 
 from backend.services import storage_service
-from backend.services.evals import build, judge
+from backend.services.evals import build, judge, robustness
 from backend.tasks import evals as eval_tasks
 
 from .conftest import unique_name
@@ -62,6 +62,10 @@ def fakes(monkeypatch):
     class Messages:
         async def create(self, *, model, max_tokens, system, messages):
             content = messages[0]["content"]
+            if system.startswith(robustness.SYSTEM[:40]):
+                return SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text='{"attempts": []}')]
+                )
             if system == build.TRAITS_SYSTEM:
                 calls["traits"] += 1
                 text = json.dumps(TRAITS)
@@ -93,7 +97,9 @@ def fakes(monkeypatch):
     monkeypatch.setattr(storage_service, "upload_file", upload_file)
     monkeypatch.setattr(storage_service, "download_file", download_file)
     monkeypatch.setattr(judge.llm, "_get_client", lambda: SimpleNamespace(messages=Messages()))
-    monkeypatch.setattr(eval_tasks.build_eval, "delay", lambda eval_id: None)
+    monkeypatch.setattr(judge.settings, "EVAL_JUDGE_SAMPLES", 1)
+    monkeypatch.setattr(eval_tasks.build_eval, "apply_async", lambda *a, **k: None)
+    monkeypatch.setattr(eval_tasks.read_channel, "delay", lambda *a, **k: None)
     return calls
 
 
@@ -137,7 +143,14 @@ async def test_examples_build_and_score_with_an_explanation(client: AsyncClient,
     assert [t["name"] for t in detail["traits"]] == ["Color", "Shape"]
     assert detail["build"]["summary"] == "Red things"
     # Each example was graded with itself left out of the references, and all were right.
-    assert detail["build"]["metrics"] == {"checked": 7, "agreement": 1.0, "good_above_bad": 1.0}
+    # Seven examples are too few to hold any out (service.HOLDOUT_AFTER).
+    assert detail["build"]["metrics"] == {
+        "checked": 7,
+        "agreement": 1.0,
+        "good_above_bad": 1.0,
+        "held_out": {"n": 0, "right": 0, "agreement": None, "good_above_bad": None},
+    }
+    assert detail["version"] == 1
     assert all(
         "Use exactly these traits" in s and "Color: good = red" in s for s in fakes["systems"]
     )

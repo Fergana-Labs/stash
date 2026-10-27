@@ -6,6 +6,10 @@ POST /api/v1/evals/{id}/score
   multipart: trace (JSON or text), text, caller, ref, files (images, PDFs, text files)
 -> {"call_id", "score" (0-1), "traits": [{"trait", "score" (0-1), "why"}],
     "explanation", "fixes": [{"issue", "fix"}], "keep"}
+
+The channel (GET/POST /api/v1/evals/{id}/messages) is where people drop examples and say
+what they think; the rubric (GET/PUT /api/v1/evals/{id}/rubric) is every version the eval
+has had, edited by builds as evidence arrives and by the person directly.
 """
 
 import base64
@@ -19,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import UploadFile as FormFile
 
 from ..auth import get_current_user
-from ..services.evals import judge, service
+from ..services.evals import channel, judge, revise, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -59,6 +63,23 @@ class ScoreJson(Body):
 class LabelCall(Body):
     label: Literal["good", "bad"] | None
     note: str = Field(default="", max_length=2000)
+
+
+class EditExample(Body):
+    label: Literal["good", "bad"] | None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class Trait(Body):
+    name: str = Field(min_length=1, max_length=60)
+    good: str = Field(default="", max_length=400)
+    bad: str = Field(default="", max_length=400)
+    basis: str = Field(default="", max_length=300)
+
+
+class EditRubric(Body):
+    traits: list[Trait] = Field(min_length=1, max_length=revise.MAX_RUBRIC)
+    base: int = Field(ge=0, description="The version the edit was made on")
 
 
 async def checked(coro):
@@ -167,6 +188,13 @@ def _trace_field(value: str):
         return value
 
 
+@router.patch("/{eval_id}/examples/{example_id}")
+async def edit_example(eval_id: UUID, example_id: UUID, body: EditExample, user: User):
+    return await checked(
+        service.edit_example(user["id"], eval_id, example_id, body.label, body.note)
+    )
+
+
 @router.delete("/{eval_id}/examples/{example_id}", status_code=204)
 async def delete_example(eval_id: UUID, example_id: UUID, user: User):
     await checked(service.delete_example(user["id"], eval_id, example_id))
@@ -180,8 +208,59 @@ async def example_file(eval_id: UUID, example_id: UUID, index: int, user: User):
 
 
 @router.post("/{eval_id}/build", status_code=202)
-async def build(eval_id: UUID, user: User):
-    return await checked(service.start_build(user["id"], eval_id))
+async def build(eval_id: UUID, user: User, fresh: bool = False):
+    """Bring the rubric up to date now; fresh rewrites it from scratch."""
+    return await checked(service.start_build(user["id"], eval_id, fresh))
+
+
+@router.get("/{eval_id}/rubric")
+async def rubric(eval_id: UUID, user: User):
+    return await checked(service.rubric(user["id"], eval_id))
+
+
+@router.put("/{eval_id}/rubric")
+async def edit_rubric(eval_id: UUID, body: EditRubric, user: User):
+    traits = [t.model_dump(exclude_defaults=False) for t in body.traits]
+    if len({t["name"].strip().lower() for t in traits}) < len(traits):
+        raise HTTPException(422, "Trait names must be unique")
+    return await checked(service.edit_rubric(user["id"], eval_id, traits, body.base))
+
+
+@router.get("/{eval_id}/messages")
+async def messages(eval_id: UUID, user: User):
+    return await checked(channel.listing(user["id"], eval_id))
+
+
+@router.post("/{eval_id}/messages", status_code=201)
+async def post_message(
+    eval_id: UUID,
+    user: User,
+    text: Annotated[str, Form(max_length=channel.MAX_TEXT)] = "",
+    thread_id: Annotated[UUID | None, Form()] = None,
+    more: Annotated[bool, Form()] = False,
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
+):
+    """Post to the eval's channel. Each file becomes an example the channel agent labels from
+    what the person says; files that can't be read come back in "skipped". A drop bigger than
+    one request posts with more=true, then sends the rest to .../messages/{id}/files."""
+    return await checked(
+        channel.post(
+            user["id"], eval_id, text, await _uploads(files), thread_id=thread_id, more=more
+        )
+    )
+
+
+@router.post("/{eval_id}/messages/{message_id}/files", status_code=201)
+async def attach_files(
+    eval_id: UUID,
+    message_id: UUID,
+    user: User,
+    more: Annotated[bool, Form()] = False,
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
+):
+    return await checked(
+        channel.attach(user["id"], eval_id, message_id, await _uploads(files), more)
+    )
 
 
 @router.post("/{eval_id}/score")

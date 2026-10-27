@@ -124,6 +124,11 @@ celery.conf.update(
             "task": "backend.tasks.behaviors.reconcile",
             "schedule": 30.0,
         },
+        # Restarts eval builds and channel reads a lost task left stuck.
+        "evals-sweep": {
+            "task": "backend.tasks.evals.sweep",
+            "schedule": 60.0,
+        },
         "embedding-reconcile": {
             "task": "backend.tasks.embeddings.reconcile",
             "schedule": 60.0,
