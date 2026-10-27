@@ -436,6 +436,28 @@ def test_wildcard_search_retains_listing_truncation():
     assert result.searches[0]["complete"] is False
 
 
+def test_indexed_search_preserves_candidate_scope_and_truncation():
+    shell, client = _shell()
+    calls = []
+
+    def search(query, scope, limit):
+        calls.append((query, scope, limit))
+        return {
+            "results": [{"id": "wikipage-12345678", "name": "Memory Wiki", "excerpt": "fact"}],
+            "has_more": True,
+            "coverage": "Wiki candidates only",
+        }
+
+    client.search_wiki = search
+    result = shell.run("search 'fan hub' --scope shared --limit 3")
+    assert calls == [("fan hub", "shared", 3)]
+    assert result.exit_code == 2
+    assert result.searches[0]["kind"] == "indexed_wiki"
+    assert result.searches[0]["complete"] is False
+    assert '"path": "/memory/Memory Wiki.md"' in result.stdout
+    assert "refine" in result.stderr
+
+
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     shell, _client = _shell(DeadTranscriptClient())
 

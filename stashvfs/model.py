@@ -136,6 +136,10 @@ class StashVfsModel:
                     "- `files` exposes folders, pages, and uploaded files.",
                     "- `memory` is the agent-curated Memory wiki (stored separately from `files`).",
                     "- Sessions and skills are read-only projections.",
+                    "- Developer wiki lookup: `search 'part number or topic'` returns ranked "
+                    "candidates from your private wiki and approved shared knowledge. Read the "
+                    "strongest matches, then search files/transcripts if needed. An empty wiki "
+                    "candidate list does not establish that the information is absent.",
                     "- Tables live in the folder tree like any other item: a "
                     "table is a `<name>/` directory holding `schema.json`, "
                     "`rows.json`, and `rows.jsonl`. Query tables with SQL via "
