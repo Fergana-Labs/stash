@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Pi session_start: save session_id and create the session record."""
+
+import json
+import os
+
+from adapt import adapt_session_start
+from config import (
+    DATA_DIR,
+    get_client,
+    get_config,
+    get_stdin_data,
+    is_fusion_managed,
+)
+
+from stashai.plugin.hooks import (
+    color_upload_health_warning,
+    create_session_record,
+    guard_hook_main,
+    reset_session_record_state,
+    uploads_disabled_warning,
+    uploads_enabled,
+)
+from stashai.plugin.session_upload import (
+    spawn_self_upgrade,
+    spawn_session_watcher,
+    spawn_skills_sync,
+)
+from stashai.plugin.state import load_state, reset_stats, save_state
+
+
+def main():
+    event = adapt_session_start(get_stdin_data())
+    if is_fusion_managed(event.cwd):
+        return
+    cfg = get_config()
+    state = load_state(DATA_DIR)
+    if not uploads_enabled(cfg):
+        warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
+        if warning:
+            print(json.dumps({"systemMessage": color_upload_health_warning(warning)}))
+        return
+
+    reset_session_record_state(state)
+    state["session_id"] = event.session_id
+    save_state(DATA_DIR, state)
+    reset_stats(DATA_DIR)
+    state = load_state(DATA_DIR)
+
+    # A failed session-create must surface to the hook runner, not vanish
+    # silently; the watcher spawns only when the record was actually created.
+    with get_client() as client:
+        create_session_record(client, cfg, state, event, DATA_DIR)
+
+    spawn_skills_sync(cfg)
+    spawn_self_upgrade()
+
+    if state.get("session_row_id"):
+        spawn_session_watcher(
+            agent_pid=os.getppid(),
+            session_id=event.session_id,
+            agent_name=cfg.get("agent_name", ""),
+            base_url=cfg.get("api_endpoint", ""),
+            api_key=cfg.get("api_key", ""),
+            cwd=event.cwd or "",
+            data_dir=DATA_DIR,
+            session_row_id=state.get("session_row_id", ""),
+            transcript_path=event.transcript_path,
+        )
+
+
+if __name__ == "__main__":
+    guard_hook_main(DATA_DIR, main, host_exits_zero=True)

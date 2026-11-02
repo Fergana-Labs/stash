@@ -1,0 +1,115 @@
+# Stash Plugin for Pi
+
+Streams Pi coding sessions to Stash using Pi's native `~/.pi/hooks/` system.
+
+## Prerequisites
+
+- `stash` CLI installed and logged in
+- Pi installed with hook directory support (`~/.pi/hooks/`)
+
+Streaming is gated globally: it is on whenever you are signed in and have not
+stopped recording (`stash stop`). There is no per-repo manifest — the handlers
+call into the installed `stashai` package, so the interpreter they need comes
+with the CLI rather than being something you install beside it.
+
+## Install
+
+The recommended way to install the Pi hooks is through the `stash` CLI, which
+supersedes the manual instructions below: `stash settings` (or the interactive
+`stash connect` flow) detects Pi on your machine and copies the self-contained
+hook runtime from the shipped assets under `stashai/plugin/assets/pi/` into
+`~/.pi/` — `_run.sh` and the `on_*.py` handlers at the top level, the five event
+wrappers under `~/.pi/hooks/`, and the Stash block in `~/.pi/AGENTS.md`. No
+symlinks are created, so the install keeps working even if the stash checkout
+or pipx env moves, and it never depends on this repo's location.
+
+Manual install (fallback, when you cannot run the CLI installer) — copy the
+runtime, do not symlink the wrappers alone: each wrapper execs
+`"$SCRIPT_DIR/../_run.sh"`, so `_run.sh` and the `on_*.py` handlers have to sit
+in `~/.pi/` beside `hooks/`. A hooks-only install makes every event exit
+non-zero, and Pi drops a failing hook without saying so.
+
+```bash
+cd path/to/stash/plugins/pi-plugin
+mkdir -p ~/.pi/hooks
+
+# Runtime beside the hooks directory — the layout _run.sh resolves against
+cp scripts/_run.sh scripts/*.py ~/.pi/
+cp scripts/hooks/* ~/.pi/hooks/
+chmod +x ~/.pi/_run.sh ~/.pi/hooks/*
+
+# Agent context — tells Pi it has the stash CLI available
+cat AGENTS.md >> ~/.pi/AGENTS.md
+```
+
+## How Pi hooks work
+
+Pi reads executable files from `~/.pi/hooks/` — one file per event name.
+Each hook receives JSON on stdin with the event payload and must exit
+with status 0. The hook files in `scripts/hooks/` are thin bash wrappers
+that delegate to `_run.sh`, which resolves the correct Python interpreter
+and dispatches to the corresponding `on_*.py` handler.
+
+## When a hook fails
+
+A hook that crashes is never silent. Every shipped handler runs its work inside
+`stashai.plugin.hooks.guard_hook_main`, which on a fatal error:
+
+- records the failure in `~/.stash/plugins/pi/upload_status.json` under the
+  `hook_run` operation — error text, timestamp, and a growing
+  `consecutive_failures` count. That file is what `stash status` reads, so Pi's
+  row turns `failing`, and the traceback is printed rather than swallowed; and
+- tells you in the conversation: a yellow `systemMessage` reading "Stash hook
+  failed; this conversation may not be visible to your team. Run `stash status`
+  for details."
+
+Pi requires exit status 0 and one JSON object on stdout, so a failed hook still
+exits 0 once it has announced itself — the record and the message are the point.
+
+The handlers copied into `~/.pi/` call into the installed `stashai` package, so
+the copied generation needs a package at least as new as itself: the floor is the
+first release whose `stashai.plugin.hooks` offers `guard_hook_main`. Convergence
+is the product's job, not a manual copy — `stash connect` (or `stash settings`)
+re-copies the handlers from the assets of the package you actually have installed.
+
+## Commands
+
+Everything is a plain `stash` CLI subcommand — no slash commands or skills:
+
+| Command | Description |
+|---------|-------------|
+| `stash connect` | Interactive setup (auth + store) |
+| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
+| `stash disconnect` | Pause event streaming across every installed plugin |
+
+## What streams
+
+| Pi event | Stash event | Notes |
+|---|---|---|
+| `session_start` | — (warms cache) | Session record created, skills synced |
+| `user_message` | `user_message` | User prompt streamed |
+| `tool_use` | `tool_use` | Tool invocations streamed (bash, read, write, edit, grep, …) |
+| `assistant_message` | `assistant_message` + transcript upload | Per-turn assistant response; transcript uploaded in background with 60s cooldown |
+| `session_end` | `session_end` | Session finalized, state cleared |
+
+## Known gaps
+
+1. **Pi hook coverage depends on Pi's runtime.** Pi's hook system is still
+   maturing. Check Pi's documentation for which events fire reliably and
+   whether all tool types are covered.
+2. **macOS / Linux only.** Pi runs on macOS and Linux. No Windows support.
+   (Consistent with all existing Stash streaming plugins.)
+
+## Retrieval
+
+Pi has shell access. For reads mid-conversation, have the agent invoke
+the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
+
+```
+stash vfs "find /me -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /me"
+stash vfs "cat '/me/README.md'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
+stash search "<query>"
+stash whoami --json
+```
