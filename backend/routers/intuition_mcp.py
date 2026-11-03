@@ -304,8 +304,9 @@ async def classify(
     version: Literal["active", "draft"] = "active",
     ref: str | None = None,
 ) -> dict:
-    """Run the intuition on one input (text or a JSON object). Returns the label, probabilities,
-    confidence and a prediction_id for feedback. Logged to the inbox for review."""
+    """Run the intuition on one input. Send {"request": what the agent was asked, "trace": the
+    steps it took (optional), "output": what it produced}; plain text also works. Returns the label,
+    probabilities, confidence and a prediction_id for feedback. Logged to the inbox for review."""
     user = await _user(ctx)
     out = await service.predict(
         user["id"], _id(intuition_id), item, which=version, caller="mcp", ref=ref

@@ -15,12 +15,12 @@ export function snippets(id: string, name: string) {
     rest: `curl -s ${base}/api/v1/intuitions/${id}/predict \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"item": "the input to classify", "ref": "optional-your-id"}'`,
+  -d '{"item": {"request": "what the agent was asked", "trace": ["the steps it took"], "output": "what it produced"}, "ref": "optional-your-id"}'`,
     mcp: JSON.stringify({ mcpServers: { "stash-intuitions": { type: "http", url: `${base}/mcp/intuitions`, headers: { Authorization: "Bearer <STASH_API_KEY>" } } } }, null, 2),
     agent: `Use my Stash intuition "${name}" (id ${id}) to check work before acting on it.
 Connect the MCP server at ${base}/mcp/intuitions with header "Authorization: Bearer $STASH_API_KEY"
 (or call POST ${base}/api/v1/intuitions/${id}/predict with {"item": ...}).
-Call classify(intuition_id="${id}", item=<the output to check>) and act on the label:
+Call classify(intuition_id="${id}", item={"request": <what you were asked>, "trace": <the steps you took>, "output": <what you produced>}) and act on the label:
 if it flags a problem or confidence is below 0.7, revise and check again, or ask me.
 Pass a ref so I can review decisions in the Inbox; never relabel examples yourself.`,
   };
