@@ -185,7 +185,7 @@ export function scoreParts(reward: StepReward, stepNumberOf: (chunk: string) => 
       text: `${share.value < 0 ? "Blame" : "Credit"} from the answer${step === null ? "" : ` in step ${step}`} ${VERDICT_PHRASE[share.verdict] ?? "that the user reacted to"}`,
       value: share.value,
       tone: share.value < 0 ? "bad" : "good",
-      title: `This step helped lead to that answer, so it takes a share of the answer's points. Steps closer to the answer take a bigger share.${step === null ? "" : "\n\nClick to jump to that answer."}`,
+      title: `This step helped lead to that answer, so it takes an equal share of the 30% the answer passes back.${step === null ? "" : "\n\nClick to jump to that answer."}`,
       targetChunk: share.from,
     });
   }

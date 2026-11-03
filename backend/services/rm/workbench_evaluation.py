@@ -24,7 +24,7 @@ import math
 from ...config import settings
 from . import workbench_grader as wire
 
-POLICY_VERSION = "step-labels-rule-scores-v1"
+POLICY_VERSION = "step-labels-rule-scores-v2"
 ACTIONS_PER_BATCH = 4
 OUTCOMES = {
     "success": "The recorded results establish that the agent fulfilled the user's request(s) and applicable requirements.",

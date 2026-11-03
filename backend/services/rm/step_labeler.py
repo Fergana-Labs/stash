@@ -22,6 +22,8 @@ from ...config import settings
 
 API_URL = "https://api.openai.com/v1/responses"
 RATE_LIMIT_RETRIES = 4
+# Part of every stored fingerprint: changing the rubric relabels stored traces.
+RUBRIC_VERSION = "credit-v2"
 
 RUBRIC = """You label one chunk of an agent conversation trace. You are given the full session transcript for context, then the id of the single chunk to label. Label only that chunk.
 
@@ -46,12 +48,15 @@ intent (pick one)
 
 verdict (about the most recent agent output in this task)
 - confirmed: explicitly says it's right, or acted on it ("yep that's it", "ordered")
-- rejected: explicitly says it's wrong; any correction; any repeat_request
+- rejected: explicitly says it's wrong; any correction; any repeat_request, unless the user says the earlier answer was right
 - partial: some parts right, some wrong ("pin's right, but I need 12")
-- implicit_positive: "thanks", or moves on to a follow-up or unrelated request without complaint
+- implicit_positive: the user's next message thanks the agent or starts a follow-up or new request without disputing the answer
 - none: no signal: clarification answers, added context, or there is no earlier agent output for the verdict to refer to
+- unclear: the message reacts to the answer but the conversation doesn't settle how. Use it instead of guessing.
 
-sentiment: positive / neutral / negative.
+verdict_coverage: only when verdict is partial and the user says how much was right, as "items right/items asked", e.g. "1/2". Otherwise null.
+
+sentiment: positive / neutral / negative. Recorded, not scored.
 
 verdict_target: the chunk id of the agent output the verdict refers to (the most recent agent output before this user chunk in the same task, or the previous task's final output when the user moves on to an unrelated request). null when verdict is none.
 
@@ -68,11 +73,24 @@ tool_call attributes
 - effect: read (only retrieves information) / side_effect (creates, changes, sends or records something)
 - result: data / empty (ran but returned nothing useful: no rows, no matches, empty list) / error
 - If the chunk has no result recorded, set result to null and say so in note.
+- args_match: match (the arguments fit what the user asked for) / mismatch (wrong item, id, date, filter or target compared with the request) / unclear
+- approved (only for effect side_effect; otherwise null): yes (the user asked for or approved this change earlier in the task) / no / unclear
 
 output attributes (set on a chunk of type output, and on a tool_call with is_output true)
 - outcome: answer / partial_answer (some requested items answered) / not_found / error (an unrecovered failure reported to the user) / handoff (escalates or refuses)
 - stance: asserted (no caveats) / hedged (states uncertainty or caveats explicitly). Read it from the text.
 - coverage: "items addressed/items requested", e.g. "1/1" or "2/3"
+- grounding (for answer, partial_answer and handoff; otherwise null): how the key claim relates to the tool results earlier in the conversation. The key claim is the date, amount, id, status or policy fact the user asked for. "Stated in or derived from" counts sums, counts, comparisons and paraphrases.
+  - supported: stated in or derived from the tool results
+  - partly_supported: some of the key claim is in the tool results, some is not
+  - no_source: the key claim appears in no tool result and needs one
+  - contradicts_tool: a tool result says something different
+  - no_lookup_needed: the request needed no lookup (general knowledge, chit-chat, restating what the user said)
+  - unclear: the conversation doesn't settle it
+- uses: chunk ids of the earlier agent chunks in this task whose results this output relies on: tool calls whose results it uses, and clarifying questions whose replies it uses (give the question's id, not the reply's). Empty list when it relies on none.
+- next_steps (only for not_found; otherwise null): true when it tells the user what was searched and what they could try or provide next.
+
+Never judge whether the key claim is true in the real world, only whether the tool results contain it.
 
 is_output: true when this chunk delivers the user-facing response to the request. Always true for type output. For a tool_call, true only when the answer is delivered through that tool (such as submitting candidates). Otherwise false.
 
@@ -82,12 +100,12 @@ TIE-BREAKERS
 - An answer delivered through a tool, such as submitting candidates, gets both labels: type tool_call with is_output true and the output attributes filled in.
 - A message that gives a candidate but says it isn't done yet is a status_update.
 - An ask_user style tool call is type clarifying_question, not tool_call.
-- If you can't decide a field, use "other" for intent or type with a one-line note. Don't guess.
+- If you can't decide a field, use "other" for intent or type, or "unclear" where a field offers it, with a one-line note. Don't guess.
 
 OUTPUT
 Return one JSON object for the requested chunk.
-- For a user chunk fill intent, verdict, verdict_target, sentiment; set every agent-only field to null.
-- For an agent chunk fill type and is_output; fill effect and result only for type tool_call; fill outcome, stance, coverage only when is_output is true; set every user-only field to null.
+- For a user chunk fill intent, verdict, verdict_coverage, verdict_target, sentiment; set every agent-only field to null.
+- For an agent chunk fill type and is_output; fill effect, result, args_match and approved only for type tool_call; fill outcome, stance, coverage, grounding, uses and next_steps only when is_output is true; set every user-only field to null.
 - evidence: a short verbatim quote from the chunk (or its result) that supports the label. Keep it under 200 characters.
 - note: null unless something needs a one-line explanation.
 """
@@ -101,15 +119,21 @@ SCHEMA = {
         "actor",
         "intent",
         "verdict",
+        "verdict_coverage",
         "verdict_target",
         "sentiment",
         "type",
         "effect",
         "result",
+        "args_match",
+        "approved",
         "is_output",
         "outcome",
         "stance",
         "coverage",
+        "grounding",
+        "uses",
+        "next_steps",
         "evidence",
         "note",
     ],
@@ -133,8 +157,17 @@ SCHEMA = {
         },
         "verdict": {
             "type": N,
-            "enum": ["confirmed", "rejected", "partial", "implicit_positive", "none", None],
+            "enum": [
+                "confirmed",
+                "rejected",
+                "partial",
+                "implicit_positive",
+                "none",
+                "unclear",
+                None,
+            ],
         },
+        "verdict_coverage": {"type": N},
         "verdict_target": {"type": N},
         "sentiment": {"type": N, "enum": ["positive", "neutral", "negative", None]},
         "type": {
@@ -151,6 +184,8 @@ SCHEMA = {
         },
         "effect": {"type": N, "enum": ["read", "side_effect", None]},
         "result": {"type": N, "enum": ["data", "empty", "error", None]},
+        "args_match": {"type": N, "enum": ["match", "mismatch", "unclear", None]},
+        "approved": {"type": N, "enum": ["yes", "no", "unclear", None]},
         "is_output": {"type": ["boolean", "null"]},
         "outcome": {
             "type": N,
@@ -158,6 +193,20 @@ SCHEMA = {
         },
         "stance": {"type": N, "enum": ["asserted", "hedged", None]},
         "coverage": {"type": N},
+        "grounding": {
+            "type": N,
+            "enum": [
+                "supported",
+                "partly_supported",
+                "no_source",
+                "contradicts_tool",
+                "no_lookup_needed",
+                "unclear",
+                None,
+            ],
+        },
+        "uses": {"type": ["array", "null"], "items": {"type": "string"}},
+        "next_steps": {"type": ["boolean", "null"]},
         "evidence": {"type": "string"},
         "note": {"type": N},
     },
