@@ -211,6 +211,30 @@ async def _record_run_failure(
     )
 
 
+async def _save_refreshed_credential(
+    auth: agent_auth.RunAuth, sprite: sprite_service.Sprite
+) -> None:
+    """Store the OAuth credential file back if the harness refreshed its token
+    during the turn — the next turn rewrites the box from what is stored.
+    Best-effort: the turn's own result must not depend on it."""
+    if auth.oauth_file is None:
+        return
+    try:
+        contents = await sprite_service.read_file(sprite, auth.oauth_file.path)
+        if contents is not None and await agent_auth.save_refreshed(auth.oauth_file, contents):
+            logger.info(
+                "cloud agent: stored refreshed %s credential for user %s",
+                auth.oauth_file.provider,
+                auth.oauth_file.user_id,
+            )
+    except Exception:
+        logger.exception(
+            "cloud agent: could not store refreshed %s credential for user %s",
+            auth.oauth_file.provider,
+            auth.oauth_file.user_id,
+        )
+
+
 async def _turn_events(
     auth: agent_auth.RunAuth,
     sprite: sprite_service.Sprite,
@@ -246,27 +270,31 @@ async def _turn_events(
         system_prompt=system_prompt,
         disallowed_tools=disallowed_tools,
     )
-    async for event in _run_harness(harness, sprite, argv, state, provider_env):
-        yield event
-
-    if state.resume_missing:
-        # Cattle rule: the on-box transcript is gone. Recreate the canonical
-        # session fresh (Claude: --session-id <same key>) with history seeded
-        # into the prompt, so later turns resume it normally again.
-        logger.warning(
-            "cloud agent: transcript missing for %s — reseeding from history", session_id
-        )
-        state = harness_mod.TurnState()
-        argv = harness_mod.build_argv(
-            harness,
-            _reseed_prompt(history, message),
-            session_key=key,
-            resume=False,
-            system_prompt=system_prompt,
-            disallowed_tools=disallowed_tools,
-        )
+    try:
         async for event in _run_harness(harness, sprite, argv, state, provider_env):
             yield event
+
+        if state.resume_missing:
+            # Cattle rule: the on-box transcript is gone. Recreate the canonical
+            # session fresh (Claude: --session-id <same key>) with history seeded
+            # into the prompt, so later turns resume it normally again.
+            logger.warning(
+                "cloud agent: transcript missing for %s — reseeding from history", session_id
+            )
+            state = harness_mod.TurnState()
+            argv = harness_mod.build_argv(
+                harness,
+                _reseed_prompt(history, message),
+                session_key=key,
+                resume=False,
+                system_prompt=system_prompt,
+                disallowed_tools=disallowed_tools,
+            )
+            async for event in _run_harness(harness, sprite, argv, state, provider_env):
+                yield event
+    finally:
+        # Even a failed or stopped turn may have refreshed the token.
+        await _save_refreshed_credential(auth, sprite)
 
     if state.native_id:
         await harness_mod.set_native_id(session_id, harness.id, state.native_id)
