@@ -7,6 +7,14 @@ POST /api/v1/evals/{id}/score
 -> {"call_id", "score" (0-1), "traits": [{"trait", "score" (0-1), "why"}],
     "explanation", "fixes": [{"issue", "fix"}], "keep"}
 
+Grading a change instead of the whole output (an agent's PR, an edit, one new screen): add
+  JSON:      "change": "what the agent was asked, and its diff", "before": {"text", "images"}
+  multipart: change, before_text, before_files
+Either is enough; with both the judge sees before, change and after. The response adds
+"mode": "change", and each trait has "touched" (does the change concern it) and "effect"
+("better" | "same" | "worse"); traits the change doesn't touch have "score": null and don't
+count. The score is the rubric's rule over the touched traits, or 1.0 if it touches none.
+
 The channel (GET/POST /api/v1/evals/{id}/messages) is where people drop examples and say
 what they think; the rubric (GET/PUT /api/v1/evals/{id}/rubric) is every version the eval
 has had, edited by builds as evidence arrives and by the person directly.
@@ -55,6 +63,8 @@ class Output(Body):
 class ScoreJson(Body):
     trace: list | str | None = None
     output: Output = Field(default_factory=Output)
+    change: str = Field(default="", max_length=200_000)
+    before: Output | None = None
     caller: str = Field(default="", max_length=100)
     ref: str | None = Field(default=None, max_length=200)
     metadata: dict = Field(default_factory=dict)
@@ -95,12 +105,12 @@ async def checked(coro):
         raise HTTPException(422, str(exc)) from exc
 
 
-def _decode_image(value: str, index: int) -> tuple[str, bytes, str]:
+def _decode_image(value: str, index: int, field: str = "output") -> tuple[str, bytes, str]:
     header, _, data = value.partition(",") if value.startswith("data:") else ("", "", value)
     try:
         raw = base64.b64decode(data, validate=True)
     except (binascii.Error, ValueError) as exc:
-        raise HTTPException(422, f"output.images[{index}] is not base64") from exc
+        raise HTTPException(422, f"{field}.images[{index}] is not base64") from exc
     content_type = header[5:].split(";")[0] if header else "image/png"
     return f"image-{index + 1}", raw, content_type
 
@@ -281,6 +291,11 @@ async def score(eval_id: UUID, request: Request, user: User):
                 files=await _uploads(uploads),
                 caller=str(form.get("caller") or "")[:100],
                 ref=str(form.get("ref")) if form.get("ref") else None,
+                change=str(form.get("change") or "")[:200_000],
+                before_text=str(form.get("before_text") or "")[:200_000],
+                before_files=await _uploads(
+                    [f for f in form.getlist("before_files") if isinstance(f, FormFile)]
+                ),
             )
         )
     try:
@@ -290,6 +305,7 @@ async def score(eval_id: UUID, request: Request, user: User):
             422, f"Send JSON matching the score request, or multipart: {exc}"
         ) from exc
     images = [_decode_image(v, i) for i, v in enumerate(body.output.images)]
+    before = body.before or Output()
     return await checked(
         service.score(
             user["id"],
@@ -300,6 +316,9 @@ async def score(eval_id: UUID, request: Request, user: User):
             caller=body.caller,
             ref=body.ref,
             metadata=body.metadata,
+            change=body.change,
+            before_text=before.text,
+            before_files=[_decode_image(v, i, "before") for i, v in enumerate(before.images)],
         )
     )
 

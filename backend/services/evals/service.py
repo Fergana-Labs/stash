@@ -524,12 +524,26 @@ async def score(
     caller: str = "",
     ref: str | None = None,
     metadata: dict | None = None,
+    change: str = "",
+    before_text: str = "",
+    before_files: list[tuple[str, bytes, str]] = (),
 ) -> dict:
+    """Score an agent's output, or, given the change it made (`change`, and/or the work before
+    it), only that change: see judge.grade_change."""
     row = await _owned(owner, eval_id)
     if not row["traits"]:
         raise Conflict("Build this eval before scoring with it")
     submission = await items.store(owner, "", list(files), text=text, trace=trace)
-    result = await judge.grade(eval_id, submission)
+    if change or before_text or before_files:
+        before = (
+            await items.store(owner, "", list(before_files), text=before_text)
+            if before_text or before_files
+            else None
+        )
+        submission = {**submission, "change": change[: judge.CHANGE_CHARS], "before": before}
+        result = {"mode": "change", **await judge.grade_change(eval_id, submission, before, change)}
+    else:
+        result = await judge.grade(eval_id, submission)
     call = await get_pool().fetchrow(
         """INSERT INTO intuition_predictions (model_id, kind, input, output, confidence, caller, ref, metadata)
         VALUES ($1, 'predict', $2, $3, $4, $5, $6, $7) RETURNING id, created_at""",

@@ -38,10 +38,13 @@ export interface Eval {
 export interface EvalFile { key: string; name: string; content_type: string }
 export interface EvalItem { name: string; trace: { role: string; content: string; tool_name?: string }[]; text: string; files: EvalFile[] }
 export interface EvalExample { id: string; item: EvalItem; label: EvalLabel | null; note: string; source: string; split: "train" | "eval"; message_id: string | null; created_at: string }
-export interface EvalGrade { trait: string; score: number; why: string }
+/** A trait's grade. When a call graded a change rather than the whole output, a trait the
+ * change didn't touch has no score, and touched ones say whether the change helped. */
+export interface EvalGrade { trait: string; score: number | null; why: string; touched?: boolean; effect?: "better" | "same" | "worse" | null }
 export interface EvalCall {
   id: string;
   input: EvalItem;
+  mode?: "change";
   score: number;
   traits: EvalGrade[];
   explanation: string;

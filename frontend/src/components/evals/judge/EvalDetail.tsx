@@ -152,9 +152,12 @@ function CallRow({ id, call, onLabel }: { id: string; call: EvalCall; onLabel: (
     <ItemPreview item={call.input} path={(i) => evalCallFilePath(id, call.id, i)} />
     <div className="min-w-0 text-[13px]">
       <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)}, {call.caller || "unknown caller"}</div>
-      <div className="mt-1 text-[15px] font-semibold tabular-nums">{call.score.toFixed(2)}</div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="text-[15px] font-semibold tabular-nums">{call.score.toFixed(2)}</span>
+        {call.mode === "change" && <span className="text-[12px] text-muted-foreground">Change</span>}
+      </div>
       {call.explanation && <p className="mt-1">{call.explanation}</p>}
-      <div className="mt-1 flex flex-wrap gap-1">{call.traits.map((t) => <span key={t.trait} title={t.why} className="rounded border border-border px-1.5 py-0.5 text-[11px]">{t.trait} <b>{t.score.toFixed(2)}</b></span>)}</div>
+      <div className="mt-1 flex flex-wrap gap-1">{call.traits.filter((t) => t.score !== null).map((t) => <span key={t.trait} title={t.why} className="rounded border border-border px-1.5 py-0.5 text-[11px]">{t.trait} <b>{t.score!.toFixed(2)}</b>{t.effect === "worse" && <span className="ml-1 text-destructive">worse</span>}</span>)}</div>
       {call.fixes.length > 0 && <ol className="mt-1 list-decimal space-y-1 pl-5">{call.fixes.map((f, i) => <li key={i}><span className="font-medium">{f.issue}</span> <span className="text-muted-foreground">{f.fix}</span></li>)}</ol>}
     </div>
     <div className="flex flex-col gap-2 text-[12px]">
