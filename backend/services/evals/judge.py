@@ -470,5 +470,12 @@ def combine_change(graded: list[dict], scoring: str, rubric: list[dict]) -> dict
     if not traits:
         raise JudgeUnavailable("The judge didn't grade this eval's traits; try again")
     score = aggregate(traits, scoring)
-    words = min(graded, key=lambda g: abs(g["score"] - score))
+    # The words come from the sample whose own grade, by the same rule over the same traits,
+    # is closest to the one returned.
+    names = {key(t["name"]) for t in rubric}
+
+    def own(g: dict) -> list[dict]:
+        return [t for t in g["traits"] if key(t["trait"]) in names]
+
+    words = min(graded, key=lambda g: abs(aggregate(own(g), scoring) - score))
     return {**words, "score": score, "traits": traits}

@@ -473,3 +473,30 @@ def test_combining_change_grades_takes_the_majority_and_breaks_ties_toward_worse
     # Shape: touched by only 1 of 3 calls, so it doesn't count.
     assert not shape["touched"] and shape["score"] is None
     assert out["score"] == 0.625
+
+
+def test_a_change_grade_explains_itself_with_the_sample_matching_its_score():
+    rubric = [{"name": "Color"}, {"name": "Shape"}]
+
+    def t(name, score):
+        return {"trait": name, "touched": True, "score": score, "effect": "same", "why": name}
+
+    def g(words, stored, *traits):
+        return {
+            "score": stored,
+            "traits": list(traits),
+            "explanation": words,
+            "fixes": [],
+            "keep": [],
+        }
+
+    graded = [
+        # A made-up trait lifts A's stored mean to 0.75, though by the rubric's rule it's 0.25.
+        g("A", 0.75, t("Color", 0.25), t("Shape", 1.0), t("Extra", 1.0)),
+        g("B", 0.75, t("Color", 0.75), t("Shape", 0.75)),
+        g("C", 0.5, t("Color", 0.25), t("Shape", 0.75)),
+    ]
+    out = judge.combine_change(graded, "lowest", rubric)
+    assert out["score"] == 0.25
+    # A and C both grade 0.25 by the rule; the stored means would have picked C.
+    assert out["explanation"] == "A"
