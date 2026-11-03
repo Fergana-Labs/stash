@@ -1,8 +1,11 @@
 """MCP server exposing Stash tools to any MCP client."""
 
 import json
+from typing import Annotated
+from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from cli.client import StashClient, split_source_tokens
 from cli.config import load_config, save_scope
@@ -1057,6 +1060,133 @@ def stash_optimization_abandon_run(run_id: str, reason: str) -> str:
             client._post(
                 f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/abandon", json={"reason": reason}
             )
+        )
+
+
+# ── Reward functions (judge evals) ──────────────────────────────
+
+
+class RewardFunctionTrait(BaseModel):
+    """A rubric trait, matching the judge eval API's editable fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+    good: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]
+    bad: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]
+    basis: str = Field(default="", max_length=300)
+
+
+RewardFunctionTraits = Annotated[list[RewardFunctionTrait], Field(min_length=1, max_length=12)]
+
+
+class RewardFunctionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(default="", max_length=200_000)
+    images: list[str] = Field(default_factory=list, max_length=20)
+
+
+def _reward_traits(traits: list[RewardFunctionTrait]) -> list[dict]:
+    if len({t.name.lower() for t in traits}) != len(traits):
+        raise ValueError("Trait names must be unique")
+    return [t.model_dump() for t in traits]
+
+
+@mcp.tool()
+def stash_reward_function_list() -> str:
+    """List your reward functions (judge evals), including IDs, rubrics and readiness.
+    These are the functions in Stash's Evals UI, not trained reward-model checkpoints."""
+    with _client() as client:
+        return _json(client._get("/api/v1/evals"))
+
+
+@mcp.tool()
+def stash_reward_function_get(eval_id: UUID) -> str:
+    """Read a reward function's instructions, traits, current version and score endpoint.
+    Use the returned version as base_version when editing its rubric."""
+    with _client() as client:
+        return _json(client._get(f"/api/v1/evals/{eval_id}"))
+
+
+@mcp.tool()
+def stash_reward_function_create(
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)],
+    instructions: Annotated[str, Field(max_length=2000)],
+    traits: RewardFunctionTraits,
+) -> str:
+    """Create a ready-to-score reward function in Stash's Evals UI from explicit criteria.
+    Each trait has name, good, bad, and optional basis (why the user wants it).
+    Instructions describe the task and grading rules. Provide 1-12 unique traits;
+    the initial score is their mean. This saves a rubric without training a model
+    or inventing labeled examples. It can be scored immediately with
+    stash_reward_function_score. If setup fails after creation, the error includes
+    the created ID: get it and set its rubric, rather than creating a duplicate."""
+    rubric = _reward_traits(traits)
+    with _client() as client:
+        created = client._post("/api/v1/evals", json={"name": name, "instructions": instructions})
+        eval_id = created["id"]
+        try:
+            client._put(f"/api/v1/evals/{eval_id}/rubric", json={"base": 0, "traits": rubric})
+            return _json(client._get(f"/api/v1/evals/{eval_id}"))
+        except Exception as exc:
+            raise RuntimeError(
+                f"Reward function {eval_id} was created, but setup could not be verified: {exc}. "
+                "Use stash_reward_function_get, then stash_reward_function_set_rubric with its "
+                "current version (0 if null) if needed. Do not create it again."
+            ) from exc
+
+
+@mcp.tool()
+def stash_reward_function_set_rubric(
+    eval_id: UUID,
+    traits: RewardFunctionTraits,
+    base_version: Annotated[int, Field(ge=0)],
+) -> str:
+    """Replace a reward function's rubric with explicit user criteria. Pass the version
+    you read from stash_reward_function_get (0 if null); a stale version is rejected
+    instead of overwriting newer edits. Human-written traits are preserved by later
+    automatic revisions. Returns rubric version history."""
+    rubric = _reward_traits(traits)
+    with _client() as client:
+        return _json(
+            client._put(
+                f"/api/v1/evals/{eval_id}/rubric", json={"base": base_version, "traits": rubric}
+            )
+        )
+
+
+@mcp.tool()
+def stash_reward_function_score(
+    eval_id: UUID,
+    output: RewardFunctionOutput,
+    trace: list[dict] | str | None = None,
+    caller: Annotated[str, Field(max_length=100)] = "mcp",
+    ref: Annotated[str, Field(max_length=200)] = "",
+    change: Annotated[str, Field(max_length=200_000)] = "",
+    before: RewardFunctionOutput | None = None,
+) -> str:
+    """Score work with a saved reward function. output contains text and/or images
+    (base64 or data URLs). trace is optional conversation context. Returns a 0-1
+    score, trait grades, reasons, fixes and a logged call_id. This calls the hosted
+    judge and records the submission; it does not add a training label.
+    To judge only an edit, supply change (request/diff) and/or before (prior output).
+    Omit both to grade the whole output. ref is your optional identifier for the work."""
+    with _client() as client:
+        return _json(
+            client._request(
+                "POST",
+                f"/api/v1/evals/{eval_id}/score",
+                json={
+                    "output": output.model_dump(),
+                    "trace": trace,
+                    "caller": caller,
+                    "ref": ref or None,
+                    "change": change,
+                    "before": before.model_dump() if before is not None else None,
+                },
+                timeout=180,
+            ).json()
         )
 
 

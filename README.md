@@ -46,6 +46,11 @@ the UI and API; see the [rollout guide](docs/reward-models/ROLLOUT.md).
 
 ## Reward models in action
 
+**Create a reward function through MCP.** Give `stash_reward_function_create` a
+name, instructions and a rubric, then use `stash_reward_function_score` to grade
+work immediately. The function appears in Evals and can be read or edited through
+MCP. See [reward functions through MCP](docs/reward-models/MCP-REWARD-FUNCTIONS.md).
+
 **Continuously improve prompts.** The Optimization tab connects a personal reward
 model to future agent runs through MCP. It proposes instructions, compares current
 and candidate prompts on real tasks, and tracks reward alongside a chosen business
