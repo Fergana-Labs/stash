@@ -129,6 +129,21 @@ async def _model_with_examples(client, auth, n=24) -> str:
 # ── Pure math ────────────────────────────────────────────────────────────
 
 
+def test_tool_validation_errors_read_as_plain_messages():
+    from pydantic import ValidationError
+
+    from backend.services.intuition.spec import VersionSpec
+
+    issues = [{"id": f"issue_{n}", "description": "x"} for n in range(9)]
+    with pytest.raises(ValidationError) as too_many:
+        VersionSpec.model_validate({"output_type": "multi", "description": "d", "labels": issues})
+    assert wizard._error_text(too_many.value) == "Multi-issue models need 1-8 unique issues"
+    with pytest.raises(ValidationError) as missing:
+        VersionSpec.model_validate({"output_type": "multi", "labels": issues[:1]})
+    assert wizard._error_text(missing.value) == "description: Field required"
+    assert wizard._error_text(ValueError("plain")) == "plain"
+
+
 def test_probe_leave_one_out_is_exact_and_honest():
     rng = np.random.default_rng(0)
     X = rng.normal(size=(20, 8))

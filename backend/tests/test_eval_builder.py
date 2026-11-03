@@ -280,6 +280,14 @@ async def test_pdf_and_slide_deck_text_inputs(monkeypatch):
     assert "Readable instructions" in pdf["content"]
 
 
+async def test_json_lines_files_are_read_as_text(monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", str(Path(pypdf.__file__).resolve().parents[1]))
+    lines = b'{"role": "user", "content": "Make the numbers smaller"}\n{"role": "agent", "content": "Done"}\n'
+    for name in ("agent trace 2026-08-09.jsonl", "trace.ndjson"):
+        item = await builder.read_input(lines, name, "application/octet-stream")
+        assert "Make the numbers smaller" in item["content"]
+
+
 async def test_failed_predictions_are_logged_and_history_is_paginated(
     client, fake_jev, monkeypatch
 ):
