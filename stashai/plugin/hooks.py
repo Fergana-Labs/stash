@@ -137,6 +137,11 @@ def _event_metadata(event: HookEvent | None, base: dict | None = None) -> dict:
     return metadata
 
 
+def recording_allowed(cfg: dict, state: dict, event: HookEvent) -> bool:
+    """False after `stash stop`, for a disabled agent, or in an excluded folder."""
+    return not _short_circuit(cfg, _cwd_of(event, state))
+
+
 def uploads_enabled(cfg: dict) -> bool:
     if not cfg.get("api_key") or not cfg.get("agent_name"):
         return False

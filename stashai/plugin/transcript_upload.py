@@ -1,8 +1,9 @@
-"""Background transcript upload for agents without a SessionEnd hook.
+"""Background transcript upload after each turn.
 
-Codex fires Stop on every turn but has no session-end lifecycle event.
-This module spawns a detached Python process that uploads the transcript
-file, with a per-session cooldown so we don't POST on every single turn.
+Codex fires Stop on every turn but has no session-end lifecycle event, and
+Claude Code sessions can stay open for days, so both upload from Stop. This
+module spawns a detached Python process that uploads the transcript file,
+with a per-session cooldown so we don't POST on every single turn.
 
 The backend appends new trace steps and preserves existing review IDs, so
 duplicate snapshots are safe to resend.
@@ -51,8 +52,14 @@ def spawn_transcript_upload(
     cwd: str,
     base_url: str,
     api_key: str,
+    include_subagents: bool = True,
 ) -> bool:
-    """Spawn a detached process to upload the transcript. Returns True on spawn."""
+    """Spawn a detached process to upload the transcript. Returns True on spawn.
+
+    Pass include_subagents=False while the session is live: the backend keeps
+    only the first upload of a subagent's transcript, so uploading one that is
+    still running would freeze it half-finished.
+    """
     if not transcript_path or not session_id.strip():
         return False
     path = Path(transcript_path)
@@ -72,6 +79,7 @@ def spawn_transcript_upload(
                 sys.executable, str(script),
                 str(path), session_id, agent_name, cwd, base_url, api_key,
                 str(data_dir),
+                *([] if include_subagents else ["--skip-subagents"]),
             ],
             env=env,
             stdin=subprocess.DEVNULL,

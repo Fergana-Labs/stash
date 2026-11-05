@@ -61,3 +61,63 @@ def test_upload_cooldown_does_not_suppress_another_session(monkeypatch, tmp_path
     assert len(calls) == 2
     monkeypatch.setattr(transcript_upload.time, "time", lambda: 1061)
     assert spawn("session-a")
+
+
+CLAUDE_SCRIPTS = ["plugins/claude-plugin/scripts", "stashai/plugin/assets/claude/scripts"]
+
+
+def _run_claude_stop(monkeypatch, tmp_path, scripts, *, allowed=True):
+    event = HookEvent(kind="stop", session_id="session-a", transcript_path="a.jsonl", cwd="/repo")
+    cfg = {"agent_name": "claude", "api_endpoint": "https://example.test", "api_key": "test"}
+    config = SimpleNamespace(
+        DATA_DIR=tmp_path,
+        get_client=lambda: nullcontext(None),
+        get_config=lambda: cfg,
+        get_stdin_data=lambda: {},
+        is_configured=lambda: True,
+    )
+    monkeypatch.setitem(sys.modules, "config", config)
+    monkeypatch.setitem(sys.modules, "adapt", SimpleNamespace(adapt_stop=lambda _: event))
+    monkeypatch.setattr(state, "load_state", lambda _: {})
+    monkeypatch.setattr(hooks, "stream_assistant_message", lambda *a: None)
+    monkeypatch.setattr(hooks, "upload_health_warning", lambda *a: None)
+    monkeypatch.setattr(hooks, "_short_circuit", lambda *a: not allowed)
+    calls = []
+    monkeypatch.setattr(transcript_upload, "spawn_transcript_upload", lambda **kw: calls.append(kw))
+    runpy.run_path(str(ROOT / scripts / "on_stop.py"), run_name="__main__")
+    return calls
+
+
+@pytest.mark.parametrize("scripts", CLAUDE_SCRIPTS)
+def test_claude_stop_uploads_the_transcript_without_subagents(monkeypatch, tmp_path, scripts):
+    calls = _run_claude_stop(monkeypatch, tmp_path, scripts)
+    assert len(calls) == 1
+    assert calls[0]["session_id"] == "session-a"
+    assert calls[0]["transcript_path"] == "a.jsonl"
+    assert calls[0]["include_subagents"] is False
+
+
+@pytest.mark.parametrize("scripts", CLAUDE_SCRIPTS)
+def test_claude_stop_uploads_nothing_when_recording_is_off(monkeypatch, tmp_path, scripts):
+    assert _run_claude_stop(monkeypatch, tmp_path, scripts, allowed=False) == []
+
+
+@pytest.mark.parametrize("include,expected", [(True, []), (False, ["--skip-subagents"])])
+def test_spawn_passes_the_subagent_choice_to_the_upload_process(
+    monkeypatch, tmp_path, include, expected
+):
+    path = tmp_path / "transcript.jsonl"
+    path.write_text("{}\n")
+    calls = []
+    monkeypatch.setattr(transcript_upload.subprocess, "Popen", lambda *a, **kw: calls.append(a[0]))
+    assert transcript_upload.spawn_transcript_upload(
+        tmp_path,
+        str(path),
+        "session-a",
+        "claude",
+        "/repo",
+        "https://example.test",
+        "test",
+        include_subagents=include,
+    )
+    assert calls[0][9:] == expected
