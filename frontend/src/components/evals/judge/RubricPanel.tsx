@@ -29,16 +29,16 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
   const failed = data.build?.stage === "failed";
   return (
     <aside aria-label="Rubric" className="space-y-3 text-[13px]">
-      <header className="flex items-center gap-2">
-        <h2 className="m-0 text-[13px] font-semibold">Rubric{current ? ` v${current.number}` : ""}</h2>
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <h2 className="m-0 whitespace-nowrap text-[13px] font-semibold">Rubric{current ? ` v${current.number}` : ""}</h2>
         {building && data.build && (
-          <span role="status" className="flex items-center gap-1 text-[12px] text-muted-foreground">
+          <span role="status" className="flex items-center gap-1 whitespace-nowrap text-[12px] text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />{STAGE[data.build.stage]}
             {data.build.stage === "checking" && data.build.total ? ` ${data.build.done ?? 0}/${data.build.total}` : ""}
           </span>
         )}
         {current && !editing && (
-          <span className="ml-auto flex gap-1.5">
+          <span className="ml-auto flex gap-1.5 whitespace-nowrap">
             <button type="button" className={buttonClass} onClick={() => setEditing(true)}>Edit</button>
             <RewriteButton disabled={building} onRewrite={onRewrite} />
           </span>
@@ -59,7 +59,7 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
 function RewriteButton({ disabled, onRewrite }: { disabled: boolean; onRewrite: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return <button type="button" className={buttonClass} disabled={disabled || busy}
-    onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite</button>;
+    onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite from examples</button>;
 }
 
 function Agreement({ metrics, scoring }: { metrics: EvalMetrics | null; scoring: EvalRubricVersion["scoring"] }) {
