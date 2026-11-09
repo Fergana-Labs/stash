@@ -116,6 +116,8 @@ async def _render(model_id: UUID, rows: list) -> list[dict]:
                 "data": data,
                 "attachments": by_message.get(r["id"], []),
                 "about": by_id.get(UUID(data["about"])) if data.get("about") else None,
+                # The agent hasn't read it yet: the page shows it working on this thread.
+                "unread": r["author"] == "user" and r["handled_at"] is None,
                 "created_at": r["created_at"],
             }
         )
