@@ -263,11 +263,10 @@ async def get_example(owner: UUID, eval_id: UUID, example_id: UUID) -> dict:
     if row is None:
         raise NotFound("Example not found")
     out = dict(row)
-    user = row["added_by"] and await get_pool().fetchrow(
-        "SELECT id, COALESCE(NULLIF(display_name, ''), name) AS name FROM users WHERE id=$1",
+    out["added_by_name"] = row["added_by"] and await get_pool().fetchval(
+        "SELECT COALESCE(NULLIF(display_name, ''), name) FROM users WHERE id=$1",
         row["added_by"],
     )
-    out["added_by"] = dict(user) if user else None
     # Linked only when the adder's own Stash tracked that session.
     session = (
         row["session_id"]

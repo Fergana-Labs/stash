@@ -37,7 +37,20 @@ export interface Eval {
 }
 export interface EvalFile { key: string; name: string; content_type: string }
 export interface EvalItem { name: string; trace: { role: string; content: string; tool_name?: string }[]; text: string; files: EvalFile[] }
-export interface EvalExample { id: string; item: EvalItem; label: EvalLabel | null; note: string; source: string; split: "train" | "eval"; message_id: string | null; created_at: string }
+/** added_by: the user whose request added it; added_via: "web" (the app) or "api" (an API key,
+ * how agents add examples), "" before this was recorded; caller and session_id: what an agent
+ * said about itself when it added the example. */
+export interface EvalExample {
+  id: string; item: EvalItem; label: EvalLabel | null; note: string; source: string; split: "train" | "eval"; message_id: string | null; created_at: string;
+  added_by: string | null; added_via: "web" | "api" | ""; caller: string; session_id: string | null;
+}
+/** session: the Stash session the example was added from, when Stash tracked it. call: the scored
+ * call it came from, when someone labeled one. */
+export interface EvalExampleDetail extends EvalExample {
+  added_by_name: string | null;
+  session: { session_id: string; title: string | null; agent_name: string } | null;
+  call: { id: string; caller: string; created_at: string } | null;
+}
 /** A trait's grade. When a call graded a change rather than the whole output, a trait the
  * change didn't touch has no score, and touched ones say whether the change helped. */
 export interface EvalGrade { trait: string; score: number | null; why: string; touched?: boolean; effect?: "better" | "same" | "worse" | null }
@@ -98,6 +111,7 @@ export const evalGet = (id: string) => apiFetch<Eval>(`${T}/${id}`);
 export const evalList = () => apiFetch<{ evals: Eval[] }>(T).then((r) => r.evals);
 export const evalBuild = (id: string, fresh = false) => apiFetch<Eval>(`${T}/${id}/build${fresh ? "?fresh=true" : ""}`, { method: "POST" });
 export const evalRename = (id: string, name: string) => apiFetch<Eval>(`${T}/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+export const evalExample = (id: string, exampleId: string) => apiFetch<EvalExampleDetail>(`${T}/${id}/examples/${exampleId}`);
 export const evalEditExample = (id: string, exampleId: string, label: EvalLabel | null, note?: string) =>
   apiFetch<EvalExample>(`${T}/${id}/examples/${exampleId}`, { method: "PATCH", body: JSON.stringify(note === undefined ? { label } : { label, note }) });
 export const evalRubric = (id: string) => apiFetch<{ versions: EvalRubricVersion[] }>(`${T}/${id}/rubric`).then((r) => r.versions);

@@ -5,8 +5,9 @@ import { fetchAuthed } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-/** An owner-only image (an example or a scored call), fetched with the user's token; click to enlarge. */
-export default function FileThumb({ path, alt, className }: { path: string; alt: string; className?: string }) {
+/** An owner-only image (an example or a scored call), fetched with the user's token; click to
+ * enlarge unless zoom is off (inside a link, where the click opens the link). */
+export default function FileThumb({ path, alt, className, zoom = true }: { path: string; alt: string; className?: string; zoom?: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -24,6 +25,12 @@ export default function FileThumb({ path, alt, className }: { path: string; alt:
   if (!url) {
     return <div className={cn("flex items-center justify-center rounded border border-border bg-surface/30 text-[11px] text-muted-foreground", className)} role="status">
       {failed ? "Image unavailable" : "Loading…"}
+    </div>;
+  }
+  if (!zoom) {
+    return <div className={cn("overflow-hidden rounded-sm border border-border bg-white", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={alt} className="h-full w-full object-contain" />
     </div>;
   }
   return <Dialog>

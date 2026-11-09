@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,14 +20,14 @@ type Tab = "channel" | "examples" | "calls";
 
 /** A judge eval: its channel, where examples are dropped in and the agent asks about them,
  * beside its rubric, which keeps up with them. Examples and agent calls are a tab away. */
-export default function EvalDetail({ id }: { id: string }) {
+export default function EvalDetail({ id, initialTab }: { id: string; initialTab?: string }) {
   const [data, setData] = useState<Eval | null>(null);
   const [messages, setMessages] = useState<EvalMessage[]>([]);
   const [reading, setReading] = useState(false);
   const [versions, setVersions] = useState<EvalRubricVersion[]>([]);
   const [calls, setCalls] = useState<EvalCall[]>([]);
   const [examples, setExamples] = useState<EvalExample[]>([]);
-  const [tab, setTab] = useState<Tab>("channel");
+  const [tab, setTab] = useState<Tab>(initialTab === "examples" || initialTab === "calls" ? initialTab : "channel");
   const [error, setError] = useState("");
   // What a send left out (files that couldn't be read): kept until the next send, not
   // cleared by polling the way load errors are.
@@ -130,12 +131,13 @@ export default function EvalDetail({ id }: { id: string }) {
   );
 }
 
-function ItemPreview({ item, path }: { item: EvalItem; path: (index: number) => string }) {
+/** zoom: images open full size on click; off where the whole tile is a link. */
+function ItemPreview({ item, path, zoom = true }: { item: EvalItem; path: (index: number) => string; zoom?: boolean }) {
   const images = item.files.map((f, i) => ({ f, i })).filter(({ f }) => f.content_type.startsWith("image/"));
   const others = item.files.filter((f) => !f.content_type.startsWith("image/"));
   const lastAsk = [...item.trace].reverse().find((s) => s.role === "user");
   return <div className="min-w-0 space-y-1 text-[12px]">
-    {images.length > 0 && <div className="grid gap-1">{images.map(({ f, i }) => <FileThumb key={i} path={path(i)} alt={f.name} className="aspect-square w-full" />)}</div>}
+    {images.length > 0 && <div className="grid gap-1">{images.map(({ f, i }) => <FileThumb key={i} path={path(i)} alt={f.name} zoom={zoom} className="aspect-square w-full" />)}</div>}
     {others.map((f) => <div key={f.key} className="truncate text-muted-foreground">{f.name}</div>)}
     {lastAsk && <div className="line-clamp-2 text-muted-foreground">Asked: {lastAsk.content}</div>}
     {item.text && <div className="line-clamp-3 whitespace-pre-wrap">{item.text}</div>}
@@ -191,9 +193,12 @@ function Examples({ id, examples, disabled, onUpload, onDelete }: { id: string; 
 
 function ExampleGrid({ id, examples, onDelete }: { id: string; examples: EvalExample[]; onDelete: (exampleId: string) => void }) {
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2">
-    {examples.map((e) => <div key={e.id} className="rounded border border-border p-1.5">
-      <ItemPreview item={e.item} path={(i) => evalExampleFilePath(id, e.id, i)} />
-      {e.note && <p className="mt-1 text-[11px] text-muted-foreground">“{e.note}”</p>}
+    {examples.map((e) => <div key={e.id} className="rounded border border-border p-1.5 hover:border-foreground/30">
+      <Link href={`/reward-models/evals/${id}/examples/${e.id}`} aria-label={`Open ${e.item.name || e.item.files[0]?.name || "example"}`} className="block">
+        <ItemPreview item={e.item} path={(i) => evalExampleFilePath(id, e.id, i)} zoom={false} />
+        {e.note && <p className="mt-1 text-[11px] text-muted-foreground">“{e.note}”</p>}
+        <div className="mt-1 truncate text-[11px] text-muted-foreground">{e.caller || (e.added_via === "api" ? "API" : "")}{e.caller || e.added_via === "api" ? ", " : ""}{relativeTime(e.created_at)}</div>
+      </Link>
       <div className="mt-1 flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
         <button type="button" className="hover:text-destructive" onClick={() => onDelete(e.id)}>Remove</button>
         {e.split === "eval" && <span>Held out</span>}

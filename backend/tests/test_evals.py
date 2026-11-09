@@ -527,7 +527,7 @@ async def test_each_example_says_who_added_it_when_and_from_which_session(client
 
     first = tracked.json()["examples"][0]["id"]
     detail = (await client.get(f"/api/v1/evals/{eid}/examples/{first}", headers=auth)).json()
-    assert detail["added_by"]["id"] == me["id"] and detail["added_by"]["name"]
+    assert detail["added_by"] == me["id"] and detail["added_by_name"] == me["name"]
     assert detail["created_at"] and detail["call"] is None
     assert detail["session"] == {
         "session_id": "cc-session-1",
