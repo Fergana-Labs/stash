@@ -54,7 +54,7 @@ it("edits the rubric, and won't save two traits with one name", async () => {
 it("says what a build is doing and when it failed", () => {
   const view = render(<RubricPanel data={data({ build: { stage: "checking", done: 3, total: 12 } })} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
   expect(screen.getByRole("status")).toHaveTextContent("Checking 3/12");
-  expect(screen.getByRole("button", { name: "Rewrite" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rewrite from examples" })).toBeDisabled();
   view.unmount();
   render(<RubricPanel data={data({ build: { stage: "failed", error: "provider down" } })} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
   expect(screen.getByRole("alert")).toHaveTextContent("Update failed: provider down");

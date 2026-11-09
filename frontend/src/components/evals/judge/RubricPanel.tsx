@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -30,7 +30,18 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
   const building = !!data.build && EVAL_BUILDING.includes(data.build.stage);
   const failed = data.build?.stage === "failed";
   const sections: Section[] = ["rubric", ...(versions.length > 0 ? ["history" as const] : []), ...(data.ready ? ["endpoint" as const] : [])];
-  const at = (s: Section) => pinned(sections.indexOf(s), sections.length);
+  // The Rubric header wraps its buttons to a second row when the column is narrow, so the
+  // headers pinned below it are offset by its measured height, not a fixed one.
+  const topHeader = useRef<HTMLElement>(null);
+  const [topHeight, setTopHeight] = useState(HEADER_PX);
+  useLayoutEffect(() => {
+    const el = topHeader.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setTopHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const at = (s: Section) => pinned(sections.indexOf(s), sections.length, topHeight);
   function toggle(s: Collapsible) {
     const opening = !open[s];
     setOpen({ ...open, [s]: opening });
@@ -39,16 +50,16 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
   }
   return (
     <aside aria-label="Rubric" className="space-y-3 text-[13px]">
-      <header className={headerClass} style={at("rubric").header}>
-        <h2 className="m-0 text-[13px] font-semibold">Rubric{current ? ` v${current.number}` : ""}</h2>
+      <header ref={topHeader} className={cn(stickyClass, "min-h-8 flex-wrap gap-x-2 gap-y-1.5")} style={at("rubric").header}>
+        <h2 className="m-0 whitespace-nowrap text-[13px] font-semibold">Rubric{current ? ` v${current.number}` : ""}</h2>
         {building && data.build && (
-          <span role="status" className="flex items-center gap-1 text-[12px] text-muted-foreground">
+          <span role="status" className="flex items-center gap-1 whitespace-nowrap text-[12px] text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />{STAGE[data.build.stage]}
             {data.build.stage === "checking" && data.build.total ? ` ${data.build.done ?? 0}/${data.build.total}` : ""}
           </span>
         )}
         {current && !editing && (
-          <span className="ml-auto flex gap-1.5">
+          <span className="ml-auto flex gap-1.5 whitespace-nowrap">
             <button type="button" className={buttonClass} onClick={() => setEditing(true)}>Edit</button>
             <RewriteButton disabled={building} onRewrite={onRewrite} />
           </span>
@@ -62,7 +73,7 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
         : <Traits traits={current.traits} />)}
       {(["history", "endpoint"] as const).filter((s) => sections.includes(s)).map((s) => <Fragment key={s}>
         <button type="button" aria-expanded={open[s]} aria-controls={`rubric-${s}`} onClick={() => toggle(s)}
-          className={cn(headerClass, "w-full border-t border-border text-left text-[12px] text-muted-foreground hover:text-foreground")} style={at(s).header}>
+          className={cn(stickyClass, "h-8 w-full border-t border-border text-left text-[12px] text-muted-foreground hover:text-foreground")} style={at(s).header}>
           {s === "history" ? "History" : "Endpoint"}
         </button>
         {open[s] && <div id={`rubric-${s}`} ref={(el) => { bodies.current[s] = el; }} style={at(s).body}>
@@ -75,22 +86,23 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
 
 type Collapsible = "history" | "endpoint";
 type Section = "rubric" | Collapsible;
-/** Section headers are h-8 (32px) and pin in a stack: past ones at the top of the column,
- * ones not reached yet at the bottom, so every section stays one click away. */
+/** Section headers pin in a stack: past ones at the top of the column, ones not reached yet
+ * at the bottom, so every section stays one click away. History and Endpoint are h-8 (32px);
+ * the Rubric header above them is at least that and can wrap taller. */
 const HEADER_PX = 32;
-const headerClass = "sticky z-10 flex h-8 items-center gap-2 bg-background";
-function pinned(index: number, count: number) {
+const stickyClass = "sticky z-10 flex items-center bg-background";
+function pinned(index: number, count: number, topHeight: number) {
   return {
-    header: { top: index * HEADER_PX, bottom: (count - 1 - index) * HEADER_PX },
+    header: { top: index === 0 ? 0 : topHeight + (index - 1) * HEADER_PX, bottom: (count - 1 - index) * HEADER_PX },
     // Scrolling a section into view lands it clear of the headers pinned above and below it.
-    body: { scrollMarginTop: (index + 1) * HEADER_PX, scrollMarginBottom: (count - 1 - index) * HEADER_PX },
+    body: { scrollMarginTop: topHeight + index * HEADER_PX, scrollMarginBottom: (count - 1 - index) * HEADER_PX },
   };
 }
 
 function RewriteButton({ disabled, onRewrite }: { disabled: boolean; onRewrite: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return <button type="button" className={buttonClass} disabled={disabled || busy}
-    onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite</button>;
+    onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite from examples</button>;
 }
 
 function Agreement({ metrics, scoring }: { metrics: EvalMetrics | null; scoring: EvalRubricVersion["scoring"] }) {

@@ -90,7 +90,7 @@ export default function EvalDetail({ id }: { id: string }) {
   const panel = versions.length > 0 || building || data.build?.stage === "failed";
   const labeled = data.examples.good + data.examples.bad;
   const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: "channel", label: "Channel" },
+    { key: "channel", label: "Eval wizard" },
     { key: "examples", label: "Examples", count: labeled + data.unlabeled },
     ...(data.calls > 0 ? [{ key: "calls" as const, label: "Agent calls", count: data.calls }] : []),
   ];
