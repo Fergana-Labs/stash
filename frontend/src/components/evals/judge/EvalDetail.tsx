@@ -109,7 +109,7 @@ export default function EvalDetail({ id }: { id: string }) {
           ))}
         </nav>
       </header>
-      <div className={cn("grid gap-4 px-5 pb-4 lg:min-h-0 lg:flex-1", panel && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
+      <div className={cn("grid gap-4 px-5 pb-4 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]", panel && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
         <div className="flex min-w-0 flex-col gap-2 lg:min-h-0">
           {(error || notice) && <p role="alert" className="text-[12px] text-destructive">{error || notice}</p>}
           {busy && <p role="status" className="text-[12px] text-muted-foreground">{busy}</p>}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -24,12 +24,22 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
   onRewrite: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState<Record<Collapsible, boolean>>({ history: false, endpoint: false });
+  const bodies = useRef<Partial<Record<Collapsible, HTMLDivElement | null>>>({});
   const current = versions[0];
   const building = !!data.build && EVAL_BUILDING.includes(data.build.stage);
   const failed = data.build?.stage === "failed";
+  const sections: Section[] = ["rubric", ...(versions.length > 0 ? ["history" as const] : []), ...(data.ready ? ["endpoint" as const] : [])];
+  const at = (s: Section) => pinned(sections.indexOf(s), sections.length);
+  function toggle(s: Collapsible) {
+    const opening = !open[s];
+    setOpen({ ...open, [s]: opening });
+    // A header pinned to the bottom opens a section that is still out of view: bring it in.
+    if (opening) requestAnimationFrame(() => bodies.current[s]?.scrollIntoView?.({ block: "nearest" }));
+  }
   return (
     <aside aria-label="Rubric" className="space-y-3 text-[13px]">
-      <header className="flex items-center gap-2">
+      <header className={headerClass} style={at("rubric").header}>
         <h2 className="m-0 text-[13px] font-semibold">Rubric{current ? ` v${current.number}` : ""}</h2>
         {building && data.build && (
           <span role="status" className="flex items-center gap-1 text-[12px] text-muted-foreground">
@@ -50,10 +60,31 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
       {current && (editing
         ? <RubricEditor traits={current.traits} onCancel={() => setEditing(false)} onSave={async (traits) => { await onSave(traits, current.number); setEditing(false); }} />
         : <Traits traits={current.traits} />)}
-      {versions.length > 0 && <History versions={versions} />}
-      {data.ready && <Endpoint data={data} />}
+      {(["history", "endpoint"] as const).filter((s) => sections.includes(s)).map((s) => <Fragment key={s}>
+        <button type="button" aria-expanded={open[s]} aria-controls={`rubric-${s}`} onClick={() => toggle(s)}
+          className={cn(headerClass, "w-full text-left text-[12px] text-muted-foreground hover:text-foreground")} style={at(s).header}>
+          {s === "history" ? "History" : "Endpoint"}
+        </button>
+        {open[s] && <div id={`rubric-${s}`} ref={(el) => { bodies.current[s] = el; }} style={at(s).body}>
+          {s === "history" ? <History versions={versions} /> : <Endpoint data={data} />}
+        </div>}
+      </Fragment>)}
     </aside>
   );
+}
+
+type Collapsible = "history" | "endpoint";
+type Section = "rubric" | Collapsible;
+/** Section headers are h-8 (32px) and pin in a stack: past ones at the top of the column,
+ * ones not reached yet at the bottom, so every section stays one click away. */
+const HEADER_PX = 32;
+const headerClass = "sticky z-10 flex h-8 items-center gap-2 bg-background";
+function pinned(index: number, count: number) {
+  return {
+    header: { top: index * HEADER_PX, bottom: (count - 1 - index) * HEADER_PX },
+    // Scrolling a section into view lands it clear of the headers pinned above and below it.
+    body: { scrollMarginTop: (index + 1) * HEADER_PX, scrollMarginBottom: (count - 1 - index) * HEADER_PX },
+  };
 }
 
 function RewriteButton({ disabled, onRewrite }: { disabled: boolean; onRewrite: () => Promise<void> }) {
@@ -131,26 +162,23 @@ function RubricEditor({ traits: initial, onSave, onCancel }: { traits: EvalTrait
 }
 
 function History({ versions }: { versions: EvalRubricVersion[] }) {
-  return <details className="text-[12px]">
-    <summary className="cursor-pointer text-muted-foreground">History</summary>
-    <ol className="m-0 mt-1.5 list-none space-y-2 p-0">
-      {versions.map((v) => (
-        <li key={v.id}>
-          <div className="flex items-baseline gap-2">
-            <span className="font-medium">v{v.number}</span>
-            <span>{SOURCE[v.source]}</span>
-            {v.metrics && v.metrics.fit.n > 0 && <span className="tabular-nums text-muted-foreground">{v.metrics.fit.right}/{v.metrics.fit.n}{v.metrics.check.n > 0 ? `, held out ${v.metrics.check.right}/${v.metrics.check.n}` : ""}</span>}
-            <time className="ml-auto text-muted-foreground" dateTime={v.created_at}>{relativeTime(v.created_at)}</time>
-          </div>
-          {v.changes.length > 0 && (
-            <ul className="m-0 list-none p-0">
-              {v.changes.map((c, i) => <li key={i}><span>{VERB[c.kind] ?? c.kind}{c.trait ? ` ${c.trait}` : ""}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
-            </ul>
-          )}
-        </li>
-      ))}
-    </ol>
-  </details>;
+  return <ol className="m-0 list-none space-y-2 p-0 text-[12px]">
+    {versions.map((v) => (
+      <li key={v.id}>
+        <div className="flex items-baseline gap-2">
+          <span className="font-medium">v{v.number}</span>
+          <span>{SOURCE[v.source]}</span>
+          {v.metrics && v.metrics.fit.n > 0 && <span className="tabular-nums text-muted-foreground">{v.metrics.fit.right}/{v.metrics.fit.n}{v.metrics.check.n > 0 ? `, held out ${v.metrics.check.right}/${v.metrics.check.n}` : ""}</span>}
+          <time className="ml-auto text-muted-foreground" dateTime={v.created_at}>{relativeTime(v.created_at)}</time>
+        </div>
+        {v.changes.length > 0 && (
+          <ul className="m-0 list-none p-0">
+            {v.changes.map((c, i) => <li key={i}><span>{VERB[c.kind] ?? c.kind}{c.trait ? ` ${c.trait}` : ""}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
+          </ul>
+        )}
+      </li>
+    ))}
+  </ol>;
 }
 
 function Endpoint({ data }: { data: Eval }) {
@@ -164,9 +192,8 @@ function Endpoint({ data }: { data: Eval }) {
   const multipart = `curl ${url} -H "Authorization: Bearer $STASH_API_KEY" \\
   -F trace='[{"role": "user", "content": "what the agent was asked"}]' \\
   -F text="what it produced" -F files=@output.png -F caller=my-agent`;
-  return <details className="text-[12px]">
-    <summary className="cursor-pointer text-muted-foreground">Endpoint</summary>
-    <pre className="mt-1.5 overflow-x-auto rounded-sm bg-surface/60 p-2 text-[11px]">{json}</pre>
-    <pre className="mt-1.5 overflow-x-auto rounded-sm bg-surface/60 p-2 text-[11px]">{multipart}</pre>
-  </details>;
+  return <div className="space-y-1.5 text-[12px]">
+    <pre className="m-0 overflow-x-auto rounded-sm bg-surface/60 p-2 text-[11px]">{json}</pre>
+    <pre className="m-0 overflow-x-auto rounded-sm bg-surface/60 p-2 text-[11px]">{multipart}</pre>
+  </div>;
 }

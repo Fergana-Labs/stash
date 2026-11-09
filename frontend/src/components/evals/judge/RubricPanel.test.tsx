@@ -59,3 +59,23 @@ it("says what a build is doing and when it failed", () => {
   render(<RubricPanel data={data({ build: { stage: "failed", error: "provider down" } })} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
   expect(screen.getByRole("alert")).toHaveTextContent("Update failed: provider down");
 });
+
+it("pins every section header in a stack, and opens History and Endpoint from their headers", () => {
+  render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
+  const rubric = screen.getByRole("heading", { name: "Rubric v2" }).parentElement!;
+  const history = screen.getByRole("button", { name: "History" });
+  const endpoint = screen.getByRole("button", { name: "Endpoint" });
+  expect([rubric, history, endpoint].map((h) => [h.style.top, h.style.bottom])).toEqual([["0px", "64px"], ["32px", "32px"], ["64px", "0px"]]);
+  expect(screen.queryByText(/STASH_API_KEY/)).toBeNull();
+  fireEvent.click(endpoint);
+  expect(endpoint).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getAllByText(/STASH_API_KEY/)).toHaveLength(2);
+  fireEvent.click(endpoint);
+  expect(screen.queryByText(/STASH_API_KEY/)).toBeNull();
+});
+
+it("leaves out the Endpoint header until the eval is ready", () => {
+  render(<RubricPanel data={data({ ready: false })} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "Endpoint" })).toBeNull();
+  expect(screen.getByRole("button", { name: "History" }).style.bottom).toBe("0px");
+});
