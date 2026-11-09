@@ -197,7 +197,7 @@ function ExampleGrid({ id, examples, onDelete }: { id: string; examples: EvalExa
       <Link href={`/reward-models/evals/${id}/examples/${e.id}`} aria-label={`Open ${e.item.name || e.item.files[0]?.name || "example"}`} className="block">
         <ItemPreview item={e.item} path={(i) => evalExampleFilePath(id, e.id, i)} zoom={false} />
         {e.note && <p className="mt-1 text-[11px] text-muted-foreground">“{e.note}”</p>}
-        <div className="mt-1 truncate text-[11px] text-muted-foreground">{e.caller || (e.added_via === "api" ? "API" : "")}{e.caller || e.added_via === "api" ? ", " : ""}{relativeTime(e.created_at)}</div>
+        <AddedLine example={e} />
       </Link>
       <div className="mt-1 flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
         <button type="button" className="hover:text-destructive" onClick={() => onDelete(e.id)}>Remove</button>
@@ -205,4 +205,10 @@ function ExampleGrid({ id, examples, onDelete }: { id: string; examples: EvalExa
       </div>
     </div>)}
   </div>;
+}
+
+/** When and through what: the agent's name, "API" for a key that gave none, nothing for the app. */
+function AddedLine({ example: e }: { example: EvalExample }) {
+  const text = [relativeTime(e.created_at), e.caller || (e.added_via === "api" ? "API" : "")].filter(Boolean).join(", ");
+  return <div className="mt-1 truncate text-[11px] text-muted-foreground" title={text}>{text}</div>;
 }
