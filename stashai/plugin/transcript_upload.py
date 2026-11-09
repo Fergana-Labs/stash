@@ -3,7 +3,9 @@
 Codex fires Stop on every turn but has no session-end lifecycle event, and
 Claude Code sessions can stay open for days, so both upload from Stop. This
 module spawns a detached Python process that uploads the transcript file,
-with a per-session cooldown so we don't POST on every single turn.
+at most once per cooldown per session. A turn that ends inside the cooldown
+schedules one delayed upload for when it ends, so the last turn is never
+left out.
 
 The backend appends new trace steps and preserves existing review IDs, so
 duplicate snapshots are safe to resend.
@@ -28,20 +30,19 @@ def _last_upload_path(data_dir: Path, session_id: str) -> Path:
     return data_dir / "transcript_uploads" / key
 
 
-def _cooldown_active(data_dir: Path, session_id: str) -> bool:
+def _last_upload_at(data_dir: Path, session_id: str) -> float | None:
+    """When the last upload ran, or when a delayed one will run (a future time)."""
     p = _last_upload_path(data_dir, session_id)
-    if not p.exists():
-        return False
     try:
-        return (time.time() - float(p.read_text().strip())) < UPLOAD_COOLDOWN_SECONDS
+        return float(p.read_text().strip())
     except Exception:
-        return False
+        return None
 
 
-def _record_upload(data_dir: Path, session_id: str) -> None:
+def _record_upload(data_dir: Path, session_id: str, at: float) -> None:
     p = _last_upload_path(data_dir, session_id)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(str(time.time()))
+    p.write_text(str(at))
 
 
 def spawn_transcript_upload(
@@ -65,10 +66,19 @@ def spawn_transcript_upload(
     path = Path(transcript_path)
     if not path.is_file():
         return False
-    if _cooldown_active(data_dir, session_id):
-        return False
+    # Upload now if the last upload is more than a cooldown old. Otherwise
+    # schedule one delayed upload for when the cooldown ends, so the latest
+    # turn still goes up. Turns before that delayed upload runs need nothing:
+    # it reads the transcript when it runs.
+    now = time.time()
+    last = _last_upload_at(data_dir, session_id)
+    delay = 0.0
+    if last is not None:
+        if last > now:
+            return False
+        delay = max(0.0, last + UPLOAD_COOLDOWN_SECONDS - now)
 
-    _record_upload(data_dir, session_id)
+    _record_upload(data_dir, session_id, now + delay)
 
     script = Path(__file__).parent / "_do_upload.py"
     env = os.environ.copy()
@@ -80,6 +90,7 @@ def spawn_transcript_upload(
                 str(path), session_id, agent_name, cwd, base_url, api_key,
                 str(data_dir),
                 *([] if include_subagents else ["--skip-subagents"]),
+                *([f"--delay={delay:.0f}"] if delay else []),
             ],
             env=env,
             stdin=subprocess.DEVNULL,

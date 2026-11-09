@@ -57,10 +57,11 @@ def test_upload_cooldown_does_not_suppress_another_session(monkeypatch, tmp_path
 
     assert spawn("session-a")
     assert spawn("session-b")
-    assert not spawn("session-a")
     assert len(calls) == 2
+    assert all(not any(a.startswith("--delay=") for a in c[0]) for c in calls)
     monkeypatch.setattr(transcript_upload.time, "time", lambda: 1061)
     assert spawn("session-a")
+    assert not any(a.startswith("--delay=") for a in calls[2][0])
 
 
 CLAUDE_SCRIPTS = ["plugins/claude-plugin/scripts", "stashai/plugin/assets/claude/scripts"]
@@ -121,3 +122,61 @@ def test_spawn_passes_the_subagent_choice_to_the_upload_process(
         include_subagents=include,
     )
     assert calls[0][9:] == expected
+
+
+def test_turn_inside_the_cooldown_schedules_one_delayed_upload(monkeypatch, tmp_path):
+    path = tmp_path / "transcript.jsonl"
+    path.write_text("{}\n")
+    calls = []
+    monkeypatch.setattr(transcript_upload.subprocess, "Popen", lambda *a, **kw: calls.append(a[0]))
+    now = [1000.0]
+    monkeypatch.setattr(transcript_upload.time, "time", lambda: now[0])
+
+    def spawn():
+        return transcript_upload.spawn_transcript_upload(
+            tmp_path, str(path), "session-a", "claude", "/repo", "https://example.test", "test"
+        )
+
+    assert spawn()
+    now[0] = 1020.0
+    assert spawn()
+    assert calls[1][-1] == "--delay=40"
+    now[0] = 1050.0
+    assert not spawn()
+    assert len(calls) == 2
+    now[0] = 1065.0
+    assert spawn()
+    assert calls[2][-1] == "--delay=55"
+    now[0] = 1200.0
+    assert spawn()
+    assert not any(a.startswith("--delay=") for a in calls[3])
+
+
+def test_upload_process_waits_for_the_delay(monkeypatch, tmp_path):
+    from stashai.plugin import _do_upload
+
+    path = tmp_path / "transcript.jsonl"
+    path.write_text("{}\n")
+    events = []
+
+    class Client:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def upload_transcript(self, **kw):
+            events.append("upload")
+
+    monkeypatch.setattr(_do_upload, "StashClient", Client)
+    monkeypatch.setattr(_do_upload.time, "sleep", lambda s: events.append(("sleep", s)))
+    monkeypatch.setattr(sys, "argv", [
+        "_do_upload.py", str(path), "session-a", "claude", "/repo",
+        "https://example.test", "test", str(tmp_path), "--skip-subagents", "--delay=40",
+    ])
+    _do_upload.main()
+    assert events == [("sleep", 40.0), "upload"]

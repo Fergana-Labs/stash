@@ -4,10 +4,11 @@ Invoked by transcript_upload.spawn_transcript_upload(). Runs outside the
 hook timeout so large files don't block the agent.
 
 argv: script.py <transcript_path> <session_id> <agent_name> <cwd> <base_url> <api_key> <data_dir>
-      [--skip-subagents]
+      [--skip-subagents] [--delay=<seconds>]
 """
 
 import sys
+import time
 from pathlib import Path
 
 from stashai.plugin.stash_client import StashClient
@@ -18,7 +19,11 @@ def main() -> None:
         _, transcript_path, session_id, agent_name, cwd,
         base_url, api_key, data_dir,
     ) = sys.argv[:8]
-    skip_subagents = "--skip-subagents" in sys.argv[8:]
+    flags = sys.argv[8:]
+    skip_subagents = "--skip-subagents" in flags
+    for flag in flags:
+        if flag.startswith("--delay="):
+            time.sleep(float(flag.split("=", 1)[1]))
 
     path = Path(transcript_path)
     with StashClient(base_url=base_url, api_key=api_key, data_dir=data_dir) as client:
