@@ -66,7 +66,7 @@ export default function EvalChannel({ evalId, messages, onSend, onLabel, onRemov
     void droppedFiles(event.dataTransfer).then((files) => { if (files.length) setDropped(files); });
   };
   return (
-    <section aria-label="Channel" className={cn("relative flex min-h-[420px] flex-col rounded border border-border lg:min-h-0 lg:flex-1", over && "border-brand-500")}
+    <section aria-label="Eval wizard" className={cn("relative flex min-h-[420px] flex-col rounded border border-border lg:min-h-0 lg:flex-1", over && "border-brand-500")}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false); }} onDrop={drop}>
       <div ref={list} className="scroll-thin flex-1 space-y-1 px-3 py-3 lg:overflow-y-auto">
         {top.length === 0
