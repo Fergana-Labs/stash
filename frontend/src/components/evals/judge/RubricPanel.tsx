@@ -62,7 +62,7 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
         : <Traits traits={current.traits} />)}
       {(["history", "endpoint"] as const).filter((s) => sections.includes(s)).map((s) => <Fragment key={s}>
         <button type="button" aria-expanded={open[s]} aria-controls={`rubric-${s}`} onClick={() => toggle(s)}
-          className={cn(headerClass, "w-full text-left text-[12px] text-muted-foreground hover:text-foreground")} style={at(s).header}>
+          className={cn(headerClass, "w-full border-t border-border text-left text-[12px] text-muted-foreground hover:text-foreground")} style={at(s).header}>
           {s === "history" ? "History" : "Endpoint"}
         </button>
         {open[s] && <div id={`rubric-${s}`} ref={(el) => { bodies.current[s] = el; }} style={at(s).body}>
