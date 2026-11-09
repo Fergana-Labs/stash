@@ -169,17 +169,22 @@ async def _store(
     return stored, skipped
 
 
-async def _attach(conn, eval_id: UUID, message_id: UUID, stored: list[dict]) -> None:
+async def _attach(
+    conn, eval_id: UUID, message_id: UUID, stored: list[dict], added: service.Added
+) -> None:
     have = await conn.fetchval("SELECT count(*) FROM intuition_examples WHERE model_id=$1", eval_id)
     for item, split in zip(stored, service.splits(have, len(stored)), strict=True):
         await conn.execute(
             """INSERT INTO intuition_examples
-               (model_id, kind, item, label, source, split, needs_review, message_id, created_at)
-               VALUES ($1, 'item', $2, NULL, 'human', $3, true, $4, clock_timestamp())""",
+               (model_id, kind, item, label, source, split, needs_review, message_id, created_at,
+                added_by, added_via, caller, session_id)
+               VALUES ($1, 'item', $2, NULL, 'human', $3, true, $4, clock_timestamp(),
+                $5, $6, $7, $8)""",
             eval_id,
             item,
             split,
             message_id,
+            *added,
         )
     await conn.execute("UPDATE intuition_models SET updated_at=now() WHERE id=$1", eval_id)
 
@@ -191,6 +196,7 @@ async def post(
     files: list[tuple[str, bytes, str]],
     thread_id: UUID | None = None,
     more: bool = False,
+    added: service.Added | None = None,
 ) -> dict:
     """Post the person's message; each readable file becomes an unlabeled example. With more,
     further files follow (attach) and the agent waits for the last of them."""
@@ -221,14 +227,19 @@ async def post(
             text,
             {"uploading": True} if more else {},
         )
-        await _attach(conn, eval_id, message["id"], stored)
+        await _attach(conn, eval_id, message["id"], stored, added or service.Added(owner))
     if not more:
         eval_tasks.read_channel.delay(str(eval_id))
     return {"message": (await _render(eval_id, [message]))[0], "skipped": skipped}
 
 
 async def attach(
-    owner: UUID, eval_id: UUID, message_id: UUID, files: list[tuple[str, bytes, str]], more: bool
+    owner: UUID,
+    eval_id: UUID,
+    message_id: UUID,
+    files: list[tuple[str, bytes, str]],
+    more: bool,
+    added: service.Added | None = None,
 ) -> dict:
     """More files for a message posted with more; the last call hands it to the agent."""
     from ...tasks import evals as eval_tasks
@@ -244,7 +255,7 @@ async def attach(
         raise service.NotFound("No upload in progress for this message")
     stored, skipped = await _store(owner, eval_id, files)
     async with get_pool().acquire() as conn, conn.transaction():
-        await _attach(conn, eval_id, message_id, stored)
+        await _attach(conn, eval_id, message_id, stored, added or service.Added(owner))
         if not more:
             message = await conn.fetchrow(
                 "UPDATE eval_messages SET data = data - 'uploading' WHERE id=$1 RETURNING *",

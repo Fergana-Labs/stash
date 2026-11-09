@@ -500,3 +500,69 @@ def test_a_change_grade_explains_itself_with_the_sample_matching_its_score():
     assert out["score"] == 0.25
     # A and C both grade 0.25 by the rule; the stored means would have picked C.
     assert out["explanation"] == "A"
+
+
+async def test_each_example_says_who_added_it_when_and_from_which_session(client: AsyncClient):
+    from backend.database import get_pool
+
+    auth = await _register(client)
+    me = (await client.get("/api/v1/users/me", headers=auth)).json()
+    eid = (await client.post("/api/v1/evals", headers=auth, json={"name": "Red"})).json()["id"]
+    await get_pool().execute(
+        """INSERT INTO sessions (owner_user_id, session_id, agent_name, created_by, last_event_at, title)
+           VALUES ($1, 'cc-session-1', 'claude-code', $1, now(), 'Draw red squares')""",
+        UUID(me["id"]),
+    )
+    tracked = await _upload(
+        client, auth, eid, "good", RED[:1], caller="claude-code", session_id="cc-session-1"
+    )
+    untracked = await _upload(client, auth, eid, "bad", BLUE[:1], session_id="not-in-stash")
+    assert tracked.status_code == 201 and untracked.status_code == 201
+
+    listed = (await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()["examples"]
+    assert [(e["caller"], e["session_id"], e["added_via"]) for e in listed] == [
+        ("claude-code", "cc-session-1", "api"),
+        ("", "not-in-stash", "api"),
+    ]
+
+    first = tracked.json()["examples"][0]["id"]
+    detail = (await client.get(f"/api/v1/evals/{eid}/examples/{first}", headers=auth)).json()
+    assert detail["added_by"]["id"] == me["id"] and detail["added_by"]["name"]
+    assert detail["created_at"] and detail["call"] is None
+    assert detail["session"] == {
+        "session_id": "cc-session-1",
+        "title": "Draw red squares",
+        "agent_name": "claude-code",
+    }
+    # A session id Stash never tracked is kept but not linked.
+    second = untracked.json()["examples"][0]["id"]
+    other = (await client.get(f"/api/v1/evals/{eid}/examples/{second}", headers=auth)).json()
+    assert other["session_id"] == "not-in-stash" and other["session"] is None
+
+    stranger = await _register(client)
+    missing = await client.get(f"/api/v1/evals/{eid}/examples/{first}", headers=stranger)
+    assert missing.status_code == 404
+
+
+async def test_a_labeled_call_records_the_agent_that_made_it(client: AsyncClient):
+    auth = await _register(client)
+    eid = await _built(client, auth)
+    call = (
+        await client.post(
+            f"/api/v1/evals/{eid}/score",
+            headers=auth,
+            json={"output": {"text": "plain answer"}, "caller": "draw-agent"},
+        )
+    ).json()
+    calls = (await client.get(f"/api/v1/evals/{eid}/calls", headers=auth)).json()["calls"]
+    labeled = await client.put(
+        f"/api/v1/evals/{eid}/calls/{calls[0]['id']}/label", headers=auth, json={"label": "good"}
+    )
+    assert labeled.status_code == 200, call
+    detail = (
+        await client.get(
+            f"/api/v1/evals/{eid}/examples/{labeled.json()['example_id']}", headers=auth
+        )
+    ).json()
+    assert detail["source"] == "production" and detail["caller"] == "draw-agent"
+    assert detail["call"]["id"] == calls[0]["id"]

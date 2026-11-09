@@ -171,9 +171,12 @@ async def add_examples(
     note: Annotated[str, Form(max_length=2000)] = "",
     text: Annotated[str, Form(max_length=200_000)] = "",
     trace: Annotated[str, Form()] = "",
+    caller: Annotated[str, Form(max_length=100)] = "",
+    session_id: Annotated[str, Form(max_length=200)] = "",
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
 ):
-    """Each file becomes one example; without files, the text and/or trace is one example."""
+    """Each file becomes one example; without files, the text and/or trace is one example.
+    An agent adding examples names itself in caller and its session in session_id."""
     parsed_trace = _trace_field(trace)
     created = await checked(
         service.add_examples(
@@ -184,6 +187,7 @@ async def add_examples(
             text=text,
             trace=parsed_trace,
             note=note,
+            added=service.Added.of(user, caller, session_id),
         )
     )
     return {"examples": created}
@@ -196,6 +200,11 @@ def _trace_field(value: str):
         return json.loads(value)
     except json.JSONDecodeError:
         return value
+
+
+@router.get("/{eval_id}/examples/{example_id}")
+async def get_example(eval_id: UUID, example_id: UUID, user: User):
+    return await checked(service.get_example(user["id"], eval_id, example_id))
 
 
 @router.patch("/{eval_id}/examples/{example_id}")
@@ -248,6 +257,8 @@ async def post_message(
     text: Annotated[str, Form(max_length=channel.MAX_TEXT)] = "",
     thread_id: Annotated[UUID | None, Form()] = None,
     more: Annotated[bool, Form()] = False,
+    caller: Annotated[str, Form(max_length=100)] = "",
+    session_id: Annotated[str, Form(max_length=200)] = "",
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
 ):
     """Post to the eval's channel. Each file becomes an example the channel agent labels from
@@ -255,7 +266,13 @@ async def post_message(
     one request posts with more=true, then sends the rest to .../messages/{id}/files."""
     return await checked(
         channel.post(
-            user["id"], eval_id, text, await _uploads(files), thread_id=thread_id, more=more
+            user["id"],
+            eval_id,
+            text,
+            await _uploads(files),
+            thread_id=thread_id,
+            more=more,
+            added=service.Added.of(user, caller, session_id),
         )
     )
 
@@ -266,10 +283,19 @@ async def attach_files(
     message_id: UUID,
     user: User,
     more: Annotated[bool, Form()] = False,
+    caller: Annotated[str, Form(max_length=100)] = "",
+    session_id: Annotated[str, Form(max_length=200)] = "",
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
 ):
     return await checked(
-        channel.attach(user["id"], eval_id, message_id, await _uploads(files), more)
+        channel.attach(
+            user["id"],
+            eval_id,
+            message_id,
+            await _uploads(files),
+            more,
+            added=service.Added.of(user, caller, session_id),
+        )
     )
 
 
@@ -337,4 +363,8 @@ async def call_file(eval_id: UUID, call_id: UUID, index: int, user: User):
 
 @router.put("/{eval_id}/calls/{call_id}/label")
 async def label_call(eval_id: UUID, call_id: UUID, body: LabelCall, user: User):
-    return await checked(service.label_call(user["id"], eval_id, call_id, body.label, body.note))
+    return await checked(
+        service.label_call(
+            user["id"], eval_id, call_id, body.label, body.note, added=service.Added.of(user)
+        )
+    )

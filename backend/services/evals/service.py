@@ -12,6 +12,7 @@ a new example.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 from uuid import UUID
 
 from ...database import get_pool
@@ -45,6 +46,25 @@ UNTITLED = "Untitled eval"
 
 class NotFound(LookupError):
     pass
+
+
+class Added(NamedTuple):
+    """Who added an example: the user, through the app ('web') or an API key ('api'), and,
+    when an agent added it, the agent's name for itself and its session id."""
+
+    by: UUID
+    via: str = ""
+    caller: str = ""
+    session_id: str | None = None
+
+    @classmethod
+    def of(cls, user: dict, caller: str = "", session_id: str = "") -> "Added":
+        return cls(
+            user["id"],
+            "api" if user.get("key_type") else "web",
+            caller.strip()[:100],
+            session_id.strip()[:200] or None,
+        )
 
 
 class Conflict(RuntimeError):
@@ -179,8 +199,10 @@ async def add_examples(
     text: str = "",
     trace=None,
     note: str = "",
+    added: Added | None = None,
 ) -> list[dict]:
     """One example per file; or one example from text and/or a trace when no files are given."""
+    added = added or Added(owner)
     if label not in ("good", "bad"):
         raise ValueError("label must be good or bad")
     await _owned(owner, eval_id)
@@ -201,13 +223,15 @@ async def add_examples(
     out = []
     for item, split in zip(stored, splits(have, len(stored)), strict=True):
         row = await get_pool().fetchrow(
-            """INSERT INTO intuition_examples (model_id, kind, item, label, source, split, note)
-            VALUES ($1, 'item', $2, $3, 'human', $4, $5) RETURNING id, item, label, note, source, split, created_at""",
+            f"""INSERT INTO intuition_examples
+                (model_id, kind, item, label, source, split, note, added_by, added_via, caller, session_id)
+            VALUES ($1, 'item', $2, $3, 'human', $4, $5, $6, $7, $8, $9) RETURNING {EXAMPLE_COLUMNS}""",
             eval_id,
             item,
             label,
             split,
             note.strip()[:2000],
+            *added,
         )
         out.append(dict(row))
     await get_pool().execute("UPDATE intuition_models SET updated_at=now() WHERE id=$1", eval_id)
@@ -215,7 +239,7 @@ async def add_examples(
     return out
 
 
-EXAMPLE_COLUMNS = "id, item, label, note, source, split, message_id, created_at"
+EXAMPLE_COLUMNS = "id, item, label, note, source, split, message_id, created_at, added_by, added_via, caller, session_id"
 
 
 async def list_examples(owner: UUID, eval_id: UUID) -> list[dict]:
@@ -225,6 +249,43 @@ async def list_examples(owner: UUID, eval_id: UUID) -> list[dict]:
         eval_id,
     )
     return [dict(r) for r in rows]
+
+
+async def get_example(owner: UUID, eval_id: UUID, example_id: UUID) -> dict:
+    """One example with who added it and when, the Stash session it was added from when that
+    session was tracked, and, for a labeled agent call, that call."""
+    await _owned(owner, eval_id)
+    row = await get_pool().fetchrow(
+        f"SELECT {EXAMPLE_COLUMNS} FROM intuition_examples WHERE id=$1 AND model_id=$2",
+        example_id,
+        eval_id,
+    )
+    if row is None:
+        raise NotFound("Example not found")
+    out = dict(row)
+    user = row["added_by"] and await get_pool().fetchrow(
+        "SELECT id, COALESCE(NULLIF(display_name, ''), name) AS name FROM users WHERE id=$1",
+        row["added_by"],
+    )
+    out["added_by"] = dict(user) if user else None
+    # Linked only when the adder's own Stash tracked that session.
+    session = (
+        row["session_id"]
+        and row["added_by"]
+        and await get_pool().fetchrow(
+            "SELECT session_id, title, agent_name FROM sessions WHERE owner_user_id=$1 AND session_id=$2",
+            row["added_by"],
+            row["session_id"],
+        )
+    )
+    out["session"] = dict(session) if session else None
+    call = await get_pool().fetchrow(
+        "SELECT id, caller, created_at FROM intuition_predictions WHERE example_id=$1 AND model_id=$2",
+        example_id,
+        eval_id,
+    )
+    out["call"] = dict(call) if call else None
+    return out
 
 
 async def edit_example(
@@ -595,14 +656,20 @@ async def call_file(
 
 
 async def label_call(
-    owner: UUID, eval_id: UUID, call_id: UUID, label: str | None, note: str = ""
+    owner: UUID,
+    eval_id: UUID,
+    call_id: UUID,
+    label: str | None,
+    note: str = "",
+    added: Added | None = None,
 ) -> dict:
     """Mark a scored output good or bad (it becomes an example), or clear the label."""
+    added = added or Added(owner)
     if label not in ("good", "bad", None):
         raise ValueError("label must be good, bad or null")
     await _owned(owner, eval_id)
     call = await get_pool().fetchrow(
-        "SELECT input, example_id FROM intuition_predictions WHERE id=$1 AND model_id=$2",
+        "SELECT input, example_id, caller FROM intuition_predictions WHERE id=$1 AND model_id=$2",
         call_id,
         eval_id,
     )
@@ -626,13 +693,18 @@ async def label_call(
         example_id = None
         if label:
             example_id = await conn.fetchval(
-                """INSERT INTO intuition_examples (model_id, kind, item, label, source, split, note)
-                VALUES ($1, 'item', $2, $3, 'production', $4, $5) RETURNING id""",
+                """INSERT INTO intuition_examples
+                    (model_id, kind, item, label, source, split, note, added_by, added_via, caller)
+                VALUES ($1, 'item', $2, $3, 'production', $4, $5, $6, $7, $8) RETURNING id""",
                 eval_id,
                 call["input"],
                 label,
                 split,
                 note.strip()[:2000],
+                added.by,
+                added.via,
+                # The output came from the agent that called the eval; the label is the person's.
+                call["caller"],
             )
         await conn.execute(
             "UPDATE intuition_predictions SET example_id=$2, status=$3 WHERE id=$1",
