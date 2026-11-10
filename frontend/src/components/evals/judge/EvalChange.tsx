@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Check, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame, evalInputClass } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -106,7 +106,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
         </button>
       ))}
     </nav>
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_260px]">
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
       {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} onComment={onComment} />}
       {tab === "rubric" && <RubricDiff proposal={p} diff={diff} onComment={onComment} />}
       {tab === "checks" && <Flipped evalId={evalId} proposal={p} />}
@@ -287,13 +287,6 @@ function TraitDiff({ diff: d, comments, onComment }: { diff: Diffed; comments: E
   </div>;
 }
 
-/** A value before and after, joined by an arrow icon; read aloud as "8 to 5". */
-function Shift({ from, to }: { from: ReactNode; to: ReactNode }) {
-  return <span className="inline-flex items-center gap-1 whitespace-nowrap tabular-nums">
-    {from}<ArrowRight aria-hidden className="size-3 shrink-0 opacity-60" /><span className="sr-only"> to </span>{to}
-  </span>;
-}
-
 // ── Checks ───────────────────────────────────────────────────────────────
 
 const ratio = (t: EvalTally) => `${t.right}/${t.n}`;
@@ -302,31 +295,39 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
   const c = p.checks;
   if (!c) return <section aria-label="Checks"><h3 className={sectionTitle}>Checks</h3>
     <p role="status" className="m-0 mt-1.5 flex items-center gap-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Checking</p></section>;
-  const rows: { label: string; value: ReactNode; ok?: boolean; title?: string }[] = [];
+  // before: the value under the rubric in use; after: under the proposed one.
+  const rows: { label: string; before?: string; after: string; ok?: boolean; title?: string }[] = [];
   const { before: qb, after: qa } = p.quality;
-  if (qa) rows.push({ label: "Quality", value: qb ? <Shift from={qb.score} to={qa.score} /> : `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
+  if (qa) rows.push({ label: "Quality", before: qb ? `${qb.score}` : undefined, after: `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
   if (c.before && c.after) {
-    if (c.after.fit.n > 0) rows.push({ label: "Learned from", value: <Shift from={ratio(c.before.fit)} to={ratio(c.after.fit)} />, ok: c.after.fit.right >= c.before.fit.right });
-    if (c.after.check.n > 0) rows.push({ label: "Held out", value: <Shift from={ratio(c.before.check)} to={ratio(c.after.check)} />, ok: c.after.check.right >= c.before.check.right });
-    rows.push({ label: "Examples fixed", value: `${c.fixed.length}` });
-    rows.push({ label: "Examples broken", value: `${c.broke.length}`, ok: c.broke.length === 0 });
+    if (c.after.fit.n > 0) rows.push({ label: "Learned from", before: ratio(c.before.fit), after: ratio(c.after.fit), ok: c.after.fit.right >= c.before.fit.right });
+    if (c.after.check.n > 0) rows.push({ label: "Held out", before: ratio(c.before.check), after: ratio(c.after.check), ok: c.after.check.right >= c.before.check.right });
+    rows.push({ label: "Examples fixed", after: `${c.fixed.length}` });
+    rows.push({ label: "Examples broken", after: `${c.broke.length}`, ok: c.broke.length === 0 });
   }
-  if (c.short) rows.push({ label: "Judge unavailable", value: `${c.short.graded}/${c.short.of} graded`, ok: false });
+  if (c.short) rows.push({ label: "Judge unavailable", after: `${c.short.graded}/${c.short.of} graded`, ok: false });
   if (c.manipulation) rows.push({
-    label: "Manipulation resisted", value: `${c.manipulation.resisted}/${c.manipulation.n}`, ok: c.manipulation.resisted === c.manipulation.n,
+    label: "Manipulation resisted", after: `${c.manipulation.resisted}/${c.manipulation.n}`, ok: c.manipulation.resisted === c.manipulation.n,
     title: c.manipulation.resisted < c.manipulation.n ? `Scored ${c.manipulation.worst.score.toFixed(2)} with: ${c.manipulation.worst.claim}` : undefined,
   });
   if (c.calls) {
-    rows.push({ label: "Agent calls passing", value: <Shift from={`${c.calls.pass_before}/${c.calls.n}`} to={`${c.calls.pass_after}/${c.calls.n}`} /> });
-    rows.push({ label: "Mean score", value: <Shift from={c.calls.mean_before.toFixed(2)} to={c.calls.mean_after.toFixed(2)} /> });
+    rows.push({ label: "Agent calls passing", before: `${c.calls.pass_before}/${c.calls.n}`, after: `${c.calls.pass_after}/${c.calls.n}` });
+    rows.push({ label: "Mean score", before: c.calls.mean_before.toFixed(2), after: c.calls.mean_after.toFixed(2) });
   }
+  const column = "w-11 whitespace-nowrap text-right tabular-nums";
   return <section aria-label="Checks" className="min-w-0">
-    <h3 className={sectionTitle}>Checks</h3>
+    <div className="flex items-baseline gap-2 px-2">
+      <h3 className={cn(sectionTitle, "-ml-2 min-w-0 flex-1")}>Checks</h3>
+      <span className={cn(column, "text-[11px] text-muted-foreground")}>v{p.base}</span>
+      <span className={cn(column, "text-[11px] text-muted-foreground")}>v{p.version ?? p.base + 1}</span>
+      <span className="w-3.5" />
+    </div>
     <dl className="m-0 mt-1.5 divide-y divide-border rounded-sm border border-border text-[12px]">
       {rows.map((r) => (
         <div key={r.label} title={r.title} className="flex items-center gap-2 px-2 py-1">
-          <dt className="min-w-0 flex-1 text-muted-foreground">{r.label}</dt>
-          <dd className="m-0 whitespace-nowrap tabular-nums">{r.value}</dd>
+          <dt className="min-w-0 flex-1 truncate text-muted-foreground">{r.label}</dt>
+          <dd className={cn(column, "m-0 text-muted-foreground")}>{r.before}</dd>
+          <dd className={cn(column, "m-0")}>{r.after}</dd>
           <span className="flex w-3.5 justify-end">
             {r.ok === true && <Check aria-label="Passed" className="size-3.5 text-emerald-600" />}
             {r.ok === false && <X aria-label="Failed" className="size-3.5 text-destructive" />}
@@ -339,7 +340,8 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
 
 // ── What the checks point at ─────────────────────────────────────────────
 
-const scores = (f: EvalFlip) => <Shift from={f.before.toFixed(2)} to={f.after.toFixed(2)} />;
+/** The score under the proposed rubric, then the one it had. */
+const scores = (f: EvalFlip) => <span className="whitespace-nowrap tabular-nums">{f.after.toFixed(2)} <span className="text-muted-foreground">was {f.before.toFixed(2)}</span></span>;
 
 /** The labeled examples whose verdict the change sets wrong, the ones it sets right, and the
  * rest of the examples added since the version it was proposed on. */
@@ -369,7 +371,7 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
           <span className={cn("w-8 shrink-0 font-medium", e.label === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{e.label === "good" ? "Good" : "Bad"}</span>
           <Snippet snippet={e} thumb={evalExampleFilePath(evalId, e.id, 0)} note={e.note} />
           {e.held_out && <span className="whitespace-nowrap text-muted-foreground">Held out</span>}
-          {flip && <span className="whitespace-nowrap tabular-nums">{scores(flip)}</span>}
+          {flip && scores(flip)}
           <span className="whitespace-nowrap text-muted-foreground">{[e.added_by_name, e.caller].filter(Boolean).join(", ")}</span>
           <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={e.created_at}>{relativeTime(e.created_at)}</time>
         </Link>
@@ -387,10 +389,10 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
     <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
       {rows.map(({ flip, call }) => (
         <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
-          <span className={cn("w-[68px] shrink-0 whitespace-nowrap font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}><Shift from={verdict(flip.before)} to={verdict(flip.after)} /></span>
+          <span className={cn("w-8 shrink-0 font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{verdict(flip.after)}</span>
           <Snippet snippet={call} />
           {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
-          <span className="whitespace-nowrap tabular-nums">{scores(flip)}</span>
+          {scores(flip)}
           <span className="whitespace-nowrap text-muted-foreground">{call.caller || "unknown caller"}</span>
           <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={call.created_at}>{relativeTime(call.created_at)}</time>
         </li>

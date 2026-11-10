@@ -27,22 +27,23 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
   const calls = within(talk).getByRole("region", { name: "Agent calls" });
-  expect(calls).toHaveTextContent("Pass to Fail");
+  expect(within(calls).getByText("Fail")).toBeVisible();
   expect(within(calls).getByText("draw a chart")).toBeVisible();
   expect(within(calls).getByText("Stripes")).toHaveAttribute("title", "it is striped");
-  expect(calls).toHaveTextContent("0.80 to 0.30");
+  expect(calls).toHaveTextContent(/0\.30\s*was 0\.80/);
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
   expect(within(talk).getByText("Checks passed")).toBeVisible();
 
   const checks = screen.getByRole("region", { name: "Checks" });
-  expect(checks).toHaveTextContent("82 to 97");
-  expect(checks).toHaveTextContent("6/8 to 8/8");
-  expect(checks).toHaveTextContent("3/4 to 4/4");
-  expect(checks).toHaveTextContent("8/10 to 7/10");
+  expect(checks).toHaveTextContent(/v4\s*v5/);
+  expect(checks).toHaveTextContent(/Quality\s*82\s*97/);
+  expect(checks).toHaveTextContent(/Learned from\s*6\/8\s*8\/8/);
+  expect(checks).toHaveTextContent(/Held out\s*3\/4\s*4\/4/);
+  expect(checks).toHaveTextContent(/Agent calls passing\s*8\/10\s*7\/10/);
   expect(within(checks).queryByLabelText("Failed")).toBeNull();
-  // Before-and-after values are joined by an arrow icon, never an arrow character.
+  // Before-and-after values sit in columns or read "was"; no arrow characters.
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
 
@@ -87,7 +88,7 @@ it("lists the examples the checks point at: broken, fixed, and new since the bas
   expect(screen.getByLabelText("Failed")).toBeVisible();
   const examples = screen.getByRole("region", { name: "Examples" });
   expect(within(examples).getByText("Broken")).toBeVisible();
-  expect(examples).toHaveTextContent("1.00 to 0.00");
+  expect(examples).toHaveTextContent(/0\.00\s*was 1\.00/);
   expect(within(examples).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e2");
   expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
   expect(screen.queryByRole("region", { name: "Agent calls" })).toBeNull();
