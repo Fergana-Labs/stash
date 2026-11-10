@@ -260,7 +260,7 @@ type Quality = NonNullable<NonNullable<EvalProposal["checks"]>["rubric_quality"]
 
 /** How the eval that grades this eval's rubrics scored the rubric in use and the proposed one:
  * an overall score, then each of its traits with the score under both and how far it moved.
- * Hovering a trait gives its reason for the proposed rubric's score. Its name links to it. */
+ * Hovering a trait gives its reason for the proposed rubric's score. Each row opens that eval. */
 function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quality: Quality }) {
   const was = new Map((quality.before?.traits ?? []).map((t) => [t.trait, t]));
   const rows = [
@@ -268,6 +268,7 @@ function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quali
     ...quality.after.traits.map((t) => ({ name: t.trait, before: was.get(t.trait)?.score, after: t.score, why: t.why })),
   ];
   const column = "w-px whitespace-nowrap pl-3 text-right align-top tabular-nums";
+  const href = quality.eval ? `/reward-models/evals/${quality.eval.id}` : "";
   const moved = (before: number | undefined, after: number) => (before === undefined ? null : { id: "", before, after });
   return <section aria-label="Rubric quality" className="rounded border border-border px-3 py-2">
     <table className="w-full border-collapse text-[12px]">
@@ -288,8 +289,11 @@ function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quali
       <tbody>
         {rows.map((r, i) => {
           const flip = moved(r.before, r.after);
-          return <tr key={r.name} className="border-t border-border">
-            <th scope="row" title={r.why || undefined} className={cn("py-1.5 pr-3 text-left align-top font-normal", i === 0 && "font-medium")}>{r.name}</th>
+          // With a grading eval, the whole row is a link to it: the name's link is stretched over the row.
+          return <tr key={r.name} className={cn("border-t border-border", href && "relative hover:bg-surface/40")}>
+            <th scope="row" title={r.why || undefined} className={cn("py-1.5 pr-3 text-left align-top font-normal", i === 0 && "font-medium")}>
+              {href ? <Link href={href} className="text-foreground no-underline after:absolute after:inset-0">{r.name}</Link> : r.name}
+            </th>
             <td className={cn(column, "py-1.5 text-muted-foreground")}>{r.before?.toFixed(2)}</td>
             <td className={cn(column, "py-1.5")}>{r.after.toFixed(2)}</td>
             <td className={cn(column, "py-1.5 font-medium", (!flip || unchanged(flip)) && "font-normal text-muted-foreground")}>{flip && delta(flip)}</td>

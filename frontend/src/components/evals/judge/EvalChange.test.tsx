@@ -113,6 +113,9 @@ it("shows how the eval that grades rubrics scored both rubrics, trait by trait, 
     ["Good and bad are both concrete", "0.50", "1.00", "+0.50"],
     ["One thing per trait", "0.50", "0.50", "0.00"],
   ]);
+  // Every row opens the eval that did the grading.
+  expect(within(quality).getByRole("link", { name: "Good and bad are both concrete" })).toHaveAttribute("href", "/reward-models/evals/q");
+  expect(within(quality).getByRole("link", { name: "Overall" })).toHaveAttribute("href", "/reward-models/evals/q");
   // The reason for a score is on hover, not printed beside the trait.
   expect(within(quality).getByRole("rowheader", { name: "Good and bad are both concrete" })).toHaveAttribute("title", "Stripes names plain and striped");
 });
