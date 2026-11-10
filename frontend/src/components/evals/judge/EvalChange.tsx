@@ -116,11 +116,13 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
         </button>
       ))}
     </nav>
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="min-w-0">
       {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} onComment={onComment} />}
       {tab === "rubric" && <RubricDiff proposal={p} diff={diff} onComment={onComment} />}
-      {tab === "checks" && <Flipped evalId={evalId} proposal={p} />}
-      <Checks proposal={p} />
+      {tab === "checks" && <div className="min-w-0 space-y-3">
+        <Checks proposal={p} />
+        <Flipped evalId={evalId} proposal={p} />
+      </div>}
     </div>
   </article>;
 }
@@ -301,50 +303,55 @@ function TraitDiff({ diff: d, comments, onComment }: { diff: Diffed; comments: E
 
 const ratio = (t: EvalTally) => `${t.right}/${t.n}`;
 
+/** What was measured about the proposed rubric itself before anyone decides, beside the same
+ * measure for the rubric in use: how well each agrees with the person's labels, which labeled
+ * examples the change sets right or wrong, and whether it can be talked into a good score. */
 function Checks({ proposal: p }: { proposal: EvalProposal }) {
   const c = p.checks;
-  if (!c) return <section aria-label="Checks"><h3 className={sectionTitle}>Checks</h3>
-    <p role="status" className="m-0 mt-1.5 flex items-center gap-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Checking</p></section>;
-  // before: the value under the rubric in use; after: under the proposed one.
+  if (!c) return <section aria-label="Checks">
+    <p role="status" className="m-0 flex items-center gap-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Checking</p></section>;
+  // before: the value for the rubric in use; after: for the proposed one.
   const rows: { label: string; before?: string; after: string; ok?: boolean; title?: string }[] = [];
   const { before: qb, after: qa } = p.quality;
-  if (qa) rows.push({ label: "Quality", before: qb ? `${qb.score}` : undefined, after: `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
+  if (qa) rows.push({ label: "Rubric quality", before: qb ? `${qb.score}` : undefined, after: `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
   if (c.before && c.after) {
-    if (c.after.fit.n > 0) rows.push({ label: "Learned from", before: ratio(c.before.fit), after: ratio(c.after.fit), ok: c.after.fit.right >= c.before.fit.right });
-    if (c.after.check.n > 0) rows.push({ label: "Held out", before: ratio(c.before.check), after: ratio(c.after.check), ok: c.after.check.right >= c.before.check.right });
-    rows.push({ label: "Examples fixed", after: `${c.fixed.length}` });
-    rows.push({ label: "Examples broken", after: `${c.broke.length}`, ok: c.broke.length === 0 });
+    if (c.after.fit.n > 0) rows.push({ label: "Agrees with your labels", before: ratio(c.before.fit), after: ratio(c.after.fit), ok: c.after.fit.right >= c.before.fit.right });
+    if (c.after.check.n > 0) rows.push({ label: "Agrees with held-out labels", before: ratio(c.before.check), after: ratio(c.after.check), ok: c.after.check.right >= c.before.check.right });
+    rows.push({ label: "Labeled examples fixed", after: `${c.fixed.length}` });
+    rows.push({ label: "Labeled examples broken", after: `${c.broke.length}`, ok: c.broke.length === 0 });
   }
   if (c.short) rows.push({ label: "Judge unavailable", after: `${c.short.graded}/${c.short.of} graded`, ok: false });
   if (c.manipulation) rows.push({
-    label: "Manipulation resisted", after: `${c.manipulation.resisted}/${c.manipulation.n}`, ok: c.manipulation.resisted === c.manipulation.n,
+    label: "Manipulation attempts resisted", after: `${c.manipulation.resisted}/${c.manipulation.n}`, ok: c.manipulation.resisted === c.manipulation.n,
     title: c.manipulation.resisted < c.manipulation.n ? `Scored ${c.manipulation.worst.score.toFixed(2)} with: ${c.manipulation.worst.claim}` : undefined,
   });
-  if (c.calls) {
-    rows.push({ label: "Agent calls passing", before: `${c.calls.pass_before}/${c.calls.n}`, after: `${c.calls.pass_after}/${c.calls.n}` });
-    rows.push({ label: "Mean score", before: c.calls.mean_before.toFixed(2), after: c.calls.mean_after.toFixed(2) });
-  }
-  const column = "w-11 whitespace-nowrap text-right tabular-nums";
+  const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
   return <section aria-label="Checks" className="min-w-0">
-    <div className="flex items-baseline gap-2 px-2">
-      <h3 className={cn(sectionTitle, "-ml-2 min-w-0 flex-1")}>Checks</h3>
-      <span className={cn(column, "text-[11px] text-muted-foreground")}>v{p.base}</span>
-      <span className={cn(column, "text-[11px] text-muted-foreground")}>v{p.version ?? p.base + 1}</span>
-      <span className="w-3.5" />
-    </div>
-    <dl className="m-0 mt-1.5 divide-y divide-border rounded-sm border border-border text-[12px]">
-      {rows.map((r) => (
-        <div key={r.label} title={r.title} className="flex items-center gap-2 px-2 py-1">
-          <dt className="min-w-0 flex-1 truncate text-muted-foreground">{r.label}</dt>
-          <dd className={cn(column, "m-0 text-muted-foreground")}>{r.before}</dd>
-          <dd className={cn(column, "m-0")}>{r.after}</dd>
-          <span className="flex w-3.5 justify-end">
-            {r.ok === true && <Check aria-label="Passed" className="size-3.5 text-emerald-600" />}
-            {r.ok === false && <X aria-label="Failed" className="size-3.5 text-destructive" />}
-          </span>
-        </div>
-      ))}
-    </dl>
+    <table className="w-full border-collapse text-[12px]">
+      <thead>
+        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+          <th scope="col" className="pb-1 font-medium">Checks</th>
+          <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
+          <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
+          <th className="w-px pl-2" />
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label} title={r.title} className="border-t border-border">
+            <th scope="row" className="py-1.5 pr-3 text-left font-normal">{r.label}</th>
+            <td className={cn(column, "py-1.5 text-muted-foreground")}>{r.before}</td>
+            <td className={cn(column, "py-1.5")}>{r.after}</td>
+            <td className="w-px py-1.5 pl-2">
+              <span className="flex w-3.5 justify-end">
+                {r.ok === true && <Check aria-label="Passed" className="size-3.5 text-emerald-600" />}
+                {r.ok === false && <X aria-label="Failed" className="size-3.5 text-destructive" />}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   </section>;
 }
 

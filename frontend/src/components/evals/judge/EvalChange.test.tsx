@@ -42,13 +42,8 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(within(talk).getByText("too strict?")).toBeVisible();
   expect(within(talk).getByText("Checks passed")).toBeVisible();
 
-  const checks = screen.getByRole("region", { name: "Checks" });
-  expect(checks).toHaveTextContent(/v4\s*v5/);
-  expect(checks).toHaveTextContent(/Quality\s*82\s*97/);
-  expect(checks).toHaveTextContent(/Learned from\s*6\/8\s*8\/8/);
-  expect(checks).toHaveTextContent(/Held out\s*3\/4\s*4\/4/);
-  expect(checks).toHaveTextContent(/Agent calls passing\s*8\/10\s*7\/10/);
-  expect(within(checks).queryByLabelText("Failed")).toBeNull();
+  // The measurements of the rubric itself are under Checks, not beside the conversation.
+  expect(screen.queryByRole("region", { name: "Checks" })).toBeNull();
   // Before-and-after values sit in columns or read "was"; no arrow characters.
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
@@ -91,6 +86,14 @@ it("lists the examples the checks point at: broken, fixed, and new since the bas
   const failed = proposal({ passed: false });
   failed.checks!.broke = [{ id: "e2", before: 0.2, after: 0.9 }];
   show(failed, "checks");
+  const checks = screen.getByRole("region", { name: "Checks" });
+  expect(within(checks).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Checks", "rubric", "add-stripes", ""]);
+  expect(within(checks).getByRole("row", { name: /Rubric quality\s*82\s*97/ })).toBeVisible();
+  expect(within(checks).getByRole("row", { name: /Agrees with your labels\s*6\/8\s*8\/8/ })).toBeVisible();
+  expect(within(checks).getByRole("row", { name: /Agrees with held-out labels\s*3\/4\s*4\/4/ })).toBeVisible();
+  expect(within(checks).getByRole("row", { name: /Labeled examples broken\s*1/ })).toBeVisible();
+  expect(within(checks).getByRole("row", { name: /Manipulation attempts resisted\s*3\/3/ })).toBeVisible();
+  expect(checks).not.toHaveTextContent(/Agent calls passing|Mean score/);
   expect(screen.getByLabelText("Failed")).toBeVisible();
   const examples = screen.getByRole("region", { name: "Examples" });
   expect(within(examples).getByText("Broken")).toBeVisible();
@@ -125,7 +128,7 @@ it("offers only an override when a check failed, and no merge when out of date o
   stale.unmount();
 
   show(proposal({ checks: null, passed: null, quality: { before: null, after: null } }));
-  expect(screen.getByRole("status")).toHaveTextContent("Checking");
+  expect(screen.getByText("Checking")).toBeVisible();
   expect(screen.getByRole("button", { name: "Approve and merge" })).toBeDisabled();
 });
 
