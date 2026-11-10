@@ -142,7 +142,9 @@ function Conversation({ proposal: p, onDecide }: {
     <Entry who={p.opened_by ?? "Unknown"} what="opened" at={p.created_at}>
       {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
       {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
-      <CallList proposal={p} />
+      {(p.checks?.calls?.calls.length ?? 0) > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2 first:mt-0 first:border-t-0 first:pt-0">
+        <CallList proposal={p} />
+      </div>}
     </Entry>
     {before.map((c) => <CommentEntry key={c.id} comment={c} />)}
     {state !== "open" && p.decided_at && <Entry who={p.decided_by ?? "Someone"} at={p.decided_at}
@@ -404,7 +406,7 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
   const wanted = query.trim().toLowerCase();
   const rows = wanted ? all.filter((r) => r.name.toLowerCase().includes(wanted)) : all;
   const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
-  return <table aria-label="Evals" className="mt-2 w-full border-collapse text-[12px] first:mt-0">
+  return <table aria-label="Evals" className="w-full border-collapse text-[12px]">
     <thead>
       <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
         <th scope="col" className="pb-1 font-medium">
