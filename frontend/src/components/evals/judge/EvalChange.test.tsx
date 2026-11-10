@@ -124,6 +124,17 @@ it("offers only an override when a check failed, and no merge when out of date o
   expect(screen.getByRole("button", { name: "Approve and merge" })).toBeDisabled();
 });
 
+it("sorts the evals by signed change: gains first, no change next, drops last", () => {
+  const mixed = proposal();
+  const flips = [{ id: "c1", before: 0.5, after: 0.5 }, { id: "c2", before: 1, after: 0.97 }, { id: "c3", before: 0.1, after: 0.9 }];
+  mixed.checks!.calls = { ...mixed.checks!.calls!, calls: flips };
+  const call = (id: string) => ({ ...mixed.calls.c1, id, asked: id });
+  mixed.calls = { c1: call("c1"), c2: call("c2"), c3: call("c3") };
+  show(mixed);
+  const rows = within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1);
+  expect(rows.map((r) => within(r).getAllByRole("cell")[3].textContent)).toEqual(["+0.80", "0.00", "-0.03"]);
+});
+
 it("calls a change by its own name when it has one", () => {
   show(proposal({ name: "no-striped-charts" }));
   expect(screen.getByLabelText("rubric from no-striped-charts")).toBeVisible();

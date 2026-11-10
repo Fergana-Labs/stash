@@ -390,7 +390,8 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
  * was asked, else the start of what it wrote), the score it got under the rubric in use, and
  * its score under the proposed rubric, in columns headed as the page header names the two:
  * "rubric" and the change's own name. A last column gives how far the score moved, and the
- * table is sorted by it, largest move first; its heading is marked as the sort. */
+ * table is sorted by it as a signed number, largest gain first and largest drop last; its
+ * heading is marked as the sort. */
 /** How far a score moved, signed: "-0.88", "+0.03", "0.00". */
 function delta(f: EvalFlip): string {
   const moved = f.after - f.before;
@@ -401,7 +402,7 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
   const [query, setQuery] = useState("");
   const all = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
     .map((r) => ({ ...r, name: r.call.name || r.call.asked || r.call.text.split("\n")[0] || r.call.files[0]?.name || "" }))
-    .sort((a, b) => Math.abs(b.flip.after - b.flip.before) - Math.abs(a.flip.after - a.flip.before));
+    .sort((a, b) => (b.flip.after - b.flip.before) - (a.flip.after - a.flip.before));
   if (all.length === 0) return null;
   const wanted = query.trim().toLowerCase();
   const rows = wanted ? all.filter((r) => r.name.toLowerCase().includes(wanted)) : all;
