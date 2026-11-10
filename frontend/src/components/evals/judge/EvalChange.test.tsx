@@ -27,9 +27,10 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
   const evals = within(talk).getByRole("table", { name: "Offline evals" });
-  expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Offline eval", "rubric", "add-stripes"]);
+  expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Offline eval", "rubric", "add-stripes", "Change"]);
+  expect(within(evals).getByRole("columnheader", { name: "Change" })).toHaveAttribute("aria-sort", "descending");
   const row = within(evals).getAllByRole("row")[1];
-  expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30"]);
+  expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30", "-0.50"]);
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
