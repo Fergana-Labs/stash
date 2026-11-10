@@ -24,34 +24,32 @@ beforeEach(() => {
 const show = (messages: EvalMessage[], reading = false) =>
   render(<EvalChannel evalId="e" messages={messages} reading={reading} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
 
-it("folds the agent's reply into a thread, like Slack, and a choice answers in that thread", async () => {
+it("runs as one conversation: the agent's messages are in line, and a choice answers its question", async () => {
   show([
-    message("m1", { attachments: [attachment("a1"), attachment("a2")] }),
-    message("m2", { thread_id: "m1", author: "agent", text: "Good or bad?", data: { choices: ["All good", "All bad"] } }),
+    message("m1", { attachments: [attachment("a1"), attachment("a2")], created_at: "2026-11-10T10:00:00Z" }),
+    message("m2", { thread_id: "m1", author: "agent", text: "Good or bad?", data: { choices: ["All good", "All bad"] }, created_at: "2026-11-10T10:01:00Z" }),
   ]);
-  // Folded: the reply count stands out because the agent is waiting on the person.
-  expect(screen.queryByText("Good or bad?")).toBeNull();
-  const count = screen.getByText("1 reply");
-  expect(count).toHaveClass("font-semibold");
-  expect(screen.getByRole("button", { expanded: false })).toHaveTextContent("Agent");
-  fireEvent.click(count);
+  // Nothing is folded away, and there are no per-message reply boxes.
   expect(screen.getByText("Good or bad?")).toBeVisible();
+  expect(screen.queryByText("1 reply")).toBeNull();
+  expect(screen.getAllByRole("textbox")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "All bad" }));
   await waitFor(() => expect(onSend).toHaveBeenCalledWith({ text: "All bad", files: [], threadId: "m1" }, expect.any(Function)));
-  fireEvent.click(screen.getByRole("button", { name: "Hide replies" }));
-  expect(screen.queryByText("Good or bad?")).toBeNull();
 });
 
-it("keeps answered threads folded behind their reply count", () => {
+it("shows every message in the order it was sent, and what is typed continues the latest exchange", async () => {
   show([
-    message("m1", { text: "these are bad" }),
-    message("m2", { thread_id: "m1", author: "agent", text: "Which ones?" }),
-    message("m3", { thread_id: "m1", text: "all of them" }),
+    message("m3", { thread_id: "m1", text: "all of them", created_at: "2026-11-10T10:02:00Z" }),
+    message("m1", { text: "these are bad", created_at: "2026-11-10T10:00:00Z" }),
+    message("m4", { text: "one more thing", created_at: "2026-11-10T10:03:00Z" }),
+    message("m2", { thread_id: "m1", author: "agent", text: "Which ones?", created_at: "2026-11-10T10:01:00Z" }),
+    message("m5", { thread_id: "m4", author: "agent", text: "Go on", created_at: "2026-11-10T10:04:00Z" }),
   ]);
-  expect(screen.queryByText("all of them")).toBeNull();
-  expect(screen.getByText("2 replies")).not.toHaveClass("font-semibold");
-  fireEvent.click(screen.getByText("2 replies"));
-  expect(screen.getByText("all of them")).toBeVisible();
+  expect(screen.getAllByRole("article").map((a) => a.querySelector("p")?.textContent)).toEqual(["these are bad", "Which ones?", "all of them", "one more thing", "Go on"]);
+  const box = screen.getByRole("textbox", { name: "Message" });
+  fireEvent.change(box, { target: { value: "never use gradients" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith({ text: "never use gradients", files: [], threadId: "m4" }, expect.any(Function)));
 });
 
 it("labels an attachment from its buttons, and clicking the active label clears it", async () => {
@@ -73,25 +71,21 @@ it("takes a file out of the eval with its X", async () => {
   expect(onLabel).not.toHaveBeenCalled();
 });
 
-it("shows what a rubric update changed and why, as a reply in the thread", () => {
+it("shows what a rubric update changed and why, in line", () => {
   show([
-    message("m0", { text: "these are bad, striped" }),
+    message("m0", { text: "these are bad, striped", created_at: "2026-11-10T10:00:00Z" }),
     message("m1", {
       thread_id: "m0", author: "agent", kind: "rubric", text: "Rubric v2: added Stripes. Agrees with 8 of 8 examples it learned from (was 6 of 8).",
-      data: { version: 2, changes: [{ kind: "add", trait: "Stripes", why: "the striped ones are bad" }] },
+      data: { version: 2, changes: [{ kind: "add", trait: "Stripes", why: "the striped ones are bad" }] }, created_at: "2026-11-10T10:01:00Z",
     }),
   ]);
-  expect(screen.queryByText(/Rubric v2: added Stripes/)).toBeNull();
-  // A report isn't waiting on anyone, so its count doesn't stand out.
-  expect(screen.getByText("1 reply")).not.toHaveClass("font-semibold");
-  fireEvent.click(screen.getByText("1 reply"));
   expect(screen.getByText(/Rubric v2: added Stripes/)).toBeVisible();
   expect(screen.getByText("Added Stripes")).toBeVisible();
   expect(screen.getByText(": the striped ones are bad")).toBeVisible();
 });
 
 it("sends on Enter, keeps Shift+Enter for new lines, and sends pasted screenshots", async () => {
-  show([message("m1", { text: "hello" })]);
+  show([]);
   const box = screen.getByRole("textbox", { name: "Message" });
   fireEvent.change(box, { target: { value: "these are bad" } });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -110,21 +104,16 @@ it("starts empty with a drop box, and shows no reading indicator", () => {
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("shows the agent typing under the message it hasn't read yet, folded or open, and only while it reads", () => {
-  const thread = [
-    message("m1", { text: "hello?" }),
-    message("m2", { thread_id: "m1", author: "agent", text: "Hey" }),
-    message("m3", { thread_id: "m1", text: "these are bad", unread: true }),
-    message("m4", { text: "read already" }),
+it("shows the agent typing at the end of the conversation while it reads an unread message", () => {
+  const talk = [
+    message("m1", { text: "hello?", created_at: "2026-11-10T10:00:00Z" }),
+    message("m2", { thread_id: "m1", author: "agent", text: "Hey", created_at: "2026-11-10T10:01:00Z" }),
+    message("m3", { thread_id: "m1", text: "these are bad", unread: true, created_at: "2026-11-10T10:02:00Z" }),
   ];
-  const { rerender } = show(thread, true);
-  const waiting = screen.getByText("hello?").closest("article")!;
-  expect(within(waiting).getByRole("status", { name: "Agent is replying" })).toBeVisible();
-  expect(within(screen.getByText("read already").closest("article")!).queryByRole("status")).toBeNull();
-
-  fireEvent.click(within(waiting).getByRole("button", { name: /2 replies/ }));
-  expect(within(waiting).getAllByRole("status", { name: "Agent is replying" })).toHaveLength(1);
-
-  rerender(<EvalChannel evalId="e" messages={thread} reading={false} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
+  const { rerender } = show(talk, true);
+  expect(screen.getAllByRole("status", { name: "Agent is replying" })).toHaveLength(1);
+  rerender(<EvalChannel evalId="e" messages={talk} reading={false} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
+  expect(screen.queryByRole("status", { name: "Agent is replying" })).toBeNull();
+  rerender(<EvalChannel evalId="e" messages={talk.map((m) => ({ ...m, unread: false }))} reading onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
   expect(screen.queryByRole("status", { name: "Agent is replying" })).toBeNull();
 });
