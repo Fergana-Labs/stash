@@ -48,7 +48,7 @@ it("shows the rubric's quality, who approved each version and the calls it score
   render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
   expect(screen.getByText("Quality").nextElementSibling).toHaveTextContent("81");
   fireEvent.click(screen.getByText("History"));
-  expect(screen.getByRole("link", { name: "Change #4" })).toHaveAttribute("href", `/reward-models/evals/${data().id}/changes/4`);
+  expect(screen.getByRole("link", { name: "Change request #4" })).toHaveAttribute("href", `/reward-models/evals/${data().id}/changes/4`);
   expect(screen.getByText("approved by Reviewer")).toBeVisible();
   expect(screen.getByText(/Scored 12 calls, Oct 25, pr-bot, support-agent/)).toBeVisible();
 });
@@ -56,7 +56,7 @@ it("shows the rubric's quality, who approved each version and the calls it score
 it("turns approval of rubric changes on", async () => {
   const onReview = vi.fn().mockResolvedValue(undefined);
   render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} onReview={onReview} />);
-  const box = screen.getByRole("checkbox", { name: "Changes need approval" });
+  const box = screen.getByRole("checkbox", { name: "Change requests need approval" });
   expect(box).not.toBeChecked();
   fireEvent.click(box);
   await waitFor(() => expect(onReview).toHaveBeenCalledWith(true));

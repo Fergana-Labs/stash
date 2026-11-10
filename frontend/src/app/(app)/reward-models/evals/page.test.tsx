@@ -45,13 +45,13 @@ it("links each eval that reviews its rubric changes to its changes, with how man
   api.list.mockResolvedValue({ models: ["emails", "quiet", "plain"].map((id) => ({ id, name: id, active_number: 1, examples: 6, active_metrics: null })) });
   api.judged.mockResolvedValue([judged("emails", { review_required: true, open_changes: 2 }), judged("quiet", { review_required: true }), judged("plain", {})]);
   render(<EvalsPage />);
-  expect(await screen.findByRole("columnheader", { name: "Changes" })).toBeVisible();
-  const open = screen.getByRole("link", { name: "2 open changes to emails" });
+  expect(await screen.findByRole("columnheader", { name: "Change requests" })).toBeVisible();
+  const open = screen.getByRole("link", { name: "2 open change requests to emails" });
   expect(open).toHaveAttribute("href", "/reward-models/evals/emails?tab=changes");
   expect(open).toHaveTextContent("2 open");
-  expect(screen.getByRole("link", { name: "0 open changes to quiet" })).toHaveAttribute("href", "/reward-models/evals/quiet?tab=changes");
+  expect(screen.getByRole("link", { name: "0 open change requests to quiet" })).toHaveAttribute("href", "/reward-models/evals/quiet?tab=changes");
   // An eval that doesn't review its changes shows nothing in the column.
-  expect(screen.queryByRole("link", { name: /open changes? to plain/ })).toBeNull();
+  expect(screen.queryByRole("link", { name: /open change requests? to plain/ })).toBeNull();
   // Clicking the count goes to the changes, not to the eval's first tab.
   fireEvent.click(open);
   expect(api.push).not.toHaveBeenCalled();

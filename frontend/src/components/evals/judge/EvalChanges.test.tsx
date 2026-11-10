@@ -44,7 +44,7 @@ it("marks a change that is out of date, and opens on Closed when nothing is open
 
 it("says so when nothing is proposed, and titles a change with no trait", () => {
   show([]);
-  expect(screen.getByText("No open changes")).toBeVisible();
+  expect(screen.getByText("No open change requests")).toBeVisible();
   expect(changeTitle([])).toBe("Rubric change");
   expect(changeTitle([{ kind: "scoring", trait: "the lowest trait", why: "" }])).toBe("Score by the lowest trait");
 });

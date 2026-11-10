@@ -166,7 +166,7 @@ function RubricUpdate({ evalId, message }: { evalId: string; message: EvalMessag
       </ul>
     )}
     {message.data.proposal !== undefined && (
-      <Link href={`/reward-models/evals/${evalId}/changes/${message.data.proposal}`} className="mt-1.5 inline-flex h-6 items-center rounded border border-border px-2 text-[12px] text-foreground no-underline hover:bg-surface">Review change #{message.data.proposal}</Link>
+      <Link href={`/reward-models/evals/${evalId}/changes/${message.data.proposal}`} className="mt-1.5 inline-flex h-6 items-center rounded border border-border px-2 text-[12px] text-foreground no-underline hover:bg-surface">Review change request #{message.data.proposal}</Link>
     )}
   </div>;
 }

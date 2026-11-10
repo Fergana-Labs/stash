@@ -49,10 +49,10 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   }, [checking, load]);
 
   const back = <Link href={`/reward-models/evals/${evalId}?tab=changes`} className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
-    <ArrowLeft className="size-3.5" aria-hidden />{evalName || "Changes"}
+    <ArrowLeft className="size-3.5" aria-hidden />{evalName || "Change requests"}
   </Link>;
   if (!proposal) return <EvalPageFrame>{back}
-    <p role={error || proposals ? "alert" : "status"} className="mt-4 text-sm text-muted-foreground">{error || (proposals ? "Change not found" : "Loading")}</p>
+    <p role={error || proposals ? "alert" : "status"} className="mt-4 text-sm text-muted-foreground">{error || (proposals ? "Change request not found" : "Loading")}</p>
   </EvalPageFrame>;
   return <EvalPageFrame>
     {back}
@@ -95,7 +95,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
     { key: "rubric", label: "Diff", extra: <span className="tabular-nums text-muted-foreground">+{diff.added} -{diff.removed}</span> },
     ...(quality ? [{ key: "quality" as const, label: "Rubric quality", extra: <span className="tabular-nums text-muted-foreground">{quality.after.score.toFixed(2)}</span> }] : []),
   ];
-  return <article aria-label={`Change ${p.number}`} className="text-[13px]">
+  return <article aria-label={`Change request ${p.number}`} className="text-[13px]">
     <h1 className="mt-2 mb-1 text-[16px] font-semibold tracking-tight">{changeTitle(p.changes)} <span className="font-normal tabular-nums text-muted-foreground">#{p.number}</span></h1>
     <div className="flex flex-wrap items-center gap-x-2.5 text-[12px] text-muted-foreground">
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>

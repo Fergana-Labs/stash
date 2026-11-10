@@ -38,7 +38,7 @@ export default function EvalChanges({ evalId, changes }: { evalId: string; chang
     { key: "open", label: "Open", count: open.length },
     { key: "closed", label: "Closed", count: closed.length },
   ];
-  return <section aria-label="Rubric changes" className="rounded border border-border text-[13px]">
+  return <section aria-label="Change requests" className="rounded border border-border text-[13px]">
     <div className="flex gap-1 border-b border-border px-2 py-1.5">
       {filters.map((f) => (
         <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
@@ -48,7 +48,7 @@ export default function EvalChanges({ evalId, changes }: { evalId: string; chang
       ))}
     </div>
     {shown.length === 0
-      ? <p className="m-0 px-3 py-2 text-[12px] text-muted-foreground">{filter === "open" ? "No open changes" : "No closed changes"}</p>
+      ? <p className="m-0 px-3 py-2 text-[12px] text-muted-foreground">{filter === "open" ? "No open change requests" : "No closed change requests"}</p>
       : <ul className="m-0 list-none divide-y divide-border p-0">
         {shown.map((p) => <ChangeRow key={p.id} evalId={evalId} proposal={p} />)}
       </ul>}
@@ -59,7 +59,7 @@ function ChangeRow({ evalId, proposal: p }: { evalId: string; proposal: EvalProp
   const state = changeState(p);
   const outcome = state === "merged" ? `Merged${p.version ? ` as v${p.version}` : ""}` : state === "closed" ? "Closed" : p.stale ? "Out of date" : "";
   return <li>
-    <Link href={changePath(evalId, p.number)} aria-label={`Change ${p.number}: ${changeTitle(p.changes)}`}
+    <Link href={changePath(evalId, p.number)} aria-label={`Change request ${p.number}: ${changeTitle(p.changes)}`}
       className="flex h-9 items-center gap-2.5 px-3 text-foreground no-underline hover:bg-surface/40">
       <span className="w-6 shrink-0 tabular-nums text-muted-foreground">#{p.number}</span>
       <span className="min-w-0 flex-1 truncate font-medium">{changeTitle(p.changes)}</span>

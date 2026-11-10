@@ -71,7 +71,7 @@ function ReviewToggle({ required, onReview }: { required: boolean; onReview: (re
   return <label className="flex items-center gap-1.5 text-[12px]">
     <input type="checkbox" checked={required} disabled={busy} className="size-3.5 accent-foreground"
       onChange={(e) => { setBusy(true); void onReview(e.target.checked).finally(() => setBusy(false)); }} />
-    Changes need approval
+    Change requests need approval
   </label>;
 }
 
@@ -160,7 +160,7 @@ function History({ evalId, versions }: { evalId: string; versions: EvalRubricVer
             <time className="ml-auto text-muted-foreground" dateTime={v.created_at}>{relativeTime(v.created_at)}</time>
           </div>
           {v.approved && <div className="text-muted-foreground">
-            <Link href={`/reward-models/evals/${evalId}/changes/${v.approved.proposal}`} className="text-foreground underline-offset-2 hover:underline">Change #{v.approved.proposal}</Link> approved{v.approved.by ? ` by ${v.approved.by}` : ""}
+            <Link href={`/reward-models/evals/${evalId}/changes/${v.approved.proposal}`} className="text-foreground underline-offset-2 hover:underline">Change request #{v.approved.proposal}</Link> approved{v.approved.by ? ` by ${v.approved.by}` : ""}
           </div>}
           {!v.approved && v.created_by && <div className="text-muted-foreground">Edited by {v.created_by}</div>}
           {v.used && <div className="text-muted-foreground">
