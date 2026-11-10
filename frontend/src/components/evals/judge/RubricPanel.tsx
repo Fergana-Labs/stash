@@ -151,7 +151,7 @@ function History({ versions }: { versions: EvalRubricVersion[] }) {
     <ol className="m-0 mt-1.5 list-none space-y-2 p-0">
       {versions.map((v) => (
         <li key={v.id}>
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2 whitespace-nowrap">
             <span className="font-medium">v{v.number}</span>
             <span>{SOURCE[v.source]}</span>
             {v.quality && <span className="tabular-nums">Quality {v.quality.score}</span>}

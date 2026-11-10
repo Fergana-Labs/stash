@@ -125,11 +125,11 @@ function TraitDiff({ sign, name, why, lines }: { sign: "+" | "-" | "~"; name: st
     <div className="flex items-baseline gap-2 px-2 py-1">
       <span aria-hidden className={cn("w-3 font-mono text-[12px]", sign === "+" ? "text-emerald-700 dark:text-emerald-400" : sign === "-" ? "text-red-700 dark:text-red-400" : "text-muted-foreground")}>{sign}</span>
       <span className="font-medium">{name}</span>
-      {why && <span className="min-w-0 flex-1 text-[12px] text-muted-foreground">{why}</span>}
+      {why && <span title={why} className="line-clamp-2 min-w-0 flex-1 text-[12px] text-muted-foreground">{why}</span>}
     </div>
     {lines.filter(([, , text]) => text).map(([kind, label, text], i) => (
-      <div key={i} className={cn("flex gap-2 px-2 py-0.5 text-[12px]", kind === "+" ? "bg-emerald-500/10" : "bg-red-500/10")}>
-        <span aria-hidden className="w-3 font-mono">{kind}</span>
+      <div key={i} className={cn("flex gap-2 border-l-2 px-2 py-0.5 text-[12px]", kind === "+" ? "border-l-emerald-600" : "border-l-red-500")}>
+        <span aria-hidden className={cn("w-3 font-mono", kind === "+" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{kind}</span>
         {label && <span className="w-8 shrink-0 text-muted-foreground">{label}</span>}
         <span className={cn("min-w-0 flex-1", kind === "-" && "text-muted-foreground")}>{text}</span>
       </div>
@@ -203,8 +203,8 @@ function Examples({ evalId, proposal: p }: { evalId: string; proposal: EvalPropo
             <Link href={`/reward-models/evals/${evalId}/examples/${e.id}`} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px] text-foreground no-underline hover:bg-surface/40">
               <span className={cn("w-8 shrink-0 font-medium", e.label === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{e.label === "good" ? "Good" : "Bad"}</span>
               <Snippet snippet={e} thumb={evalExampleFilePath(evalId, e.id, 0)} note={e.note} />
+              <span className="w-14 whitespace-nowrap text-muted-foreground">{e.held_out ? "Held out" : ""}</span>
               {flip && <span className="whitespace-nowrap tabular-nums">{scores(flip)}</span>}
-              {e.held_out && <span className="whitespace-nowrap text-muted-foreground">Held out</span>}
               <span className="whitespace-nowrap text-muted-foreground">{[e.added_by_name, e.caller].filter(Boolean).join(", ")}</span>
               <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={e.created_at}>{relativeTime(e.created_at)}</time>
             </Link>
@@ -241,7 +241,7 @@ function Snippet({ snippet, thumb, note }: { snippet: { name: string; asked: str
   const text = snippet.text || snippet.asked || snippet.files[0]?.name || snippet.name;
   return <span className="flex min-w-0 flex-1 items-center gap-2">
     {image && <FileThumb path={thumb} alt={snippet.files[0].name} zoom={false} className="size-7 shrink-0" />}
-    <span className="min-w-0 flex-1 truncate">{note ? <>{note} <span className="text-muted-foreground">{text}</span></> : text}</span>
+    <span className="min-w-0 flex-1 truncate">{text}{note && <span className="ml-2 text-muted-foreground">{note}</span>}</span>
   </span>;
 }
 
