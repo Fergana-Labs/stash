@@ -9,7 +9,7 @@ vi.mock("./FileThumb", () => ({ default: ({ alt }: { alt: string }) => <img alt=
 
 const show = (p: EvalProposal, tab?: string) => {
   const onDecide = vi.fn().mockResolvedValue(undefined);
-  render(<ChangeView proposal={p} initialTab={tab} onDecide={onDecide} />);
+  render(<ChangeView evalId="e" proposal={p} initialTab={tab} onDecide={onDecide} />);
   return { onDecide };
 };
 const comment = (extra = {}) => ({ id: "k1", author: "Reviewer", trait: "", body: "too strict?", created_at: now, ...extra });
@@ -30,6 +30,11 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(within(evals).getByRole("columnheader", { name: "Change" })).toHaveAttribute("aria-sort", "descending");
   const row = within(evals).getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30", "-0.50"]);
+  // The examples the change answers are listed, each opening its page.
+  const examples = within(talk).getByRole("table", { name: "Examples" });
+  expect(within(examples).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/reward-models/evals/e/examples/e1", "/reward-models/evals/e/examples/e2"]);
+  expect(within(examples).getByText("striped")).toBeVisible();
+  expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
   // Searching narrows the evals by name.
   fireEvent.change(within(evals).getByRole("searchbox", { name: "Search evals" }), { target: { value: "CHART" } });
   expect(within(evals).getByText("draw a chart")).toBeVisible();
@@ -92,7 +97,7 @@ it("falls back to the counts when a change has no summary", () => {
 });
 
 it("merges whatever its measurements say, and only closes when out of date", () => {
-  const { unmount } = render(<ChangeView proposal={proposal({ passed: false })} onDecide={vi.fn()} />);
+  const { unmount } = render(<ChangeView evalId="e" proposal={proposal({ passed: false })} onDecide={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Approve and merge" })).toBeEnabled();
   unmount();
   show(proposal({ stale: true }));

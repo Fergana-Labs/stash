@@ -57,6 +57,7 @@ export default function EvalExample({ evalId, exampleId }: { evalId: string; exa
         {example.session
           ? <Row label="Session"><Link href={`/sessions/${encodeURIComponent(example.session.session_id)}`} className="block truncate underline-offset-2 hover:underline">{example.session.title || example.session.session_id}</Link></Row>
           : example.session_id && <Row label="Session"><span className="block truncate font-mono text-[11px] text-muted-foreground" title={example.session_id}>{example.session_id}</span></Row>}
+        {item.origin && <Row label="Trace"><Link href={`/reward-models/traces/${item.origin.trace_id}#step-${item.origin.step_id}`} className="underline-offset-2 hover:underline">Open the step</Link></Row>}
         {example.call && <Row label="From call">{relativeTime(example.call.created_at)}</Row>}
         {example.note && <Row label="Note">{example.note}</Row>}
       </dl>

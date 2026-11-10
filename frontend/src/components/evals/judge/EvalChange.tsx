@@ -10,7 +10,7 @@ import { diffLines, errorMessage, relativeTime } from "@/components/reward-model
 import { changeState, changeTitle } from "./EvalChanges";
 import {
   evalChanges, evalDecide, evalGet,
-  type EvalChangeCall, type EvalComment, type EvalFlip, type EvalProposal, type EvalTrait,
+  type EvalChangeCall, type EvalChangeExample, type EvalComment, type EvalFlip, type EvalProposal, type EvalTrait,
 } from "@/lib/evals-api";
 
 type Decision = "approve" | "reject";
@@ -56,7 +56,7 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   </EvalPageFrame>;
   return <EvalPageFrame>
     {back}
-    <ChangeView proposal={proposal} initialTab={initialTab}
+    <ChangeView evalId={evalId} proposal={proposal} initialTab={initialTab}
       onDecide={async (decision, note) => setProposals((await evalDecide(evalId, proposal.id, decision, note)).proposals)} />
   </EvalPageFrame>;
 }
@@ -74,7 +74,8 @@ export function changeBranch(p: EvalProposal): string {
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
  * agent fares under the proposed rubric and ends in a merge or a close, the rubric's diff, and
  * how the eval that grades its rubrics scored both. */
-export function ChangeView({ proposal: p, initialTab, onDecide }: {
+export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
+  evalId: string;
   proposal: EvalProposal;
   initialTab?: string;
   onDecide: (decision: Decision, note: string) => Promise<void>;
@@ -113,7 +114,7 @@ export function ChangeView({ proposal: p, initialTab, onDecide }: {
       ))}
     </nav>
     <div className="min-w-0">
-      {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
+      {tab === "conversation" && <Conversation evalId={evalId} proposal={p} onDecide={onDecide} />}
       {tab === "rubric" && <RubricDiff diff={diff} />}
       {tab === "quality" && quality && <RubricQuality proposal={p} quality={quality} />}
     </div>
@@ -122,7 +123,8 @@ export function ChangeView({ proposal: p, initialTab, onDecide }: {
 
 // ── The conversation ─────────────────────────────────────────────────────
 
-function Conversation({ proposal: p, onDecide }: {
+function Conversation({ evalId, proposal: p, onDecide }: {
+  evalId: string;
   proposal: EvalProposal;
   onDecide: (decision: Decision, note: string) => Promise<void>;
 }) {
@@ -131,6 +133,8 @@ function Conversation({ proposal: p, onDecide }: {
   const before = p.comments.filter((c) => !p.decided_at || c.created_at <= p.decided_at);
   const after = p.comments.filter((c) => p.decided_at && c.created_at > p.decided_at);
   const calls = p.checks?.calls;
+  // The examples added since the rubric version the change was made on: what it answers.
+  const evidence = (p.checks?.evidence ?? []).map((id) => p.examples[id]).filter(Boolean);
   const [hideSame, setHideSame] = useState(false);
   return <section aria-label="Conversation" className="min-w-0 space-y-2">
     <Entry who={p.opened_by ?? "Unknown"} what="opened" at={p.created_at}>
@@ -147,6 +151,9 @@ function Conversation({ proposal: p, onDecide }: {
           </span>
         </button>}
       </div>
+      {evidence.length > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2">
+        <Evidence evalId={evalId} examples={evidence} />
+      </div>}
       {(calls?.calls.length ?? 0) > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2">
         <CallList proposal={p} hideSame={hideSame} />
       </div>}
@@ -160,6 +167,31 @@ function Conversation({ proposal: p, onDecide }: {
     {after.map((c) => <CommentEntry key={c.id} comment={c} />)}
     {p.status === "open" && <Decide proposal={p} onDecide={onDecide} />}
   </section>;
+}
+
+/** The examples a change answers: each one's label, what it is, the person's reason, who added
+ * it and when. Each opens the example, which links to the trace step it was taken from. */
+function Evidence({ evalId, examples }: { evalId: string; examples: EvalChangeExample[] }) {
+  return <table aria-label="Examples" className="w-full border-collapse text-[12px]">
+    <thead>
+      <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+        <th scope="col" colSpan={4} className="pb-2 font-medium">Examples <span className="tabular-nums">{examples.length}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {examples.map((e) => (
+        <tr key={e.id} className="relative border-t border-border hover:bg-surface/40">
+          <td className={cn("w-px whitespace-nowrap py-1.5 pr-3 font-medium", e.label === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{e.label === "good" ? "Good" : "Bad"}</td>
+          <td className="max-w-0 truncate py-1.5 pr-3">
+            <Link href={`/reward-models/evals/${evalId}/examples/${e.id}`} className="text-foreground no-underline after:absolute after:inset-0">{e.files[0]?.name || e.name || e.text.split("\n")[0] || e.asked}</Link>
+            {e.note && <span className="ml-2 text-muted-foreground">{e.note}</span>}
+          </td>
+          <td className="w-px whitespace-nowrap py-1.5 pl-3 text-muted-foreground">{[e.added_by_name, e.caller].filter(Boolean).join(", ")}</td>
+          <td className="w-px whitespace-nowrap py-1.5 pl-3 text-right text-muted-foreground"><time dateTime={e.created_at}>{relativeTime(e.created_at)}</time></td>
+        </tr>
+      ))}
+    </tbody>
+  </table>;
 }
 
 /** One step of the conversation: who did what and when, and what they said. */

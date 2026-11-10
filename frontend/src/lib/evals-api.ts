@@ -39,7 +39,8 @@ export interface Eval {
   updated_at: string;
 }
 export interface EvalFile { key: string; name: string; content_type: string }
-export interface EvalItem { name: string; trace: { role: string; content: string; tool_name?: string }[]; text: string; files: EvalFile[] }
+/** origin: the step of a trace the item was taken from, when it was added while commenting there. */
+export interface EvalItem { name: string; trace: { role: string; content: string; tool_name?: string }[]; text: string; files: EvalFile[]; origin?: { trace_id: string; step_id: string } }
 /** added_by: the user whose request added it; added_via: "web" (the app) or "api" (an API key,
  * how agents add examples), "" before this was recorded; caller and session_id: what an agent
  * said about itself when it added the example. */
@@ -259,6 +260,27 @@ export const evalCalls = (id: string) => apiFetch<{ calls: EvalCall[] }>(`${T}/$
 export const evalLabelCall = (id: string, callId: string, label: EvalLabel | null, note = "") =>
   apiFetch(`${T}/${id}/calls/${callId}/label`, { method: "PUT", body: JSON.stringify({ label, note }) });
 export const evalExampleFilePath = (id: string, exampleId: string, index: number) => `${T}/${id}/examples/${exampleId}/files/${index}`;
+/** Add one step of a trace to an eval as a labeled example: the step's content is the output,
+ * what the agent was asked comes with it, and the comment is the reason. The example keeps the
+ * trace and step it came from. */
+export async function evalAddStepExample(id: string, example: { label: EvalLabel; note: string; text: string; asked: string; traceId: string; stepId: string }): Promise<EvalExample> {
+  const form = new FormData();
+  form.append("label", example.label);
+  form.append("note", example.note);
+  form.append("text", example.text);
+  if (example.asked) form.append("trace", JSON.stringify([{ role: "user", content: example.asked }]));
+  form.append("trace_id", example.traceId);
+  form.append("step_id", example.stepId);
+  const headers: Record<string, string> = {};
+  const token = await getAuthToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scope = getScopeUserId();
+  if (scope) headers[SCOPE_HEADER] = scope;
+  const resp = await fetch(`${API_BASE}${T}/${id}/examples`, { method: "POST", headers, body: form });
+  if (!resp.ok) throw new Error(await resp.json().then((d) => d.detail).catch(() => resp.statusText));
+  return (await resp.json()).examples[0];
+}
+
 export const evalCallFilePath = (id: string, callId: string, index: number) => `${T}/${id}/calls/${callId}/files/${index}`;
 
 /** Upload files as examples (one example each). Multipart, so it sets its own headers. */

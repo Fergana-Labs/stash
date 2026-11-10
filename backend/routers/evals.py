@@ -190,10 +190,15 @@ async def add_examples(
     trace: Annotated[str, Form()] = "",
     caller: Annotated[str, Form(max_length=100)] = "",
     session_id: Annotated[str, Form(max_length=200)] = "",
+    trace_id: Annotated[UUID | None, Form()] = None,
+    step_id: Annotated[UUID | None, Form()] = None,
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006
 ):
     """Each file becomes one example; without files, the text and/or trace is one example.
-    An agent adding examples names itself in caller and its session in session_id."""
+    An agent adding examples names itself in caller and its session in session_id. An example
+    taken from a step of one of your traces names that trace and step in trace_id and step_id."""
+    if (trace_id is None) != (step_id is None):
+        raise HTTPException(422, "Give trace_id and step_id together")
     parsed_trace = _trace_field(trace)
     created = await checked(
         service.add_examples(
@@ -205,6 +210,7 @@ async def add_examples(
             trace=parsed_trace,
             note=note,
             added=service.Added.of(user, caller, session_id),
+            from_step=(trace_id, step_id) if trace_id and step_id else None,
         )
     )
     return {"examples": created}

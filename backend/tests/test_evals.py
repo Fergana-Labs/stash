@@ -566,3 +566,56 @@ async def test_a_labeled_call_records_the_agent_that_made_it(client: AsyncClient
     ).json()
     assert detail["source"] == "production" and detail["caller"] == "draw-agent"
     assert detail["call"]["id"] == calls[0]["id"]
+
+
+@pytest.mark.usefixtures("rm_title_generator")
+async def test_an_example_taken_from_a_trace_step_keeps_where_it_came_from(
+    client: AsyncClient, fakes
+):
+    auth = await _register(client)
+    eid = (await client.post("/api/v1/evals", headers=auth, json={"name": "Memos"})).json()["id"]
+    imported = await client.post(
+        "/api/v1/rm/traces/import",
+        headers=auth,
+        json={
+            "format": "auto",
+            "data": json.dumps(
+                {
+                    "id": "acme-memo",
+                    "steps": [
+                        {"role": "user", "content": "Value Acme and write a memo"},
+                        {"role": "assistant", "content": "Recommendation: Buy Acme."},
+                    ],
+                }
+            ),
+        },
+    )
+    assert imported.status_code == 200, imported.text
+    trace_id = imported.json()["trace_ids"][0]
+    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+    step = next(s for s in detail["steps"] if s["role"] == "assistant")
+
+    url = f"/api/v1/evals/{eid}/examples"
+    form = {"label": "bad", "note": "no numbers behind the call", "text": step["content"]}
+    added = await client.post(
+        url, headers=auth, data={**form, "trace_id": trace_id, "step_id": step["id"]}
+    )
+    assert added.status_code == 201, added.text
+    example = added.json()["examples"][0]
+    assert example["item"]["origin"] == {"trace_id": trace_id, "step_id": step["id"]}
+    assert example["item"]["text"] == "Recommendation: Buy Acme." and example["label"] == "bad"
+    shown = (await client.get(f"{url}/{example['id']}", headers=auth)).json()
+    assert shown["item"]["origin"]["trace_id"] == trace_id
+
+    # A trace id without its step, or someone else's trace, is refused.
+    assert (
+        await client.post(url, headers=auth, data={**form, "trace_id": trace_id})
+    ).status_code == 422
+    other = await _register(client)
+    theirs = (await client.post("/api/v1/evals", headers=other, json={"name": "x"})).json()["id"]
+    stolen = await client.post(
+        f"/api/v1/evals/{theirs}/examples",
+        headers=other,
+        data={**form, "trace_id": trace_id, "step_id": step["id"]},
+    )
+    assert stolen.status_code == 404

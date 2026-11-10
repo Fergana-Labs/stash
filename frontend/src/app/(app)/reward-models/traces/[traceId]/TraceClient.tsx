@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
-import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
+import AnnotationComposer, { type AddToEval, type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import TraceCommentMenu from "@/components/reward-models/TraceCommentMenu";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import { wbAssess } from "@/lib/workbench-api";
@@ -41,6 +41,7 @@ import { useTraceCompletion } from "@/components/reward-models/use-trace-complet
 import { taskCompletion } from "@/components/reward-models/task-completion";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
+import { evalAddStepExample, evalList } from "@/lib/evals-api";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
 
@@ -77,6 +78,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
+  const [evals, setEvals] = useState<{ id: string; name: string }[]>([]);
   const [selectedHit, setSelectedHit] = useState<BehaviorHit | null>(null);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
@@ -98,6 +100,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       setLoadError(errorMessage(e));
     }
   }, [traceId]);
+
+  // The person's evals, offered in the comment box as places to add the commented step.
+  useEffect(() => {
+    evalList().then((found) => setEvals(found.map((e) => ({ id: e.id, name: e.name })))).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -193,13 +200,22 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     setRowChoice((current) => new Map(current).set(row.key, !isExpanded(row)));
   }
 
-  async function submitComment(target: ComposerTarget, comment: string) {
+  async function submitComment(target: ComposerTarget, comment: string, add: AddToEval | null) {
     try {
       await rmCreateAnnotation(traceId, {
         ...(target.stepId !== null && { step_id: target.stepId }),
         ...(target.quote !== null && { quote: target.quote }),
+        ...(add && { rating: add.label === "good" ? 1 : -1 }),
         comment,
       });
+      // The commented step also becomes a labeled example of the chosen eval: the step is the
+      // output, the last thing the user asked before it is the task, the comment is the reason.
+      const step = add && trace?.steps.find((s) => s.id === target.stepId);
+      if (add && step) {
+        const asked = trace!.steps.filter((s) => s.index < step.index && s.role === "user").at(-1)?.content ?? "";
+        await evalAddStepExample(add.evalId, { label: add.label, note: comment, text: step.content, asked, traceId, stepId: step.id });
+        toast.success(`Added to ${evals.find((e) => e.id === add.evalId)?.name ?? "the eval"}`);
+      }
       await load();
       setComposer(null);
       window.getSelection()?.removeAllRanges();
@@ -400,7 +416,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               target={composer}
               label={composerLabel(composer, trace, presentation.labelById)}
               onCancel={closeComposer}
-              onSubmit={(comment) => submitComment(composer, comment)}
+              evals={evals}
+              onSubmit={(comment, add) => submitComment(composer, comment, add)}
             />
           )
         }

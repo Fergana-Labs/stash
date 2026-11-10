@@ -207,12 +207,28 @@ async def add_examples(
     trace=None,
     note: str = "",
     added: Added | None = None,
+    from_step: tuple[UUID, UUID] | None = None,
 ) -> list[dict]:
-    """One example per file; or one example from text and/or a trace when no files are given."""
+    """One example per file; or one example from text and/or a trace when no files are given.
+    from_step: the (trace, step) of one of the person's own traces that the example was taken
+    from, when it was added while commenting on that step; kept on the example as its origin."""
     added = added or Added(owner)
     if label not in ("good", "bad"):
         raise ValueError("label must be good or bad")
     await _owned(owner, eval_id)
+    origin = None
+    if from_step is not None:
+        trace_id, step_id = from_step
+        found = await get_pool().fetchval(
+            """SELECT 1 FROM rm_trace_steps s JOIN rm_traces t ON t.id = s.trace_id
+               WHERE s.id=$1 AND t.id=$2 AND t.owner_user_id=$3""",
+            step_id,
+            trace_id,
+            owner,
+        )
+        if not found:
+            raise NotFound("Trace step not found")
+        origin = {"trace_id": str(trace_id), "step_id": str(step_id)}
     have = await get_pool().fetchval(
         "SELECT count(*) FROM intuition_examples WHERE model_id=$1", eval_id
     )
@@ -227,6 +243,8 @@ async def add_examples(
         if files
         else [await items.store(owner, "", [], text=text, trace=trace)]
     )
+    if origin:
+        stored = [{**item, "origin": origin} for item in stored]
     out = []
     for item, split in zip(stored, splits(have, len(stored)), strict=True):
         row = await get_pool().fetchrow(
