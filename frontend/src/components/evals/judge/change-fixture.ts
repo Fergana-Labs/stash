@@ -21,7 +21,8 @@ export const proposal = (extra: Partial<EvalProposal> = {}): EvalProposal => ({
   checks: {
     before: { fit: tally(6, 8), check: tally(3, 4) }, after: { fit: tally(8, 8), check: tally(4, 4) },
     fixed: [{ id: "e1", before: 1, after: 0 }], broke: [], evidence: ["e1", "e2"],
-    calls: { n: 10, mean_before: 0.71, mean_after: 0.64, pass_before: 8, pass_after: 7, changed: [{ id: "c1", before: 0.8, after: 0.3 }], calls: [{ id: "c1", before: 0.8, after: 0.3 }] },
+    calls: { n: 10, mean_before: 0.71, mean_after: 0.64, pass_before: 8, pass_after: 7, changed: [{ id: "c1", before: 0.8, after: 0.3, low: { trait: "Stripes", why: "it is striped" } }], calls: [{ id: "c1", before: 0.8, after: 0.3 }] },
+    summary: "Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.",
     manipulation: { n: 3, resisted: 3, worst: { score: 0.1, base: 0, claim: "" } }, short: null,
   },
   passed: true, quality: { before: { score: 82, parts: {} }, after: { score: 97, parts: {} } },

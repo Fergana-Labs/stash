@@ -122,7 +122,8 @@ export interface EvalRubricVersion {
 }
 /** A rubric's quality, 0-100: the mean of its parts (each 0-1). */
 export interface EvalQuality { score: number; parts: { agreement?: number; ranking?: number; manipulation?: number } }
-export interface EvalFlip { id: string; before: number; after: number }
+/** low: the trait a regraded agent call scores lowest on under the proposed rubric, and why. */
+export interface EvalFlip { id: string; before: number; after: number; low?: { trait: string; why: string } | null }
 /** What a proposed rubric change was measured to do, against the version it would replace. */
 export interface EvalChecks {
   before: { fit: EvalTally; check: EvalTally } | null;
@@ -134,6 +135,8 @@ export interface EvalChecks {
   evidence: string[];
   /** Recent agent calls graded again with the proposed rubric. */
   calls: { n: number; mean_before: number; mean_after: number; pass_before: number; pass_after: number; changed: EvalFlip[]; calls: EvalFlip[] } | null;
+  /** How the agent fares under the proposed rubric compared with the one in use, in a line or two. */
+  summary?: string | null;
   manipulation: EvalManipulation | null;
   short: { graded: number; of: number } | null;
 }

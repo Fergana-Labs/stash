@@ -305,7 +305,7 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
     if pending:
         # Nothing was saved: the last draft is proposed, with its checks, for a person to approve.
         changes = [c for v in drafted + result["saved"] for c in v["changes"]]
-        found = await proposals.checks(model_id, start, final, examples)
+        found = await proposals.checks(model_id, start, final, examples, changes)
         proposal = await proposals.create(
             model_id,
             base=start["number"],

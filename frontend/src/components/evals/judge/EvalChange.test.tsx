@@ -15,7 +15,7 @@ const show = (p: EvalProposal, tab?: string) => {
 };
 const comment = (extra = {}) => ({ id: "k1", author: "Reviewer", trait: "", body: "too strict?", created_at: now, ...extra });
 
-it("opens on the conversation: what the change does and why, the examples behind it, and its checks", () => {
+it("opens on the conversation: how the agent fares under the proposed rubric, the calls that change, and its checks", () => {
   show(proposal({ comments: [comment()] }));
   expect(screen.getByRole("heading", { name: "Add Stripes, tighten Color #2" })).toBeVisible();
   expect(screen.getByText("Open")).toBeVisible();
@@ -24,10 +24,14 @@ it("opens on the conversation: what the change does and why, the examples behind
 
   const talk = screen.getByRole("region", { name: "Conversation" });
   expect(within(talk).getByText("opened")).toBeVisible();
-  expect(within(talk).getByText("the striped ones are bad")).toBeVisible();
-  expect(within(talk).getByText("Examples since v4")).toBeVisible();
-  expect(within(talk).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e1");
-  expect(within(talk).getByText("Reviewer, support-agent")).toBeVisible();
+  expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
+  const calls = within(talk).getByRole("region", { name: "Agent calls" });
+  expect(within(calls).getByText("Pass → Fail")).toBeVisible();
+  expect(within(calls).getByText("draw a chart")).toBeVisible();
+  expect(within(calls).getByText("Stripes")).toHaveAttribute("title", "it is striped");
+  expect(within(calls).getByText("0.80 → 0.30")).toBeVisible();
+  // The reasons for each edit are on the rubric diff, not here.
+  expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
   expect(within(talk).getByText("Checks passed")).toBeVisible();
 
@@ -73,7 +77,7 @@ it("shows the rubric before and after, and takes a comment on one trait", async 
   await waitFor(() => expect(onComment).toHaveBeenCalledWith("orange is fine", "Color"));
 });
 
-it("lists what the checks point at: examples fixed and broken, and agent calls that change", () => {
+it("lists the examples the checks point at: broken, fixed, and new since the base version", () => {
   const failed = proposal({ passed: false });
   failed.checks!.broke = [{ id: "e2", before: 0.2, after: 0.9 }];
   show(failed, "checks");
@@ -81,9 +85,20 @@ it("lists what the checks point at: examples fixed and broken, and agent calls t
   const examples = screen.getByRole("region", { name: "Examples" });
   expect(within(examples).getByText("Broken")).toBeVisible();
   expect(within(examples).getByText("1.00 → 0.00")).toBeVisible();
-  const calls = screen.getByRole("region", { name: "Agent calls" });
-  expect(within(calls).getByText("Pass → Fail")).toBeVisible();
-  expect(within(calls).getByText("draw a chart")).toBeVisible();
+  expect(within(examples).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e2");
+  expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Agent calls" })).toBeNull();
+});
+
+it("falls back to the counts when a change has no summary, and lists new examples under Checks", () => {
+  const plain = proposal();
+  plain.checks!.summary = null;
+  plain.checks!.fixed = [];
+  const { unmount } = render(<ChangeView evalId="e" proposal={plain} onDecide={vi.fn()} onComment={vi.fn()} />);
+  expect(screen.getByText("7 of 10 agent calls pass, 8 before")).toBeVisible();
+  unmount();
+  show(plain, "checks");
+  expect(screen.getByText("New since v4")).toBeVisible();
 });
 
 it("offers only an override when a check failed, and no merge when out of date or still checking", () => {

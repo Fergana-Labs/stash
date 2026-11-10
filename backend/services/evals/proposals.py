@@ -7,7 +7,8 @@ carries checks, measured before anyone decides:
 - agreement with the person's labels before and after, on learned-from and held-out examples;
 - the labeled examples whose verdict it fixes, and the ones it breaks;
 - the examples added since the base version, which are what the change answers;
-- recent agent calls graded again with the proposed rubric, beside the score each got;
+- recent agent calls graded again with the proposed rubric, beside the score each got, and
+  a short summary of how the agent fares differently under it;
 - the manipulation check (robustness.py) on the proposed rubric.
 Approving saves the proposal as the next rubric version (refused when the rubric has changed
 since it was proposed); rejecting keeps the rubric and is shown to later builds, so they
@@ -19,7 +20,8 @@ import logging
 from uuid import UUID
 
 from ...database import get_pool
-from . import channel, judge, revise, robustness, service, versions
+from .. import llm
+from . import channel, items, judge, revise, robustness, service, versions
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +29,16 @@ CALLS = 10  # recent agent calls graded again with the proposed rubric
 LISTED = 50
 SNIPPET = 400
 COMMENT = 5000
+
+SUMMARY_SYSTEM = """You are told how an AI agent's recent outputs score under the rubric in \
+use and under a proposed rubric that would replace it. For the person deciding whether to \
+adopt the proposed rubric, say how the agent fares differently under it: which kind of output \
+now passes or fails that didn't before, and which trait decides it. If no verdict changes, \
+say so and how the scores move.
+
+Two sentences at most, 45 words at most. Plain words. Be concrete: name the trait and what \
+the affected outputs have in common, with their numbers where they matter. Don't explain how \
+this was measured, and don't recommend. Reply with the summary and nothing else."""
 
 
 def _proposal(row) -> dict:
@@ -69,9 +81,10 @@ def _flips(examples: list[dict], before: dict, after: dict) -> tuple[list[dict],
     return fixed, broke
 
 
-async def _regrade_calls(model_id: UUID, candidate: dict) -> dict | None:
+async def _regrade_calls(model_id: UUID, candidate: dict) -> tuple[dict | None, dict[str, str]]:
     """The eval's most recent agent calls (whole outputs, not changes), graded again with the
-    proposed rubric: each call's score then and now, and which verdicts change."""
+    proposed rubric: each call's score then and now, the trait it scores lowest on now, and
+    which verdicts change. Also the start of each call's output, by call id."""
     rows = await get_pool().fetch(
         """SELECT id, input, confidence FROM intuition_predictions
            WHERE model_id=$1 AND COALESCE(output->>'mode', '') <> 'change'
@@ -80,7 +93,7 @@ async def _regrade_calls(model_id: UUID, candidate: dict) -> dict | None:
         CALLS,
     )
     if not rows:
-        return None
+        return None, {}
     gate = asyncio.Semaphore(revise.CONCURRENCY)
     graded: list[dict] = []
 
@@ -90,16 +103,23 @@ async def _regrade_calls(model_id: UUID, candidate: dict) -> dict | None:
                 result = await judge.grade(model_id, row["input"], version=candidate)
             except judge.JudgeUnavailable:
                 return
+        low = min(result.get("traits") or [], key=lambda t: t["score"], default=None)
         graded.append(
-            {"id": str(row["id"]), "before": float(row["confidence"]), "after": result["score"]}
+            {
+                "id": str(row["id"]),
+                "before": float(row["confidence"]),
+                "after": result["score"],
+                "low": low and {"trait": low["trait"], "why": low.get("why", "")},
+            }
         )
 
     await asyncio.gather(*(one(r) for r in rows))
     if not graded:
-        return None
+        return None, {}
     order = {str(r["id"]): i for i, r in enumerate(rows)}
     graded.sort(key=lambda g: order[g["id"]])
     n = len(graded)
+    texts = {str(r["id"]): _snippet(r["input"])["text"] for r in rows}
     return {
         "n": n,
         "mean_before": round(sum(g["before"] for g in graded) / n, 3),
@@ -108,10 +128,52 @@ async def _regrade_calls(model_id: UUID, candidate: dict) -> dict | None:
         "pass_after": sum(g["after"] >= 0.5 for g in graded),
         "changed": [g for g in graded if (g["before"] >= 0.5) != (g["after"] >= 0.5)],
         "calls": graded,
-    }
+    }, texts
 
 
-async def checks(model_id: UUID, base: dict, candidate: dict, examples: list[dict]) -> dict:
+async def _summarize(
+    model_id: UUID, changes: list[dict], calls: dict, texts: dict[str, str]
+) -> str | None:
+    """How the agent fares under the proposed rubric compared with the one in use, in a
+    sentence or two, from its recent calls graded under both."""
+
+    def verdict(score: float) -> str:
+        return "pass" if score >= 0.5 else "fail"
+
+    lines = [
+        "The proposed rubric's edits:",
+        *(f"- {c['kind']} {c.get('trait', '')}: {c.get('why', '')}" for c in changes),
+        "",
+        f"The agent's last {calls['n']} outputs: {calls['pass_before']} pass under the rubric "
+        f"in use, {calls['pass_after']} under the proposed one. Mean score "
+        f"{calls['mean_before']:.2f} then, {calls['mean_after']:.2f} now.",
+        "",
+        "Each output (score and verdict under the rubric in use, then under the proposed one):",
+    ]
+    for g in calls["calls"]:
+        low = g.get("low")
+        lines.append(
+            f"- {g['before']:.2f} {verdict(g['before'])} -> {g['after']:.2f} {verdict(g['after'])}"
+            + (f"; lowest trait now: {low['trait']} ({low['why']})" if low else "")
+            + f"; output starts: {items._clip(texts.get(g['id'], ''), 300, keep='start')}"
+        )
+    reply = await llm._get_client().messages.create(
+        model=judge.model(),
+        max_tokens=300,
+        system=SUMMARY_SYSTEM,
+        messages=[{"role": "user", "content": [{"type": "text", "text": "\n".join(lines)}]}],
+    )
+    text = "".join(b.text for b in reply.content if b.type == "text").strip()
+    return text[:600] or None
+
+
+async def checks(
+    model_id: UUID,
+    base: dict,
+    candidate: dict,
+    examples: list[dict],
+    changes: list[dict] | None = None,
+) -> dict:
     """Measure a proposed rubric against the one it would replace. Grades come from the cache
     a build already filled where it can (revise.grades), so this mostly costs the agent calls
     and the manipulation check."""
@@ -128,6 +190,7 @@ async def checks(model_id: UUID, base: dict, candidate: dict, examples: list[dic
             if base.get("created_at") and e["created_at"] > base["created_at"]
         ],
         "calls": None,
+        "summary": None,
         "manipulation": None,
         "short": None,
     }
@@ -152,7 +215,9 @@ async def checks(model_id: UUID, base: dict, candidate: dict, examples: list[dic
             }
             out["fixed"], out["broke"] = _flips(measured, before, after)
     try:
-        out["calls"] = await _regrade_calls(model_id, candidate)
+        out["calls"], texts = await _regrade_calls(model_id, candidate)
+        if out["calls"]:
+            out["summary"] = await _summarize(model_id, changes or [], out["calls"], texts)
     except Exception:
         log.exception("Grading agent calls with a proposed rubric failed for %s", model_id)
     try:
@@ -286,7 +351,11 @@ async def run_checks(proposal_id: UUID) -> None:
     if base is None:
         return
     found = await checks(
-        row["model_id"], base, _proposal(row), await build._examples(row["model_id"])
+        row["model_id"],
+        base,
+        _proposal(row),
+        await build._examples(row["model_id"]),
+        row["changes"],
     )
     await get_pool().execute(
         "UPDATE eval_rubric_proposals SET checks=$2 WHERE id=$1", proposal_id, found

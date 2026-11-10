@@ -104,6 +104,12 @@ async def test_a_build_proposes_a_change_with_its_checks_and_approval_applies_it
     assert found["calls"]["n"] == 1 and found["calls"]["pass_before"] == 1
     assert found["calls"]["pass_after"] == 0
     assert found["calls"]["changed"][0]["id"] == before["call_id"]
+    # The call names the trait it now scores lowest on (the fake judge fails every trait
+    # alike), and the change says in a line how the agent fares under the proposed rubric.
+    assert found["calls"]["changed"][0]["low"]["trait"] in ("Color", "Stripes")
+    assert found["summary"] == "Striped outputs now fail on Stripes."
+    assert "1 pass under the rubric in use, 0 under the proposed one" in world.summary_texts[-1]
+    assert "1.00 pass -> 0.00 fail; lowest trait now:" in world.summary_texts[-1]
     assert proposal["calls"][before["call_id"]]["caller"] == "support-agent"
     assert found["manipulation"]["resisted"] == found["manipulation"]["n"]
     assert proposal["passed"] is True and proposal["stale"] is False

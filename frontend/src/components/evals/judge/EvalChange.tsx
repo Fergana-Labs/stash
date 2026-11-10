@@ -18,7 +18,6 @@ type Decision = "approve" | "reject";
 type Tab = "conversation" | "rubric" | "checks";
 const TABS: Tab[] = ["conversation", "rubric", "checks"];
 
-const VERB: Record<string, string> = { add: "Add", tighten: "Tighten", fix: "Fix", point: "Point", remove: "Remove", request: "Change", write: "Rewrite", description: "Description", scoring: "Score by" };
 const SCORING = { mean: "Average", lowest: "Lowest trait" };
 const STATE = {
   open: { label: "Open", icon: GitPullRequest, tone: "text-emerald-700 dark:text-emerald-400" },
@@ -64,8 +63,9 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   </EvalPageFrame>;
 }
 
-/** A proposed change as a pull request on the rubric: a conversation that ends in a merge or
- * a close, the rubric before and after, and the checks that measured it. */
+/** A proposed change as a pull request on the rubric: a conversation that opens with how the
+ * agent fares under the proposed rubric and ends in a merge or a close, the rubric before and
+ * after, and the checks that measured it. */
 export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onComment }: {
   evalId: string;
   proposal: EvalProposal;
@@ -100,12 +100,9 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
       ))}
     </nav>
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_260px]">
-      {tab === "conversation" && <Conversation evalId={evalId} proposal={p} onDecide={onDecide} onComment={onComment} />}
+      {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} onComment={onComment} />}
       {tab === "rubric" && <RubricDiff proposal={p} diff={diff} onComment={onComment} />}
-      {tab === "checks" && <div className="min-w-0 space-y-3">
-        <Flipped evalId={evalId} proposal={p} />
-        <CallList proposal={p} />
-      </div>}
+      {tab === "checks" && <Flipped evalId={evalId} proposal={p} />}
       <Checks proposal={p} />
     </div>
   </article>;
@@ -113,8 +110,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
 
 // ── The conversation ─────────────────────────────────────────────────────
 
-function Conversation({ evalId, proposal: p, onDecide, onComment }: {
-  evalId: string;
+function Conversation({ proposal: p, onDecide, onComment }: {
   proposal: EvalProposal;
   onDecide: (decision: Decision, note: string) => Promise<void>;
   onComment: (body: string, trait: string) => Promise<void>;
@@ -123,19 +119,12 @@ function Conversation({ evalId, proposal: p, onDecide, onComment }: {
   // Comments made before the decision come before it; the rest follow.
   const before = p.comments.filter((c) => !p.decided_at || c.created_at <= p.decided_at);
   const after = p.comments.filter((c) => p.decided_at && c.created_at > p.decided_at);
-  const evidence = (p.checks?.evidence ?? []).map((id) => p.examples[id]).filter(Boolean);
+  const calls = p.checks?.calls;
   return <section aria-label="Conversation" className="min-w-0 space-y-2">
     <Entry who={p.proposed_by ?? "Agent"} what="opened" at={p.created_at}>
-      <ul className="m-0 list-none space-y-1 p-0">
-        {p.changes.map((c, i) => <li key={i}>
-          <span className="font-medium">{VERB[c.kind] ?? c.kind}{c.trait ? ` ${c.trait}` : ""}</span>
-          {c.why && <span className="ml-2 text-[12px] text-muted-foreground">{c.why}</span>}
-        </li>)}
-      </ul>
-      {evidence.length > 0 && <div className="mt-2">
-        <h3 className={sectionTitle}>Examples since v{p.base} <span className="tabular-nums">{evidence.length}</span></h3>
-        <ExampleRows evalId={evalId} rows={evidence.map((example) => ({ example }))} />
-      </div>}
+      {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
+      {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
+      <CallList proposal={p} />
     </Entry>
     {before.map((c) => <CommentEntry key={c.id} comment={c} />)}
     {state !== "open" && p.decided_at && <Entry who={p.decided_by ?? "Someone"} at={p.decided_at}
@@ -228,7 +217,7 @@ function rubricDiff(p: EvalProposal): { items: Diffed[]; general: string[]; unch
     } else untouched += 1;
   }
   for (const t of before) if (!now.has(key(t.name))) items.push({ sign: "-", name: t.name, why: why.get(key(t.name)), trait: true, lines: [["-", "Good", t.good], ["-", "Bad", t.bad]] });
-  if (p.before && p.before.scoring !== p.scoring) items.push({ sign: "~", name: "Scored by", trait: false, lines: [["-", "", SCORING[p.before.scoring]], ["+", "", SCORING[p.scoring]]] });
+  if (p.before && p.before.scoring !== p.scoring) items.push({ sign: "~", name: "Scored by", why: p.changes.find((c) => c.kind === "scoring")?.why, trait: false, lines: [["-", "", SCORING[p.before.scoring]], ["+", "", SCORING[p.scoring]]] });
   if (p.before && p.before.instructions !== p.instructions) items.push({ sign: "~", name: "Description", trait: false, lines: [["-", "", p.before.instructions], ["+", "", p.instructions]] });
   const general = p.changes.filter((c) => !c.trait && c.why && c.kind !== "description").map((c) => c.why);
   return { items, general, unchanged: untouched, count: items.length };
@@ -338,16 +327,19 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
 
 const scores = (f: EvalFlip) => `${f.before.toFixed(2)} → ${f.after.toFixed(2)}`;
 
-/** The labeled examples whose verdict the change sets wrong, and the ones it sets right. */
+/** The labeled examples whose verdict the change sets wrong, the ones it sets right, and the
+ * rest of the examples added since the version it was proposed on. */
 function Flipped({ evalId, proposal: p }: { evalId: string; proposal: EvalProposal }) {
   const c = p.checks;
   if (!c) return null;
-  const groups = [
+  const flipped = new Set([...c.fixed, ...c.broke].map((f) => f.id));
+  const groups: { title: string; rows: { example: EvalChangeExample; flip?: EvalFlip }[] }[] = [
     { title: "Broken", rows: c.broke.map((f) => ({ example: p.examples[f.id], flip: f })) },
     { title: "Fixed", rows: c.fixed.map((f) => ({ example: p.examples[f.id], flip: f })) },
+    { title: `New since v${p.base}`, rows: c.evidence.filter((id) => !flipped.has(id)).map((id) => ({ example: p.examples[id] })) },
   ].map((g) => ({ ...g, rows: g.rows.filter((r) => r.example) })).filter((g) => g.rows.length > 0);
   if (groups.length === 0) return null;
-  return <section aria-label="Examples" className="space-y-2">
+  return <section aria-label="Examples" className="min-w-0 space-y-2">
     {groups.map((g) => <div key={g.title}>
       <h3 className={sectionTitle}>{g.title} <span className="tabular-nums">{g.rows.length}</span></h3>
       <ExampleRows evalId={evalId} rows={g.rows} />
@@ -376,13 +368,14 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
   const rows = (p.checks?.calls?.changed ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call);
   if (rows.length === 0) return null;
   const verdict = (score: number) => (score >= 0.5 ? "Pass" : "Fail");
-  return <section aria-label="Agent calls">
+  return <section aria-label="Agent calls" className="mt-2 first:mt-0">
     <h3 className={sectionTitle}>Agent calls that change <span className="tabular-nums">{rows.length}</span></h3>
     <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
       {rows.map(({ flip, call }) => (
         <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
           <span className={cn("w-16 shrink-0 whitespace-nowrap font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{verdict(flip.before)} → {verdict(flip.after)}</span>
           <Snippet snippet={call} />
+          {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
           <span className="whitespace-nowrap tabular-nums">{scores(flip)}</span>
           <span className="whitespace-nowrap text-muted-foreground">{call.caller || "unknown caller"}</span>
           <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={call.created_at}>{relativeTime(call.created_at)}</time>
