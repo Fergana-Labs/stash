@@ -135,7 +135,7 @@ export interface EvalChecks {
   evidence: string[];
   /** Recent agent calls graded again with the proposed rubric. */
   calls: { n: number; mean_before: number; mean_after: number; pass_before: number; pass_after: number; changed: EvalFlip[]; calls: EvalFlip[] } | null;
-  /** How the agent fares under the proposed rubric compared with the one in use, in a line or two. */
+  /** What kind of agent output the proposed rubric treats differently from the one in use, in one sentence. */
   summary?: string | null;
   manipulation: EvalManipulation | null;
   short: { graded: number; of: number } | null;

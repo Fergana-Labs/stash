@@ -31,15 +31,15 @@ SNIPPET = 400
 COMMENT = 5000
 
 SUMMARY_SYSTEM = """You are told how an AI agent's recent outputs score under the rubric in \
-use and under a proposed rubric that would replace it. For the person deciding whether to \
-adopt the proposed rubric, say how the agent fares differently under it: which kind of output \
-now passes or fails that didn't before, and which trait decides it. If no verdict changes, \
-say so and how the scores move.
+use and under a proposed rubric that would replace it. Say, for the person deciding whether to \
+adopt the proposed rubric, what kind of output it treats differently and why.
 
-Two sentences at most, 45 words at most. Plain words, and never an \
-arrow character (such as → or ->). Be concrete: name the trait and what \
-the affected outputs have in common, with their numbers where they matter. Don't explain how \
-this was measured, and don't recommend. Reply with the summary and nothing else."""
+One sentence, 20 words at most, in plain words. Describe the kind of output, not the \
+individual outputs: no names of outputs, no scores, no counts, no lists, no parentheses, no \
+colons or semicolons, and never an arrow character. The page shows the outputs and their \
+scores right below your sentence. For example: "Replies that promise a refund without \
+checking the order now fail." If no verdict changes, reply "No verdicts change." Reply with \
+the sentence and nothing else."""
 
 
 def _proposal(row) -> dict:
@@ -135,8 +135,8 @@ async def _regrade_calls(model_id: UUID, candidate: dict) -> tuple[dict | None, 
 async def _summarize(
     model_id: UUID, changes: list[dict], calls: dict, texts: dict[str, str]
 ) -> str | None:
-    """How the agent fares under the proposed rubric compared with the one in use, in a
-    sentence or two, from its recent calls graded under both."""
+    """What kind of output the proposed rubric treats differently from the one in use, in one
+    plain sentence, from the agent's recent calls graded under both."""
 
     def verdict(score: float) -> str:
         return "pass" if score >= 0.5 else "fail"
@@ -160,12 +160,12 @@ async def _summarize(
         )
     reply = await llm._get_client().messages.create(
         model=judge.model(),
-        max_tokens=300,
+        max_tokens=120,
         system=SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": [{"type": "text", "text": "\n".join(lines)}]}],
     )
     text = "".join(b.text for b in reply.content if b.type == "text").strip()
-    return text[:600] or None
+    return text[:300] or None
 
 
 async def checks(
