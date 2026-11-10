@@ -36,7 +36,8 @@ adopt the proposed rubric, say how the agent fares differently under it: which k
 now passes or fails that didn't before, and which trait decides it. If no verdict changes, \
 say so and how the scores move.
 
-Two sentences at most, 45 words at most. Plain words. Be concrete: name the trait and what \
+Two sentences at most, 45 words at most. Plain words, and never an \
+arrow character (such as → or ->). Be concrete: name the trait and what \
 the affected outputs have in common, with their numbers where they matter. Don't explain how \
 this was measured, and don't recommend. Reply with the summary and nothing else."""
 

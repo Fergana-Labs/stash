@@ -79,6 +79,8 @@ person's words it comes from. Keep traits that work unchanged, word for word. Tr
 as the person's are theirs: keep them exactly, name included. Trait names are just the name, \
 with no notes in them. 3-10 traits in total. Nothing about signatures, handles or watermarks.
 
+Write in plain words: never use arrow characters (such as → or ->); say "to", "gives" or "then".
+
 Return only JSON: {"changes": [{"kind": "add"|"tighten"|"fix"|"point"|"remove", "trait": str \
 (the trait's name), "why": str (one sentence: the evidence)}], "traits": [{"name": str (2-4 \
 words), "good": str, "bad": str, "basis": str (one sentence: the evidence it rests on)}]} \

@@ -45,6 +45,8 @@ like here: specific enough that two judges would grade the same output the same 
 what the person said about their examples, when they said anything. Nothing about \
 signatures, handles or watermarks.
 
+Write in plain words: never use arrow characters (such as → or ->); say "to", "gives" or "then".
+
 Return only JSON: {"summary": str (one sentence: what these examples are and what makes one \
 good), "traits": [{"name": str (2-4 words), "good": str, "bad": str, "basis": str (one \
 sentence: the evidence it rests on)}]}"""

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame, evalInputClass } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -24,6 +24,7 @@ const STATE = {
   merged: { label: "Merged", icon: GitMerge, tone: "text-violet-700 dark:text-violet-400" },
   closed: { label: "Closed", icon: GitPullRequestClosed, tone: "text-red-700 dark:text-red-400" },
 };
+const chipClass = "rounded bg-brand-50 px-1.5 py-px font-mono text-[11px] text-brand-700 dark:bg-brand-600/15 dark:text-brand-300";
 const sectionTitle = "m-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
 const buttonClass = "h-7 rounded border border-border px-2.5 text-[12px] hover:bg-surface disabled:opacity-50";
 const primaryClass = "h-7 rounded bg-foreground px-2.5 text-[12px] text-background disabled:opacity-50";
@@ -77,6 +78,8 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
   const state = STATE[changeState(p)];
   const Icon = state.icon;
   const diff = rubricDiff(p);
+  const merged = p.status === "approved";
+  const next = p.version ?? p.base + 1;
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
     { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
     { key: "rubric", label: "Rubric changes", extra: <span className="tabular-nums text-muted-foreground">{diff.count}</span> },
@@ -87,9 +90,13 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
     <div className="flex flex-wrap items-center gap-x-2.5 text-[12px] text-muted-foreground">
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>
       {p.stale && <span>Out of date</span>}
-      <span className="tabular-nums">Rubric v{p.base} → v{p.version ?? p.base + 1}</span>
-      <span>{p.opened_by ?? "Unknown"}</span>
-      <time dateTime={p.created_at}>{relativeTime(p.created_at)}</time>
+      <span><span className="font-medium text-foreground">{merged ? p.decided_by ?? "Unknown" : p.opened_by ?? "Unknown"}</span> {merged ? "merged" : p.status === "open" ? "wants to merge" : "wanted to merge"} {diff.count} {diff.count === 1 ? "edit" : "edits"} into</span>
+      <span aria-label={`rubric v${p.base} from rubric v${next}`} className="inline-flex items-center gap-1.5">
+        <span className={chipClass}>rubric v{p.base}</span>
+        <ArrowLeft aria-hidden className="size-3.5" />
+        <span className={chipClass}>rubric v{next}</span>
+      </span>
+      <time dateTime={merged && p.decided_at ? p.decided_at : p.created_at}>{relativeTime(merged && p.decided_at ? p.decided_at : p.created_at)}</time>
     </div>
     <nav aria-label="Change sections" className="mt-3 mb-3 flex gap-1 border-b border-border pb-1.5">
       {tabs.map((t) => (
@@ -280,6 +287,13 @@ function TraitDiff({ diff: d, comments, onComment }: { diff: Diffed; comments: E
   </div>;
 }
 
+/** A value before and after, joined by an arrow icon; read aloud as "8 to 5". */
+function Shift({ from, to }: { from: ReactNode; to: ReactNode }) {
+  return <span className="inline-flex items-center gap-1 whitespace-nowrap tabular-nums">
+    {from}<ArrowRight aria-hidden className="size-3 shrink-0 opacity-60" /><span className="sr-only"> to </span>{to}
+  </span>;
+}
+
 // ── Checks ───────────────────────────────────────────────────────────────
 
 const ratio = (t: EvalTally) => `${t.right}/${t.n}`;
@@ -288,12 +302,12 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
   const c = p.checks;
   if (!c) return <section aria-label="Checks"><h3 className={sectionTitle}>Checks</h3>
     <p role="status" className="m-0 mt-1.5 flex items-center gap-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Checking</p></section>;
-  const rows: { label: string; value: string; ok?: boolean; title?: string }[] = [];
+  const rows: { label: string; value: ReactNode; ok?: boolean; title?: string }[] = [];
   const { before: qb, after: qa } = p.quality;
-  if (qa) rows.push({ label: "Quality", value: qb ? `${qb.score} → ${qa.score}` : `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
+  if (qa) rows.push({ label: "Quality", value: qb ? <Shift from={qb.score} to={qa.score} /> : `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
   if (c.before && c.after) {
-    if (c.after.fit.n > 0) rows.push({ label: "Learned from", value: `${ratio(c.before.fit)} → ${ratio(c.after.fit)}`, ok: c.after.fit.right >= c.before.fit.right });
-    if (c.after.check.n > 0) rows.push({ label: "Held out", value: `${ratio(c.before.check)} → ${ratio(c.after.check)}`, ok: c.after.check.right >= c.before.check.right });
+    if (c.after.fit.n > 0) rows.push({ label: "Learned from", value: <Shift from={ratio(c.before.fit)} to={ratio(c.after.fit)} />, ok: c.after.fit.right >= c.before.fit.right });
+    if (c.after.check.n > 0) rows.push({ label: "Held out", value: <Shift from={ratio(c.before.check)} to={ratio(c.after.check)} />, ok: c.after.check.right >= c.before.check.right });
     rows.push({ label: "Examples fixed", value: `${c.fixed.length}` });
     rows.push({ label: "Examples broken", value: `${c.broke.length}`, ok: c.broke.length === 0 });
   }
@@ -303,8 +317,8 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
     title: c.manipulation.resisted < c.manipulation.n ? `Scored ${c.manipulation.worst.score.toFixed(2)} with: ${c.manipulation.worst.claim}` : undefined,
   });
   if (c.calls) {
-    rows.push({ label: "Agent calls passing", value: `${c.calls.pass_before}/${c.calls.n} → ${c.calls.pass_after}/${c.calls.n}` });
-    rows.push({ label: "Mean score", value: `${c.calls.mean_before.toFixed(2)} → ${c.calls.mean_after.toFixed(2)}` });
+    rows.push({ label: "Agent calls passing", value: <Shift from={`${c.calls.pass_before}/${c.calls.n}`} to={`${c.calls.pass_after}/${c.calls.n}`} /> });
+    rows.push({ label: "Mean score", value: <Shift from={c.calls.mean_before.toFixed(2)} to={c.calls.mean_after.toFixed(2)} /> });
   }
   return <section aria-label="Checks" className="min-w-0">
     <h3 className={sectionTitle}>Checks</h3>
@@ -325,7 +339,7 @@ function Checks({ proposal: p }: { proposal: EvalProposal }) {
 
 // ── What the checks point at ─────────────────────────────────────────────
 
-const scores = (f: EvalFlip) => `${f.before.toFixed(2)} → ${f.after.toFixed(2)}`;
+const scores = (f: EvalFlip) => <Shift from={f.before.toFixed(2)} to={f.after.toFixed(2)} />;
 
 /** The labeled examples whose verdict the change sets wrong, the ones it sets right, and the
  * rest of the examples added since the version it was proposed on. */
@@ -373,7 +387,7 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
     <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
       {rows.map(({ flip, call }) => (
         <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
-          <span className={cn("w-16 shrink-0 whitespace-nowrap font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{verdict(flip.before)} → {verdict(flip.after)}</span>
+          <span className={cn("w-[68px] shrink-0 whitespace-nowrap font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}><Shift from={verdict(flip.before)} to={verdict(flip.after)} /></span>
           <Snippet snippet={call} />
           {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
           <span className="whitespace-nowrap tabular-nums">{scores(flip)}</span>

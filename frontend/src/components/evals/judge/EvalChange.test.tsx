@@ -19,28 +19,31 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   show(proposal({ comments: [comment()] }));
   expect(screen.getByRole("heading", { name: "Add Stripes, tighten Color #2" })).toBeVisible();
   expect(screen.getByText("Open")).toBeVisible();
-  expect(screen.getByText("Rubric v4 → v5")).toBeVisible();
+  expect(screen.getByLabelText("rubric v4 from rubric v5")).toBeVisible();
+  expect(screen.getByText("wants to merge 3 edits into", { exact: false })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Conversation\s*1$/ })).toHaveAttribute("aria-current", "page");
 
   const talk = screen.getByRole("region", { name: "Conversation" });
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
   const calls = within(talk).getByRole("region", { name: "Agent calls" });
-  expect(within(calls).getByText("Pass → Fail")).toBeVisible();
+  expect(calls).toHaveTextContent("Pass to Fail");
   expect(within(calls).getByText("draw a chart")).toBeVisible();
   expect(within(calls).getByText("Stripes")).toHaveAttribute("title", "it is striped");
-  expect(within(calls).getByText("0.80 → 0.30")).toBeVisible();
+  expect(calls).toHaveTextContent("0.80 to 0.30");
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
   expect(within(talk).getByText("Checks passed")).toBeVisible();
 
   const checks = screen.getByRole("region", { name: "Checks" });
-  expect(within(checks).getByText("82 → 97")).toBeVisible();
-  expect(within(checks).getByText("6/8 → 8/8")).toBeVisible();
-  expect(within(checks).getByText("3/4 → 4/4")).toBeVisible();
-  expect(within(checks).getByText("8/10 → 7/10")).toBeVisible();
+  expect(checks).toHaveTextContent("82 to 97");
+  expect(checks).toHaveTextContent("6/8 to 8/8");
+  expect(checks).toHaveTextContent("3/4 to 4/4");
+  expect(checks).toHaveTextContent("8/10 to 7/10");
   expect(within(checks).queryByLabelText("Failed")).toBeNull();
+  // Before-and-after values are joined by an arrow icon, never an arrow character.
+  expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
 
 it("comments, merges with what was typed as the note, and closes", async () => {
@@ -84,7 +87,7 @@ it("lists the examples the checks point at: broken, fixed, and new since the bas
   expect(screen.getByLabelText("Failed")).toBeVisible();
   const examples = screen.getByRole("region", { name: "Examples" });
   expect(within(examples).getByText("Broken")).toBeVisible();
-  expect(within(examples).getByText("1.00 → 0.00")).toBeVisible();
+  expect(examples).toHaveTextContent("1.00 to 0.00");
   expect(within(examples).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e2");
   expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
   expect(screen.queryByRole("region", { name: "Agent calls" })).toBeNull();
