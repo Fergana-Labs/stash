@@ -275,7 +275,7 @@ async def test_a_drop_becomes_unlabeled_examples_and_wakes_the_agent(client: Asy
     assert listed["busy"] is True  # waiting for the agent
     assert [m["id"] for m in listed["messages"]] == [message["id"]]
     assert message["unread"] is True and listed["messages"][0]["unread"] is True
-    examples =(await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()["examples"]
+    examples = (await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()["examples"]
     assert len(examples) == 3 and all(e["label"] is None for e in examples)
     detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
     assert detail["examples"] == {"good": 0, "bad": 0} and detail["unlabeled"] == 3
