@@ -134,6 +134,15 @@ it("sorts the evals by signed change: gains first, no change next, drops last", 
   const rows = within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1);
   expect(rows.map((r) => within(r).getAllByRole("cell")[3].textContent)).toEqual(["+0.80", "0.00", "-0.03"]);
 
+  // Clicking the heading flips the order, and clicking again flips it back.
+  const heading = screen.getByRole("columnheader", { name: "Change" });
+  const order = () => within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[3].textContent);
+  fireEvent.click(within(heading).getByRole("button", { name: "Change" }));
+  expect(heading).toHaveAttribute("aria-sort", "ascending");
+  expect(order()).toEqual(["-0.03", "0.00", "+0.80"]);
+  fireEvent.click(within(heading).getByRole("button", { name: "Change" }));
+  expect(order()).toEqual(["+0.80", "0.00", "-0.03"]);
+
   // Hiding the evals whose score didn't move leaves the other two.
   fireEvent.click(screen.getByRole("switch", { name: "Hide unchanged" }));
   const left = within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1);

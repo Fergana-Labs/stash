@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, ChevronDown, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, Search, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronUp, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -402,8 +402,8 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
  * was asked, else the start of what it wrote), the score it got under the rubric in use, and
  * its score under the proposed rubric, in columns headed as the page header names the two:
  * "rubric" and the change's own name. A last column gives how far the score moved, and the
- * table is sorted by it as a signed number, largest gain first and largest drop last; its
- * heading is marked as the sort. */
+ * table is sorted by it as a signed number, largest gain first; clicking its heading flips
+ * the order to largest drop first and back. */
 /** How far a score moved, signed: "-0.88", "+0.03", "0.00". */
 function delta(f: EvalFlip): string {
   const moved = f.after - f.before;
@@ -415,9 +415,10 @@ const unchanged = (f: EvalFlip) => Math.abs(f.after - f.before) < 0.005;
 
 function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame: boolean }) {
   const [query, setQuery] = useState("");
+  const [ascending, setAscending] = useState(false);
   const all = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
     .map((r) => ({ ...r, name: r.call.name || r.call.asked || r.call.text.split("\n")[0] || r.call.files[0]?.name || "" }))
-    .sort((a, b) => (b.flip.after - b.flip.before) - (a.flip.after - a.flip.before));
+    .sort((a, b) => ((b.flip.after - b.flip.before) - (a.flip.after - a.flip.before)) * (ascending ? -1 : 1));
   if (all.length === 0) return null;
   const wanted = query.trim().toLowerCase();
   const rows = all.filter((r) => (!wanted || r.name.toLowerCase().includes(wanted)) && !(hideSame && unchanged(r.flip)));
@@ -437,8 +438,11 @@ function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame:
         </th>
         <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
         <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
-        <th scope="col" aria-sort="descending" className={cn(column, "pb-2 font-medium text-foreground")}>
-          <span className="inline-flex items-center gap-0.5">Change<ChevronDown aria-hidden className="size-3" /></span>
+        <th scope="col" aria-sort={ascending ? "ascending" : "descending"} className={cn(column, "pb-2 font-medium")}>
+          <button type="button" onClick={() => setAscending(!ascending)} title={ascending ? "Largest drop first" : "Largest gain first"}
+            className="inline-flex items-center gap-0.5 uppercase tracking-wide text-foreground hover:opacity-70">
+            Change{ascending ? <ChevronUp aria-hidden className="size-3" /> : <ChevronDown aria-hidden className="size-3" />}
+          </button>
         </th>
       </tr>
     </thead>
