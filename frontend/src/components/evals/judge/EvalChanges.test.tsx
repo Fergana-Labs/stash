@@ -7,7 +7,7 @@ import { now, proposal } from "./change-fixture";
 const show = (proposals: EvalProposal[]) => render(<EvalChanges evalId="e" changes={{ review_required: true, proposals } satisfies Changes} />);
 const comment = { id: "k1", author: "Reviewer", trait: "", body: "too strict?", created_at: now };
 
-it("lists open changes, each linking to its own page with its checks and comments", () => {
+it("lists open changes, each linking to its own page with its comments", () => {
   show([
     proposal({ comments: [comment, { ...comment, id: "k2" }] }),
     proposal({ id: "p1", number: 1, status: "approved", version: 5, decided_by: "Reviewer", decided_at: now }),
@@ -17,7 +17,6 @@ it("lists open changes, each linking to its own page with its checks and comment
   expect(rows).toHaveLength(1);
   expect(rows[0]).toHaveAttribute("href", "/reward-models/evals/e/changes/2");
   expect(within(rows[0]).getByText("Add Stripes, tighten Color")).toBeVisible();
-  expect(within(rows[0]).getByLabelText("Checks passed")).toBeVisible();
   expect(within(rows[0]).getByTitle("Comments")).toHaveTextContent("2");
   expect(within(rows[0]).getByText("Owner")).toBeVisible();
 });
@@ -33,12 +32,10 @@ it("lists merged and closed changes under Closed", () => {
   expect(rows.map((r) => r.getAttribute("href"))).toEqual(["/reward-models/evals/e/changes/1", "/reward-models/evals/e/changes/0"]);
   expect(within(rows[0]).getByText("Merged as v5")).toBeVisible();
   expect(within(rows[1]).getByText("Closed")).toBeVisible();
-  expect(within(rows[1]).getByLabelText("Checks failed")).toBeVisible();
 });
 
-it("marks checks still running and a change that is out of date, and opens on Closed when nothing is open", () => {
+it("marks a change that is out of date, and opens on Closed when nothing is open", () => {
   const { unmount } = show([proposal({ checks: null, passed: null }), proposal({ id: "p1", number: 1, stale: true })]);
-  expect(screen.getByLabelText("Checking")).toBeVisible();
   expect(screen.getByText("Out of date")).toBeVisible();
   unmount();
   show([proposal({ status: "rejected" })]);

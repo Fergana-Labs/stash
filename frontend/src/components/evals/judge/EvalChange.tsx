@@ -3,20 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, ChevronDown, ChevronUp, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, GitMerge, GitPullRequest, GitPullRequestClosed, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { diffLines, errorMessage, relativeTime } from "@/components/reward-models/rm-text";
-import { ChecksMark, changeState, changeTitle } from "./EvalChanges";
-import FileThumb from "./FileThumb";
+import { changeState, changeTitle } from "./EvalChanges";
 import {
-  evalChanges, evalDecide, evalExampleFilePath, evalGet,
-  type EvalChangeCall, type EvalChangeExample, type EvalComment, type EvalFlip, type EvalProposal, type EvalTally, type EvalTrait,
+  evalChanges, evalDecide, evalGet,
+  type EvalChangeCall, type EvalComment, type EvalFlip, type EvalProposal, type EvalTrait,
 } from "@/lib/evals-api";
 
 type Decision = "approve" | "reject";
-type Tab = "conversation" | "rubric" | "checks";
-const TABS: Tab[] = ["conversation", "rubric", "checks"];
+type Tab = "conversation" | "rubric";
+const TABS: Tab[] = ["conversation", "rubric"];
 
 const SCORING = { mean: "Average", lowest: "Lowest trait" };
 const STATE = {
@@ -25,7 +24,6 @@ const STATE = {
   closed: { label: "Closed", icon: GitPullRequestClosed, tone: "text-red-700 dark:text-red-400" },
 };
 const chipClass = "rounded bg-brand-50 px-1.5 py-px font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[11px] text-brand-700 dark:bg-brand-600/15 dark:text-brand-300";
-const sectionTitle = "m-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
 const buttonClass = "h-7 rounded border border-border px-2.5 text-[12px] hover:bg-surface disabled:opacity-50";
 const primaryClass = "h-7 rounded bg-foreground px-2.5 text-[12px] text-background disabled:opacity-50";
 
@@ -58,7 +56,7 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   </EvalPageFrame>;
   return <EvalPageFrame>
     {back}
-    <ChangeView evalId={evalId} proposal={proposal} initialTab={initialTab}
+    <ChangeView proposal={proposal} initialTab={initialTab}
       onDecide={async (decision, note) => setProposals((await evalDecide(evalId, proposal.id, decision, note)).proposals)} />
   </EvalPageFrame>;
 }
@@ -74,10 +72,8 @@ export function changeBranch(p: EvalProposal): string {
 }
 
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
- * agent fares under the proposed rubric and ends in a merge or a close, the rubric's diff, and
- * the checks that measured it. */
-export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
-  evalId: string;
+ * agent fares under the proposed rubric and ends in a merge or a close, and the rubric's diff. */
+export function ChangeView({ proposal: p, initialTab, onDecide }: {
   proposal: EvalProposal;
   initialTab?: string;
   onDecide: (decision: Decision, note: string) => Promise<void>;
@@ -91,7 +87,6 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
     { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
     { key: "rubric", label: "Diff", extra: <span className="tabular-nums text-muted-foreground">+{diff.added} -{diff.removed}</span> },
-    { key: "checks", label: "Checks", extra: <ChecksMark proposal={p} /> },
   ];
   return <article aria-label={`Change ${p.number}`} className="text-[13px]">
     <h1 className="mt-2 mb-1 text-[16px] font-semibold tracking-tight">{changeTitle(p.changes)} <span className="font-normal tabular-nums text-muted-foreground">#{p.number}</span></h1>
@@ -117,10 +112,6 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
     <div className="min-w-0">
       {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
       {tab === "rubric" && <RubricDiff diff={diff} />}
-      {tab === "checks" && <div className="min-w-0 space-y-3">
-        <Checks proposal={p} />
-        <Flipped evalId={evalId} proposal={p} />
-      </div>}
     </div>
   </article>;
 }
@@ -188,8 +179,8 @@ function CommentEntry({ comment: c }: { comment: EvalComment }) {
   </Entry>;
 }
 
-/** Where an open change is decided: whether its checks hold, then close it or approve it and
- * merge it into the rubric. */
+/** Where an open change is decided: close it, or approve it and merge it into the rubric.
+ * One made on a version that is no longer current can only be closed. */
 function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (decision: Decision, note: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -198,14 +189,10 @@ function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (
     try { await onDecide(decision, ""); } catch (e) { setError(errorMessage(e)); }
     setBusy(false);
   };
-  return <div className="flex flex-wrap items-center gap-1.5 rounded border border-border px-3 py-2">
-    <ChecksMark proposal={p} />
-    <span className="mr-auto text-[12px]">{p.stale ? "Out of date" : p.passed === null ? "Checking" : p.passed ? "Checks passed" : "Checks failed"}</span>
-    {error && <p role="alert" className="m-0 text-[12px] text-destructive">{error}</p>}
+  return <div className="flex flex-wrap items-center justify-end gap-1.5">
+    {error && <p role="alert" className="m-0 mr-auto text-[12px] text-destructive">{error}</p>}
     <button type="button" disabled={busy} onClick={() => void decide("reject")} className={buttonClass}>Close</button>
-    {!p.stale && (p.passed === false
-      ? <button type="button" disabled={busy} onClick={() => void decide("approve")} className={buttonClass}>Merge anyway</button>
-      : <button type="button" disabled={busy || p.passed === null} onClick={() => void decide("approve")} className={primaryClass}>Approve and merge</button>)}
+    {!p.stale && <button type="button" disabled={busy} onClick={() => void decide("approve")} className={primaryClass}>Approve and merge</button>}
   </div>;
 }
 
@@ -263,110 +250,8 @@ function RubricDiff({ diff }: { diff: ReturnType<typeof rubricDiff> }) {
   </section>;
 }
 
-// ── Checks ───────────────────────────────────────────────────────────────
+// ── Evals ────────────────────────────────────────────────────────────────
 
-const ratio = (t: EvalTally) => `${t.right}/${t.n}`;
-
-/** What was measured about the proposed rubric itself before anyone decides, beside the same
- * measure for the rubric in use: how well each agrees with the person's labels, which labeled
- * examples the change sets right or wrong, and whether it can be talked into a good score. */
-function Checks({ proposal: p }: { proposal: EvalProposal }) {
-  const c = p.checks;
-  if (!c) return <section aria-label="Checks">
-    <p role="status" className="m-0 flex items-center gap-1 text-[12px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Checking</p></section>;
-  // before: the value for the rubric in use; after: for the proposed one.
-  const rows: { label: string; before?: string; after: string; ok?: boolean; title?: string }[] = [];
-  const { before: qb, after: qa } = p.quality;
-  if (qa) rows.push({ label: "Rubric quality", before: qb ? `${qb.score}` : undefined, after: `${qa.score}`, ok: qb ? qa.score >= qb.score : undefined });
-  if (c.before && c.after) {
-    if (c.after.fit.n > 0) rows.push({ label: "Agrees with your labels", before: ratio(c.before.fit), after: ratio(c.after.fit), ok: c.after.fit.right >= c.before.fit.right });
-    if (c.after.check.n > 0) rows.push({ label: "Agrees with held-out labels", before: ratio(c.before.check), after: ratio(c.after.check), ok: c.after.check.right >= c.before.check.right });
-    rows.push({ label: "Labeled examples fixed", after: `${c.fixed.length}` });
-    rows.push({ label: "Labeled examples broken", after: `${c.broke.length}`, ok: c.broke.length === 0 });
-  }
-  if (c.short) rows.push({ label: "Judge unavailable", after: `${c.short.graded}/${c.short.of} graded`, ok: false });
-  if (c.manipulation) rows.push({
-    label: "Manipulation attempts resisted", after: `${c.manipulation.resisted}/${c.manipulation.n}`, ok: c.manipulation.resisted === c.manipulation.n,
-    title: c.manipulation.resisted < c.manipulation.n ? `Scored ${c.manipulation.worst.score.toFixed(2)} with: ${c.manipulation.worst.claim}` : undefined,
-  });
-  const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
-  return <section aria-label="Checks" className="min-w-0">
-    <table className="w-full border-collapse text-[12px]">
-      <thead>
-        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-          <th scope="col" className="pb-1 font-medium">Checks</th>
-          <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
-          <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
-          <th className="w-px pl-2" />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.label} title={r.title} className="border-t border-border">
-            <th scope="row" className="py-1.5 pr-3 text-left font-normal">{r.label}</th>
-            <td className={cn(column, "py-1.5 text-muted-foreground")}>{r.before}</td>
-            <td className={cn(column, "py-1.5")}>{r.after}</td>
-            <td className="w-px py-1.5 pl-2">
-              <span className="flex w-3.5 justify-end">
-                {r.ok === true && <Check aria-label="Passed" className="size-3.5 text-emerald-600" />}
-                {r.ok === false && <X aria-label="Failed" className="size-3.5 text-destructive" />}
-              </span>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </section>;
-}
-
-// ── What the checks point at ─────────────────────────────────────────────
-
-/** The score under the proposed rubric, then the one it had. */
-const scores = (f: EvalFlip) => <span className="whitespace-nowrap tabular-nums">{f.after.toFixed(2)} <span className="text-muted-foreground">was {f.before.toFixed(2)}</span></span>;
-
-/** The labeled examples whose verdict the change sets wrong, the ones it sets right, and the
- * rest of the examples added since the version it was proposed on. */
-function Flipped({ evalId, proposal: p }: { evalId: string; proposal: EvalProposal }) {
-  const c = p.checks;
-  if (!c) return null;
-  const flipped = new Set([...c.fixed, ...c.broke].map((f) => f.id));
-  const groups: { title: string; rows: { example: EvalChangeExample; flip?: EvalFlip }[] }[] = [
-    { title: "Broken", rows: c.broke.map((f) => ({ example: p.examples[f.id], flip: f })) },
-    { title: "Fixed", rows: c.fixed.map((f) => ({ example: p.examples[f.id], flip: f })) },
-    { title: `New since v${p.base}`, rows: c.evidence.filter((id) => !flipped.has(id)).map((id) => ({ example: p.examples[id] })) },
-  ].map((g) => ({ ...g, rows: g.rows.filter((r) => r.example) })).filter((g) => g.rows.length > 0);
-  if (groups.length === 0) return null;
-  return <section aria-label="Examples" className="min-w-0 space-y-2">
-    {groups.map((g) => <div key={g.title}>
-      <h3 className={sectionTitle}>{g.title} <span className="tabular-nums">{g.rows.length}</span></h3>
-      <ExampleRows evalId={evalId} rows={g.rows} />
-    </div>)}
-  </section>;
-}
-
-function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalChangeExample; flip?: EvalFlip }[] }) {
-  return <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
-    {rows.map(({ example: e, flip }) => (
-      <li key={e.id}>
-        <Link href={`/reward-models/evals/${evalId}/examples/${e.id}`} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px] text-foreground no-underline hover:bg-surface/40">
-          <span className={cn("w-8 shrink-0 font-medium", e.label === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{e.label === "good" ? "Good" : "Bad"}</span>
-          <Snippet snippet={e} thumb={evalExampleFilePath(evalId, e.id, 0)} note={e.note} />
-          {e.held_out && <span className="whitespace-nowrap text-muted-foreground">Held out</span>}
-          {flip && scores(flip)}
-          <span className="whitespace-nowrap text-muted-foreground">{[e.added_by_name, e.caller].filter(Boolean).join(", ")}</span>
-          <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={e.created_at}>{relativeTime(e.created_at)}</time>
-        </Link>
-      </li>
-    ))}
-  </ul>;
-}
-
-/** The agent's recent calls as evals of the change, searchable by name: each one's name (what the agent
- * was asked, else the start of what it wrote), the score it got under the rubric in use, and
- * its score under the proposed rubric, in columns headed as the page header names the two:
- * "rubric" and the change's own name. A last column gives how far the score moved, and the
- * table is sorted by it as a signed number, largest gain first; clicking its heading flips
- * the order to largest drop first and back. */
 /** How far a score moved, signed: "-0.88", "+0.03", "0.00". */
 function delta(f: EvalFlip): string {
   const moved = f.after - f.before;
@@ -421,14 +306,4 @@ function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame:
       {rows.length === 0 && <tr className="border-t border-border"><td colSpan={4} className="py-1.5 text-muted-foreground">No evals match</td></tr>}
     </tbody>
   </table>;
-}
-
-/** An example or a call in one line: its image if it has one, else the start of its text. */
-function Snippet({ snippet, thumb, note }: { snippet: { name: string; asked: string; text: string; files: { name: string; content_type: string }[] }; thumb?: string; note?: string }) {
-  const image = thumb && snippet.files[0]?.content_type.startsWith("image/");
-  const text = snippet.text || snippet.asked || snippet.files[0]?.name || snippet.name;
-  return <span className="flex min-w-0 flex-1 items-center gap-2">
-    {image && <FileThumb path={thumb} alt={snippet.files[0].name} zoom={false} className="size-7 shrink-0" />}
-    <span className="min-w-0 flex-1 truncate">{text}{note && <span className="ml-2 text-muted-foreground">{note}</span>}</span>
-  </span>;
 }

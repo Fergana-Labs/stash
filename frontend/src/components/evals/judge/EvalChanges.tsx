@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, Loader2, MessageSquare, X } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/components/reward-models/rm-text";
 import type { EvalChange, EvalChanges as Changes, EvalProposal } from "@/lib/evals-api";
@@ -67,18 +67,8 @@ function ChangeRow({ evalId, proposal: p }: { evalId: string; proposal: EvalProp
       {p.comments.length > 0 && <span className="flex items-center gap-1 whitespace-nowrap text-[12px] tabular-nums text-muted-foreground" title="Comments">
         <MessageSquare aria-hidden className="size-3.5" />{p.comments.length}
       </span>}
-      <ChecksMark proposal={p} />
       <span className="whitespace-nowrap text-[12px] text-muted-foreground">{p.opened_by ?? "Unknown"}</span>
       <time className="w-14 whitespace-nowrap text-right text-[12px] text-muted-foreground" dateTime={p.created_at}>{relativeTime(p.created_at)}</time>
     </Link>
   </li>;
-}
-
-/** Whether a change's checks passed, failed, or are still running. */
-export function ChecksMark({ proposal: p }: { proposal: EvalProposal }) {
-  return <span className="flex w-3.5 shrink-0 justify-center">
-    {p.passed === null && <Loader2 aria-label="Checking" className="size-3.5 animate-spin text-muted-foreground" />}
-    {p.passed === true && <Check aria-label="Checks passed" className="size-3.5 text-emerald-600" />}
-    {p.passed === false && <X aria-label="Checks failed" className="size-3.5 text-destructive" />}
-  </span>;
 }
