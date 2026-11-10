@@ -46,6 +46,7 @@ def _proposal(row) -> dict:
     return {
         "id": row["id"],
         "number": row["number"],
+        "name": row["name"],
         "base": row["base"],
         "traits": row["traits"],
         "refs": list(row["refs"]),

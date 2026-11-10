@@ -7,7 +7,7 @@ const example = (id: string, extra = {}) => ({
   added_by_name: "Reviewer", added_via: "web" as const, caller: "", ...extra,
 });
 export const proposal = (extra: Partial<EvalProposal> = {}): EvalProposal => ({
-  id: "p2", number: 2, base: 4, status: "open", source: "revised", scoring: "mean", instructions: "",
+  id: "p2", number: 2, name: "", base: 4, status: "open", source: "revised", scoring: "mean", instructions: "",
   traits: [
     { name: "Color", good: "warm red", bad: "blue" },
     { name: "Stripes", good: "plain", bad: "striped" },

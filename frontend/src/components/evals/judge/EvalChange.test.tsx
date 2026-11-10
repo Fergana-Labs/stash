@@ -123,6 +123,11 @@ it("offers only an override when a check failed, and no merge when out of date o
   expect(screen.getByRole("button", { name: "Approve and merge" })).toBeDisabled();
 });
 
+it("calls a change by its own name when it has one", () => {
+  show(proposal({ name: "no-striped-charts" }));
+  expect(screen.getByLabelText("rubric from no-striped-charts")).toBeVisible();
+});
+
 it("shows a merged change with who merged it, and still takes comments", () => {
   show(proposal({
     status: "approved", decided_by: "Reviewer", decided_at: now, version: 5, note: "ok",

@@ -66,8 +66,9 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
 
 /** The change's name as a branch would have one: the rubric is what a pull request's base
  * branch is, and stays "rubric" from version to version; the change is the branch merged
- * into it, named after its first edit ("add-stripes"). */
+ * into it, called by its own name or, without one, after its first edit ("add-stripes"). */
 export function changeBranch(p: EvalProposal): string {
+  if (p.name) return p.name;
   const first = p.changes[0];
   const words = first ? `${first.kind} ${first.trait}` : `change ${p.number}`;
   return words.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `change-${p.number}`;

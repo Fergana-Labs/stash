@@ -91,6 +91,7 @@ async def test_a_build_proposes_a_change_with_its_checks_and_approval_applies_it
     assert [(p["number"], p["status"], p["base"]) for p in listed["proposals"]] == [(1, "open", 1)]
     proposal = listed["proposals"][0]
     assert proposal["proposed_by"] is None and proposal["source"] == "revised"
+    assert proposal["name"] == ""  # unnamed: the page names it after its first edit
     assert proposal["opened_by"]  # the eval's owner, whose examples the build answered
     assert [t["name"] for t in proposal["traits"]] == ["Color", "Stripes"]
     assert [t["name"] for t in proposal["before"]["traits"]] == ["Color"]

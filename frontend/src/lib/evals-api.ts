@@ -152,6 +152,8 @@ export interface EvalComment { id: string; author: string | null; trait: string;
 export interface EvalProposal {
   id: string;
   number: number;
+  /** What the change is called, as a branch is; "" when it has no name of its own. */
+  name: string;
   base: number;
   status: "open" | "approved" | "rejected";
   source: EvalRubricVersion["source"];
