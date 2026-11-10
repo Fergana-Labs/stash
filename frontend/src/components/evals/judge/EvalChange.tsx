@@ -392,18 +392,19 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
 
 /** The agent's recent calls as offline evals of the change: each one's name (what the agent
  * was asked, else the start of what it wrote), the score it got under the rubric in use, and
- * its score under the proposed rubric. The ones whose score moves most come first. */
+ * its score under the proposed rubric, in columns headed as the page header names the two:
+ * "rubric" and the change's own name. The ones whose score moves most come first. */
 function CallList({ proposal: p }: { proposal: EvalProposal }) {
   const rows = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
     .sort((a, b) => Math.abs(b.flip.after - b.flip.before) - Math.abs(a.flip.after - a.flip.before));
   if (rows.length === 0) return null;
-  const column = "w-14 whitespace-nowrap text-right tabular-nums";
+  const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
   return <table aria-label="Offline evals" className="mt-2 w-full border-collapse text-[12px] first:mt-0">
     <thead>
       <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
         <th scope="col" className="pb-1 font-medium">Offline eval</th>
-        <th scope="col" className={cn(column, "pb-1 font-medium")}>Before</th>
-        <th scope="col" className={cn(column, "pb-1 font-medium")}>After</th>
+        <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
+        <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
       </tr>
     </thead>
     <tbody>
