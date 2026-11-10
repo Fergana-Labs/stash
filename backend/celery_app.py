@@ -89,6 +89,7 @@ celery.conf.update(
         "backend.tasks.behaviors.triage": {"queue": "heavy"},
         "backend.tasks.agent_judge.investigate": {"queue": "heavy"},
         "backend.tasks.evals.build_eval": {"queue": "heavy"},
+        "backend.tasks.evals.check_proposal": {"queue": "heavy"},
         "backend.tasks.test_sets.score_run": {"queue": "heavy"},
     },
     task_acks_late=True,

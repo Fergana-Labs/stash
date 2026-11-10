@@ -53,6 +53,8 @@ SAID = 40
 NOTES = 40
 
 Progress = Callable[..., Awaitable[None]]
+# versions.save, or versions.draft when the eval's rubric changes need approval.
+Save = Callable[..., Awaitable[dict | None]]
 
 SYSTEM = """You maintain the rubric an AI judge uses to grade an agent's work the way one \
 person would. The judge grades the work 1-5 on each trait, beside the person's good and bad \
@@ -248,7 +250,8 @@ async def _content(
         content.append(
             {
                 "type": "text",
-                "text": "Edits already tried and rejected (they didn't get more examples right):\n"
+                "text": "Edits already tried and rejected (they didn't get more examples right, or the "
+                "person reviewing rubric changes turned them down):\n"
                 + "\n".join(f"- {t}" for t in tried),
             }
         )
@@ -392,7 +395,12 @@ def _kind(name: str, before: list[dict], after: list[dict]) -> str:
 
 
 async def apply_requests(
-    model_id: UUID, version: dict, examples: list[dict], requests: list[str], progress: Progress
+    model_id: UUID,
+    version: dict,
+    examples: list[dict],
+    requests: list[str],
+    progress: Progress,
+    save: Save = versions.save,
 ) -> dict:
     """Apply the rubric changes the person asked for, as asked, whatever the agreement does.
 
@@ -424,7 +432,7 @@ async def apply_requests(
     if both_labels and (_short(measured, before) or _short(measured, after)):
         # Applied as asked all the same; measuring it waits for a judge that answers.
         before, after = {}, {}
-    new = await versions.save(
+    new = await save(
         model_id,
         after=version["number"],
         traits=traits,
@@ -445,8 +453,16 @@ async def apply_requests(
     return {**done, "version": new, "saved": [{**new, "before": before_metrics}]}
 
 
-async def revise(model_id: UUID, version: dict, examples: list[dict], progress: Progress) -> dict:
-    """Bring `version` up to date with the labeled `examples`.
+async def revise(
+    model_id: UUID,
+    version: dict,
+    examples: list[dict],
+    progress: Progress,
+    save: Save = versions.save,
+    rejected: list[str] = (),
+) -> dict:
+    """Bring `version` up to date with the labeled `examples`. `rejected` are edits a reviewer
+    turned down on this version: the analysis model sees them with the edits it tried itself.
 
     Returns {"version": the current version after, "saved": [new versions, each with the
     "before" metrics of the one it replaced], "metrics": {"fit", "check"} (None with only one
@@ -483,7 +499,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
     alt = rescore(current, other)
     gain = tally(fit, alt)["right"] - tally(fit, current)["right"]
     if gain > 0 and tally(check, alt)["right"] >= tally(check, current)["right"]:
-        new = await versions.save(
+        new = await save(
             model_id,
             after=version["number"],
             traits=version["traits"],
@@ -507,7 +523,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
             {**new, "before": {"fit": tally(fit, current), "check": tally(check, current)}}
         )
         version, current = new, alt
-    tried: list[str] = []
+    tried: list[str] = list(rejected)
     stale = 0
     short = None
     for n in range(1, MAX_PASSES + 1):
@@ -573,7 +589,7 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
         new_grades |= await grades(model_id, candidate, measured)
         if short := _short(measured, new_grades):
             break
-        new = await versions.save(
+        new = await save(
             model_id,
             after=version["number"],
             traits=traits,
@@ -592,7 +608,10 @@ async def revise(model_id: UUID, version: dict, examples: list[dict], progress: 
         version, current, stale = new, new_grades, 0
 
     metrics = {"fit": tally(fit, current), "check": tally(check, current)}
-    await versions.set_metrics(version["id"], metrics)
+    if version["id"]:
+        await versions.set_metrics(version["id"], metrics)
+    else:  # a draft: its metrics travel with it to the proposal
+        version = {**version, "metrics": metrics}
     misses = [
         (e, current[e["id"]]) for e in fit if e["id"] in current and not right(e, current[e["id"]])
     ]

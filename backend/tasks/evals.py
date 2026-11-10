@@ -5,7 +5,7 @@ minute that restarts what a lost task left stuck."""
 from uuid import UUID
 
 from ..celery_app import celery
-from ..services.evals import build, channel, service
+from ..services.evals import build, channel, proposals, service
 from ._celery_helpers import run_async
 
 ERROR_CHARS = 500
@@ -28,6 +28,12 @@ async def build_eval_async(eval_id: UUID) -> None:
 @celery.task(name="backend.tasks.evals.build_eval", soft_time_limit=1500, time_limit=1560)
 def build_eval(eval_id: str) -> None:
     run_async(build_eval_async(UUID(eval_id)))
+
+
+@celery.task(name="backend.tasks.evals.check_proposal", soft_time_limit=1500, time_limit=1560)
+def check_proposal(proposal_id: str) -> None:
+    """Measure a rubric change a person proposed by editing (builds measure their own)."""
+    run_async(proposals.run_checks(UUID(proposal_id)))
 
 
 @celery.task(name="backend.tasks.evals.read_channel", soft_time_limit=240, time_limit=300)

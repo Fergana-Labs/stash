@@ -13,6 +13,11 @@ A build runs whenever labeled evidence changes (service.request_build). It:
    for evidence from outside the channel: the rubric panel shows it), and asks about the
    examples it still gets wrong that the person gave no reason for, once each, in the thread
    they were dropped in. The agent never posts at the top of the channel.
+
+When the eval's rubric changes need approval (review_required), steps 1-3 work on drafts
+(versions.draft) and save nothing: the build ends by proposing the last draft with its checks
+(proposals.py), and the rubric stays as it is until a person approves. An eval's first rubric
+has nothing to be reviewed against and is saved as written.
 """
 
 import json
@@ -23,7 +28,7 @@ from uuid import UUID
 
 from ...database import get_pool
 from .. import llm
-from . import channel, items, judge, revise, robustness, versions
+from . import channel, items, judge, proposals, revise, robustness, versions
 
 log = logging.getLogger(__name__)
 
@@ -177,7 +182,8 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
         await _set(model_id, stage="done")
         return {"conflict": False, "empty": True}
     model = await get_pool().fetchrow(
-        "SELECT name, instructions, traits FROM intuition_models WHERE id=$1", model_id
+        "SELECT name, instructions, traits, review_required FROM intuition_models WHERE id=$1",
+        model_id,
     )
     learn = [e for e in examples if e["split"] == "train"]
     if not learn:
@@ -200,6 +206,9 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
             changes=[],
         )
         start = version
+    review = bool(model["review_required"]) and version is not None
+    save = versions.draft if review else versions.save
+    drafted: list[dict] = []  # drafts made before revising, for the proposal's list of changes
     if version is None or fresh:
         await _set(model_id, stage="traits", done=0, total=0, error=None)
         written = await write_traits(model_id, learn, await revise.said(model_id))
@@ -209,7 +218,7 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
             for t in (version or {}).get("traits", [])
             if t.get("by") == versions.PERSON
         ]
-        version = await versions.save(
+        version = await save(
             model_id,
             after=version["number"] if version else 0,
             traits=revise.cap(revise.dedupe(theirs + written["traits"])),
@@ -221,8 +230,9 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
         )
         await _set(model_id, summary=written["summary"])
         wrote = True
+        drafted.append(version)
     elif model["instructions"] != version["instructions"]:
-        version = await versions.save(
+        version = await save(
             model_id,
             after=version["number"],
             traits=version["traits"],
@@ -232,6 +242,7 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
             changes=[{"kind": "description", "trait": "", "why": "The description changed"}],
             scoring=version["scoring"],
         )
+        drafted.append(version)
     if version is None:
         # The person saved a version while this ran; their save queued another build.
         await _set(model_id, stage="done")
@@ -244,7 +255,9 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
     requests = await _take_requests(model_id)
     if requests:
         try:
-            requested = await revise.apply_requests(model_id, version, examples, requests, progress)
+            requested = await revise.apply_requests(
+                model_id, version, examples, requests, progress, save
+            )
         except Exception:
             await _return_requests(model_id, requests)
             raise
@@ -254,7 +267,10 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
             await _set(model_id, stage="done")
             return {"conflict": True}
         version = requested["version"]
-    result = await revise.revise(model_id, version, examples, progress)
+    rejected = await proposals.turned_down(model_id, start["number"]) if review else []
+    result = await revise.revise(
+        model_id, version, examples, progress, save, proposals.as_tried(rejected)
+    )
     result = {
         **result,
         "saved": requested["saved"] + result["saved"],
@@ -265,7 +281,15 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
         return result
     short = result["cut_short"]
     latest = await versions.current(model_id)
-    if short and (latest or {}).get("number") == (start or {}).get("number"):
+    final = result["version"]
+    pending = (
+        review
+        and final["id"] is None
+        and not proposals.repeats(
+            final, rejected + await proposals.waiting(model_id, start["number"])
+        )
+    )
+    if short and not pending and (latest or {}).get("number") == (start or {}).get("number"):
         # The judge went away before anything changed: a failed build, and the panel says so.
         raise judge.JudgeUnavailable(
             f"The judge graded {short['graded']} of {short['of']} examples; the rubric is unchanged"
@@ -276,10 +300,38 @@ async def run(model_id: UUID, fresh: bool = False, reply_to: UUID | None = None)
     except Exception:
         log.exception("The manipulation check failed for %s", model_id)
         manipulation = None
+    thread = await _thread(model_id, reply_to)
+    proposal = None
+    if pending:
+        # Nothing was saved: the last draft is proposed, with its checks, for a person to approve.
+        changes = [c for v in drafted + result["saved"] for c in v["changes"]]
+        found = await proposals.checks(model_id, start, final, examples)
+        proposal = await proposals.create(
+            model_id,
+            base=start["number"],
+            candidate=final,
+            changes=changes,
+            source="written"
+            if wrote
+            else "revised"
+            if any(v["source"] == "revised" for v in result["saved"])
+            else "edited",
+            found=found,
+            thread_id=thread,
+        )
+        if proposal is None:
+            # The rubric changed while this ran (an approval, an edit): that queued a new build.
+            await _set(model_id, stage="done")
+            return {**result, "conflict": True}
+        result = {**result, "metrics": found["before"], "proposal": proposal}
+    elif review and final["id"] is None:
+        # The same rubric a reviewer turned down, or one already waiting: the current one stands.
+        result = {**result, "metrics": (start or {}).get("metrics"), "misses": []}
     await _set(model_id, stage="done", metrics=_legacy(result.get("metrics")))
     try:
-        thread = await _thread(model_id, reply_to)
-        if thread is not None:
+        if thread is not None and review:
+            await announce_proposal(model_id, result, proposal, thread)
+        elif thread is not None:
             await announce(model_id, start, result, wrote, thread)
             if manipulation and manipulation["resisted"] < manipulation["n"]:
                 await warn_manipulation(model_id, manipulation, thread)
@@ -389,6 +441,47 @@ async def announce(
             "changes": changes,
             "metrics": result.get("metrics"),
             "before": before,
+        },
+    )
+
+
+async def announce_proposal(
+    model_id: UUID, result: dict, proposal: dict | None, thread: UUID
+) -> None:
+    """For an eval whose rubric changes need approval: one reply saying a change was proposed
+    and what its checks found. The rubric itself hasn't changed."""
+    if result["unchanged_requests"]:
+        await channel.post_agent(
+            model_id,
+            "I couldn't turn this into a rubric change: "
+            + " / ".join(result["unchanged_requests"])
+            + ". Edit the rubric directly, or say it another way.",
+            thread_id=thread,
+        )
+    if proposal is None:
+        return
+    found = proposal["checks"] or {}
+    edits = "; ".join(
+        f"{VERBS.get(c['kind'], c['kind'])} {c['trait']}"
+        + (" (as you asked)" if c.get("asked") else "")
+        for c in proposal["changes"]
+        if c.get("trait")
+    )
+    text = f"Proposed change #{proposal['number']} to rubric v{proposal['base']}: {edits or 'updated'}."
+    text += _agrees(found.get("after"), found.get("before")).replace(" Agrees", " It agrees")
+    if found.get("broke"):
+        text += f" It breaks {len(found['broke'])} examples the rubric gets right now."
+    text += " The rubric stays as it is until someone approves it."
+    await channel.post_agent(
+        model_id,
+        text,
+        thread_id=thread,
+        kind="rubric",
+        data={
+            "proposal": proposal["number"],
+            "changes": proposal["changes"],
+            "metrics": found.get("after"),
+            "before": found.get("before"),
         },
     )
 

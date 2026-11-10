@@ -13,6 +13,9 @@ from ...database import get_pool
 
 # A trait the person wrote or changed carries by='person'; revisions keep it as written.
 PERSON = "person"
+# Held-out examples needed before agreement on them, not on the learned-from ones, is the
+# agreement a rubric's quality score uses.
+QUALITY_HELD_OUT = 4
 
 
 def _version(row) -> dict:
@@ -26,8 +29,32 @@ def _version(row) -> dict:
         "source": row["source"],
         "changes": row["changes"],
         "metrics": row["metrics"],
+        "created_by": row["created_by"],
+        "proposal_id": row["proposal_id"],
         "created_at": row["created_at"],
     }
+
+
+def quality(metrics: dict | None) -> dict | None:
+    """One number for how far a rubric can be trusted, 0-100, and the parts it is the mean of
+    (each 0-1): how often its verdict matches the person's label (on held-out examples when
+    there are enough to measure with, else the ones it learned from), how often it scores a
+    good example above a bad one, and how many attempts to talk the judge into passing bad
+    work it resisted. None until the rubric has been measured."""
+    if not metrics:
+        return None
+    fit, check = metrics.get("fit") or {}, metrics.get("check") or {}
+    measured = check if (check.get("n") or 0) >= QUALITY_HELD_OUT else fit
+    parts = {
+        "agreement": measured.get("agreement"),
+        "ranking": fit.get("good_above_bad"),
+    }
+    if tried := metrics.get("manipulation"):
+        parts["manipulation"] = round(tried["resisted"] / tried["n"], 3) if tried["n"] else None
+    parts = {k: v for k, v in parts.items() if v is not None}
+    if not parts:
+        return None
+    return {"score": round(100 * sum(parts.values()) / len(parts)), "parts": parts}
 
 
 async def current(model_id: UUID) -> dict | None:
@@ -56,37 +83,90 @@ async def save(
     changes: list[dict],
     metrics: dict | None = None,
     scoring: str = "mean",
+    created_by: UUID | None = None,
+    proposal_id: UUID | None = None,
+    conn=None,
 ) -> dict | None:
     """Save a new current version on top of version number `after` (0 when there is none).
+    created_by is the person who edited the rubric directly; proposal_id the approved
+    proposal it came from. A caller already in a transaction passes its connection.
 
     Returns None when another version was saved since `after`, so a build never writes over
     an edit the person made while it ran."""
-    async with get_pool().acquire() as conn, conn.transaction():
-        await conn.execute("SELECT 1 FROM intuition_models WHERE id=$1 FOR UPDATE", model_id)
-        latest = await conn.fetchval(
-            "SELECT COALESCE(max(number), 0) FROM eval_rubric_versions WHERE model_id=$1",
-            model_id,
-        )
-        if latest != after:
-            return None
-        row = await conn.fetchrow(
-            """INSERT INTO eval_rubric_versions
-               (model_id, number, traits, refs, instructions, source, changes, metrics, scoring)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *""",
-            model_id,
-            latest + 1,
-            traits,
-            refs,
-            instructions,
-            source,
-            changes,
-            metrics,
-            scoring,
-        )
-        await conn.execute(
-            "UPDATE intuition_models SET traits=$2, updated_at=now() WHERE id=$1", model_id, traits
-        )
+    if conn is None:
+        async with get_pool().acquire() as own, own.transaction():
+            return await save(
+                model_id,
+                after=after,
+                traits=traits,
+                refs=refs,
+                instructions=instructions,
+                source=source,
+                changes=changes,
+                metrics=metrics,
+                scoring=scoring,
+                created_by=created_by,
+                proposal_id=proposal_id,
+                conn=own,
+            )
+    await conn.execute("SELECT 1 FROM intuition_models WHERE id=$1 FOR UPDATE", model_id)
+    latest = await conn.fetchval(
+        "SELECT COALESCE(max(number), 0) FROM eval_rubric_versions WHERE model_id=$1",
+        model_id,
+    )
+    if latest != after:
+        return None
+    row = await conn.fetchrow(
+        """INSERT INTO eval_rubric_versions
+           (model_id, number, traits, refs, instructions, source, changes, metrics, scoring,
+            created_by, proposal_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *""",
+        model_id,
+        latest + 1,
+        traits,
+        refs,
+        instructions,
+        source,
+        changes,
+        metrics,
+        scoring,
+        created_by,
+        proposal_id,
+    )
+    await conn.execute(
+        "UPDATE intuition_models SET traits=$2, updated_at=now() WHERE id=$1", model_id, traits
+    )
     return _version(row)
+
+
+async def draft(
+    model_id: UUID,
+    *,
+    after: int,
+    traits: list[dict],
+    refs: list[UUID],
+    instructions: str,
+    source: str,
+    changes: list[dict],
+    metrics: dict | None = None,
+    scoring: str = "mean",
+) -> dict:
+    """What save() would save, kept in memory: for an eval whose rubric changes need approval,
+    a build works on drafts and proposes the last one (proposals.py) instead of saving it."""
+    return {
+        "id": None,
+        "number": after + 1,
+        "traits": traits,
+        "refs": list(refs),
+        "instructions": instructions,
+        "scoring": scoring,
+        "source": source,
+        "changes": changes,
+        "metrics": metrics,
+        "created_by": None,
+        "proposal_id": None,
+        "created_at": None,
+    }
 
 
 async def set_metrics(version_id: UUID, metrics: dict) -> None:

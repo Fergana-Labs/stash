@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import UploadFile as FormFile
 
 from ..auth import get_current_user
-from ..services.evals import channel, judge, revise, service
+from ..services.evals import channel, judge, proposals, revise, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -90,6 +90,14 @@ class Trait(Body):
 class EditRubric(Body):
     traits: list[Trait] = Field(min_length=1, max_length=revise.MAX_RUBRIC)
     base: int = Field(ge=0, description="The version the edit was made on")
+
+
+class Review(Body):
+    required: bool
+
+
+class Decide(Body):
+    note: str = Field(default="", max_length=2000)
 
 
 async def checked(coro):
@@ -243,6 +251,29 @@ async def edit_rubric(eval_id: UUID, body: EditRubric, user: User):
     if len({t["name"].strip().lower() for t in traits}) < len(traits):
         raise HTTPException(422, "Trait names must be unique")
     return await checked(service.edit_rubric(user["id"], eval_id, traits, body.base))
+
+
+@router.get("/{eval_id}/changes")
+async def changes(eval_id: UUID, user: User):
+    """Proposed rubric changes, newest first, each with its checks; and whether this eval's
+    rubric changes need approval."""
+    return await checked(proposals.listing(user["id"], eval_id))
+
+
+@router.put("/{eval_id}/review")
+async def set_review(eval_id: UUID, body: Review, user: User):
+    """Require approval before the rubric changes, or stop requiring it."""
+    return await checked(proposals.set_required(user["id"], eval_id, body.required))
+
+
+@router.post("/{eval_id}/changes/{proposal_id}/approve")
+async def approve_change(eval_id: UUID, proposal_id: UUID, body: Decide, user: User):
+    return await checked(proposals.approve(user["id"], eval_id, proposal_id, body.note))
+
+
+@router.post("/{eval_id}/changes/{proposal_id}/reject")
+async def reject_change(eval_id: UUID, proposal_id: UUID, body: Decide, user: User):
+    return await checked(proposals.reject(user["id"], eval_id, proposal_id, body.note))
 
 
 @router.get("/{eval_id}/messages")

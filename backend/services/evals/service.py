@@ -87,7 +87,9 @@ async def _counts(eval_id: UUID) -> dict:
         """SELECT count(*) FILTER (WHERE label='good') AS good, count(*) FILTER (WHERE label='bad') AS bad,
            count(*) FILTER (WHERE label IS NULL) AS unlabeled,
            (SELECT count(*) FROM intuition_predictions WHERE model_id=$1) AS calls,
-           (SELECT max(number) FROM eval_rubric_versions WHERE model_id=$1) AS version
+           (SELECT max(number) FROM eval_rubric_versions WHERE model_id=$1) AS version,
+           (SELECT count(*) FROM eval_rubric_proposals
+             WHERE model_id=$1 AND status='open') AS open_changes
            FROM intuition_examples WHERE model_id=$1""",
         eval_id,
     )
@@ -97,6 +99,7 @@ async def _counts(eval_id: UUID) -> dict:
         "unlabeled": row["unlabeled"],
         "calls": row["calls"],
         "version": row["version"],
+        "open_changes": row["open_changes"],
     }
 
 
@@ -111,6 +114,9 @@ def _summary(row, counts: dict) -> dict:
         # Scoring works as soon as there is a rubric; later builds only improve it.
         "ready": bool(row["traits"]),
         "version": counts.get("version"),
+        # Rubric changes wait for approval (proposals.py); how many are waiting now.
+        "review_required": row["review_required"],
+        "open_changes": counts.get("open_changes", 0),
         "examples": {"good": counts["good"], "bad": counts["bad"]},
         "unlabeled": counts.get("unlabeled", 0),
         "calls": counts["calls"],
@@ -158,18 +164,19 @@ async def update(owner: UUID, eval_id: UUID, name: str | None, instructions: str
 
 async def set_instructions(eval_id: UUID, instructions: str) -> None:
     """A new description reaches the judge now: the current rubric gets a version that
-    carries it (and the next build measures that version)."""
+    carries it (and the next build measures that version). When rubric changes need approval
+    the next build proposes it instead."""
     instructions = instructions.strip()[:2000]
-    changed = await get_pool().fetchval(
+    review = await get_pool().fetchval(
         """UPDATE intuition_models SET instructions=$2, updated_at=now()
-           WHERE id=$1 AND instructions <> $2 RETURNING true""",
+           WHERE id=$1 AND instructions <> $2 RETURNING review_required""",
         eval_id,
         instructions,
     )
-    if not changed:
+    if review is None:
         return
     version = await versions.current(eval_id)
-    if version is not None and version["instructions"] != instructions:
+    if version is not None and version["instructions"] != instructions and not review:
         await versions.save(
             eval_id,
             after=version["number"],
@@ -520,8 +527,64 @@ def rubric_changes(before: list[dict], after: list[dict], kind: str) -> list[dic
 
 
 async def rubric(owner: UUID, eval_id: UUID) -> dict:
+    """Every version of the rubric, newest first, each with its quality score, who made it
+    (the person who edited it, or who approved the proposal it came from) and the agent calls
+    it scored: how many, when, and which agents."""
     await _owned(owner, eval_id)
-    return {"versions": await versions.history(eval_id)}
+    history = await versions.history(eval_id)
+    used = {
+        r["number"]: r
+        for r in await get_pool().fetch(
+            f"""SELECT number, count(*) AS calls, min(created_at) AS first_call,
+                       max(created_at) AS last_call,
+                       array_remove(array_agg(DISTINCT caller), '') AS callers
+                FROM (SELECT p.created_at, p.caller, {CALL_VERSION} AS number
+                      FROM intuition_predictions p WHERE p.model_id=$1) scored
+                WHERE number IS NOT NULL GROUP BY number""",
+            eval_id,
+        )
+    }
+    approvals = {
+        r["id"]: r
+        for r in await get_pool().fetch(
+            """SELECT id, number, decided_by, decided_at, note FROM eval_rubric_proposals
+               WHERE model_id=$1 AND status='approved'""",
+            eval_id,
+        )
+    }
+    people = {v["created_by"] for v in history} | {a["decided_by"] for a in approvals.values()}
+    names = {
+        r["id"]: r["name"]
+        for r in await get_pool().fetch(
+            "SELECT id, COALESCE(NULLIF(display_name, ''), name) AS name FROM users WHERE id = ANY($1::uuid[])",
+            [p for p in people if p],
+        )
+    }
+    out = []
+    for v in history:
+        use, approval = used.get(v["number"]), approvals.get(v["proposal_id"])
+        out.append(
+            {
+                **v,
+                "quality": versions.quality(v["metrics"]),
+                "created_by": names.get(v["created_by"]),
+                "approved": approval
+                and {
+                    "proposal": approval["number"],
+                    "by": names.get(approval["decided_by"]),
+                    "at": approval["decided_at"],
+                    "note": approval["note"],
+                },
+                "used": use
+                and {
+                    "calls": use["calls"],
+                    "first": use["first_call"],
+                    "last": use["last_call"],
+                    "callers": sorted(use["callers"]),
+                },
+            }
+        )
+    return {"versions": out}
 
 
 async def edit_rubric(owner: UUID, eval_id: UUID, traits: list[dict], base: int) -> dict:
@@ -529,6 +592,9 @@ async def edit_rubric(owner: UUID, eval_id: UUID, traits: list[dict], base: int)
     next build. Traits they add or change are theirs; revisions keep them word for word. An
     edit made on a version that is no longer current is refused rather than undoing the
     newer one."""
+    from ...tasks import evals as eval_tasks
+    from . import proposals
+
     row = await _owned(owner, eval_id)
     version = await versions.current(eval_id)
     if (version["number"] if version else 0) != base:
@@ -545,6 +611,20 @@ async def edit_rubric(owner: UUID, eval_id: UUID, traits: list[dict], base: int)
     changes = rubric_changes(before, edited, "You edited the rubric")
     if not changes:
         return await rubric(owner, eval_id)
+    if row["review_required"] and version:
+        # The edit is proposed, not saved; its checks run in the background.
+        proposal = await proposals.create(
+            eval_id,
+            base=base,
+            candidate={**version, "traits": edited},
+            changes=changes,
+            source="edited",
+            proposed_by=owner,
+        )
+        if proposal is None:
+            raise Conflict("The rubric changed while you were editing; reload and try again")
+        eval_tasks.check_proposal.delay(str(proposal["id"]))
+        return await rubric(owner, eval_id)
     saved = await versions.save(
         eval_id,
         after=base,
@@ -554,6 +634,7 @@ async def edit_rubric(owner: UUID, eval_id: UUID, traits: list[dict], base: int)
         source="edited",
         changes=changes,
         scoring=version["scoring"] if version else "mean",
+        created_by=owner,
     )
     if saved is None:
         raise Conflict("The rubric changed while you were editing; reload and try again")
@@ -572,6 +653,12 @@ async def _refs(eval_id: UUID, version: dict | None) -> list[UUID]:
 
 
 # ── Scoring and the call log ─────────────────────────────────────────────
+
+# The rubric version that scored call p: the one recorded with it, or, for calls made before
+# that was recorded, the newest version that existed when the call was made.
+CALL_VERSION = """COALESCE((p.output->>'rubric_version')::int,
+    (SELECT max(v.number) FROM eval_rubric_versions v
+      WHERE v.model_id = p.model_id AND v.created_at <= p.created_at))"""
 
 
 async def score(
@@ -604,6 +691,8 @@ async def score(
         result = {"mode": "change", **await judge.grade_change(eval_id, submission, before, change)}
     else:
         result = await judge.grade(eval_id, submission)
+    # The rubric version that gave this score, kept with the call and returned to the caller.
+    result["rubric_version"] = (await _counts(eval_id))["version"]
     call = await get_pool().fetchrow(
         """INSERT INTO intuition_predictions (model_id, kind, input, output, confidence, caller, ref, metadata)
         VALUES ($1, 'predict', $2, $3, $4, $5, $6, $7) RETURNING id, created_at""",
@@ -621,7 +710,8 @@ async def score(
 async def list_calls(owner: UUID, eval_id: UUID, limit: int = 100) -> list[dict]:
     await _owned(owner, eval_id)
     rows = await get_pool().fetch(
-        """SELECT p.id, p.input, p.output, p.caller, p.ref, p.status, p.created_at, e.label, e.note
+        f"""SELECT p.id, p.input, p.output, p.caller, p.ref, p.status, p.created_at, e.label, e.note,
+               {CALL_VERSION} AS rubric_version
         FROM intuition_predictions p LEFT JOIN intuition_examples e ON e.id = p.example_id
         WHERE p.model_id=$1 ORDER BY p.created_at DESC LIMIT $2""",
         eval_id,
@@ -632,6 +722,7 @@ async def list_calls(owner: UUID, eval_id: UUID, limit: int = 100) -> list[dict]
             "id": r["id"],
             "input": r["input"],
             **r["output"],
+            "rubric_version": r["rubric_version"],
             "caller": r["caller"],
             "ref": r["ref"],
             "created_at": r["created_at"],
