@@ -100,6 +100,11 @@ class Decide(Body):
     note: str = Field(default="", max_length=2000)
 
 
+class Comment(Body):
+    body: str = Field(min_length=1, max_length=proposals.COMMENT)
+    trait: str = Field(default="", max_length=200, description="The trait it is about, if one")
+
+
 async def checked(coro):
     try:
         return await coro
@@ -274,6 +279,11 @@ async def approve_change(eval_id: UUID, proposal_id: UUID, body: Decide, user: U
 @router.post("/{eval_id}/changes/{proposal_id}/reject")
 async def reject_change(eval_id: UUID, proposal_id: UUID, body: Decide, user: User):
     return await checked(proposals.reject(user["id"], eval_id, proposal_id, body.note))
+
+
+@router.post("/{eval_id}/changes/{proposal_id}/comments")
+async def comment_on_change(eval_id: UUID, proposal_id: UUID, body: Comment, user: User):
+    return await checked(proposals.comment(user["id"], eval_id, proposal_id, body.body, body.trait))
 
 
 @router.get("/{eval_id}/messages")

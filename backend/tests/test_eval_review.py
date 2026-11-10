@@ -238,3 +238,40 @@ async def test_without_review_a_build_saves_versions_as_before(client: AsyncClie
         f"/api/v1/evals/{eid}/rubric", headers=auth, json={"traits": [mine, STRIPES], "base": 2}
     )
     assert edited.json()["versions"][0]["created_by"]
+
+
+async def test_a_change_is_discussed_before_and_after_it_is_decided(
+    client: AsyncClient,
+    world,  # noqa: F811
+):
+    auth = await _register(client)
+    eid = await _reviewed_eval(client, auth)
+    world.proposals.append(ADD_STRIPES)
+    await _build(eid)
+    proposal = (await _changes(client, auth, eid))["proposals"][0]
+    assert proposal["comments"] == []
+    url = f"/api/v1/evals/{eid}/changes/{proposal['id']}/comments"
+
+    whole = await client.post(url, headers=auth, json={"body": " is this too strict? "})
+    assert whole.status_code == 200, whole.text
+    on_trait = await client.post(
+        url, headers=auth, json={"body": "thin pinstripes too?", "trait": "Stripes"}
+    )
+    comments = on_trait.json()["proposals"][0]["comments"]
+    assert [(c["body"], c["trait"]) for c in comments] == [
+        ("is this too strict?", ""),
+        ("thin pinstripes too?", "Stripes"),
+    ]
+    assert all(c["author"] for c in comments)
+    assert (await client.post(url, headers=auth, json={"body": "   "})).status_code == 422
+
+    # A decided change can still be commented on, and keeps its comments.
+    await client.post(f"/api/v1/evals/{eid}/changes/{proposal['id']}/reject", headers=auth, json={})
+    after = await client.post(url, headers=auth, json={"body": "revisit next quarter"})
+    assert [c["body"] for c in after.json()["proposals"][0]["comments"]][
+        -1
+    ] == "revisit next quarter"
+
+    # Someone else's eval is not found.
+    other = await _register(client)
+    assert (await client.post(url, headers=other, json={"body": "hi"})).status_code == 404

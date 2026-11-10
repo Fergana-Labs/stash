@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,13 +15,12 @@ export interface Send { text: string; files: File[]; threadId?: string }
 interface AttachmentActions {
   label: (exampleId: string, label: EvalLabel | null) => Promise<void>;
   remove: (exampleId: string) => Promise<void>;
-  review?: () => void;
 }
 
 /** The eval's channel, like a Slack channel: the person's posts run down the middle, and the
  * agent, like a bot, only ever replies in a post's thread, and only when it has something to
  * say. Threads stay folded behind their reply count until opened. */
-export default function EvalChannel({ evalId, messages, reading = false, onSend, onLabel, onRemove, onReview }: {
+export default function EvalChannel({ evalId, messages, reading = false, onSend, onLabel, onRemove }: {
   evalId: string;
   messages: EvalMessage[];
   /** The agent is reading the channel: threads with a message it hasn't read show it typing. */
@@ -28,10 +28,8 @@ export default function EvalChannel({ evalId, messages, reading = false, onSend,
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
   onRemove: (exampleId: string) => Promise<void>;
-  /** Open the proposed rubric changes: a message that reports one links there. */
-  onReview?: () => void;
 }) {
-  const actions = useMemo<AttachmentActions>(() => ({ label: onLabel, remove: onRemove, review: onReview }), [onLabel, onRemove, onReview]);
+  const actions = useMemo<AttachmentActions>(() => ({ label: onLabel, remove: onRemove }), [onLabel, onRemove]);
   const [over, setOver] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
   const list = useRef<HTMLDivElement>(null);
@@ -143,7 +141,7 @@ function Message({ evalId, message, replies, reading, onSend, actions }: {
 }
 
 function Body({ evalId, message, actions }: { evalId: string; message: EvalMessage; actions: AttachmentActions }) {
-  if (message.kind === "rubric") return <RubricUpdate message={message} onReview={actions.review} />;
+  if (message.kind === "rubric") return <RubricUpdate evalId={evalId} message={message} />;
   return <>
     {message.text && <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5">{message.text}</p>}
     {message.about && <div className="mt-1 w-16"><Attachment evalId={evalId} attachment={message.about} actions={actions} /></div>}
@@ -158,7 +156,7 @@ function Body({ evalId, message, actions }: { evalId: string; message: EvalMessa
 
 const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: "Fixed", point: "Pointed", remove: "Removed", request: "Changed", scoring: "Now scored by" };
 
-function RubricUpdate({ message, onReview }: { message: EvalMessage; onReview?: () => void }) {
+function RubricUpdate({ evalId, message }: { evalId: string; message: EvalMessage }) {
   const changes = (message.data.changes ?? []).filter((c) => c.trait);
   return <div className="mt-1 rounded border border-border px-2.5 py-2 text-[13px]">
     <p className="leading-5">{message.text}</p>
@@ -167,8 +165,8 @@ function RubricUpdate({ message, onReview }: { message: EvalMessage; onReview?: 
         {changes.map((c, i) => <li key={i}><span className="font-medium">{VERB[c.kind] ?? c.kind} {c.trait}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
       </ul>
     )}
-    {message.data.proposal !== undefined && onReview && (
-      <button type="button" onClick={onReview} className="mt-1.5 h-6 rounded border border-border px-2 text-[12px] hover:bg-surface">Review change #{message.data.proposal}</button>
+    {message.data.proposal !== undefined && (
+      <Link href={`/reward-models/evals/${evalId}/changes/${message.data.proposal}`} className="mt-1.5 inline-flex h-6 items-center rounded border border-border px-2 text-[12px] text-foreground no-underline hover:bg-surface">Review change #{message.data.proposal}</Link>
     )}
   </div>;
 }

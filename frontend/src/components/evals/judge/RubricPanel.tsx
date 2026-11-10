@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,7 @@ export default function RubricPanel({ data, versions, onSave, onRewrite, onRevie
       {current && (editing
         ? <RubricEditor traits={current.traits} onCancel={() => setEditing(false)} onSave={async (traits) => { await onSave(traits, current.number); setEditing(false); }} />
         : <Traits traits={current.traits} />)}
-      {versions.length > 0 && <History versions={versions} />}
+      {versions.length > 0 && <History evalId={data.id} versions={versions} />}
       {data.ready && <Endpoint data={data} />}
     </aside>
   );
@@ -145,7 +146,7 @@ function RubricEditor({ traits: initial, onSave, onCancel }: { traits: EvalTrait
   </div>;
 }
 
-function History({ versions }: { versions: EvalRubricVersion[] }) {
+function History({ evalId, versions }: { evalId: string; versions: EvalRubricVersion[] }) {
   return <details className="text-[12px]">
     <summary className="cursor-pointer text-muted-foreground">History</summary>
     <ol className="m-0 mt-1.5 list-none space-y-2 p-0">
@@ -158,7 +159,9 @@ function History({ versions }: { versions: EvalRubricVersion[] }) {
             {v.metrics && v.metrics.fit.n > 0 && <span className="tabular-nums text-muted-foreground">{v.metrics.fit.right}/{v.metrics.fit.n}{v.metrics.check.n > 0 ? `, held out ${v.metrics.check.right}/${v.metrics.check.n}` : ""}</span>}
             <time className="ml-auto text-muted-foreground" dateTime={v.created_at}>{relativeTime(v.created_at)}</time>
           </div>
-          {v.approved && <div className="text-muted-foreground">Change #{v.approved.proposal} approved{v.approved.by ? ` by ${v.approved.by}` : ""}</div>}
+          {v.approved && <div className="text-muted-foreground">
+            <Link href={`/reward-models/evals/${evalId}/changes/${v.approved.proposal}`} className="text-foreground underline-offset-2 hover:underline">Change #{v.approved.proposal}</Link> approved{v.approved.by ? ` by ${v.approved.by}` : ""}
+          </div>}
           {!v.approved && v.created_by && <div className="text-muted-foreground">Edited by {v.created_by}</div>}
           {v.used && <div className="text-muted-foreground">
             Scored {v.used.calls} {v.used.calls === 1 ? "call" : "calls"}, {day(v.used.first) === day(v.used.last) ? day(v.used.first) : `${day(v.used.first)} to ${day(v.used.last)}`}

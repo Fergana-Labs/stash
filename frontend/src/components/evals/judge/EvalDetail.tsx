@@ -12,7 +12,7 @@ import FileThumb from "./FileThumb";
 import RubricPanel from "./RubricPanel";
 import UploadBox from "./UploadBox";
 import {
-  EVAL_BUILDING, evalBuild, evalCallFilePath, evalCalls, evalChanges, evalDecide, evalDeleteExample, evalEditExample, evalEditRubric, evalExampleFilePath, evalExamples,
+  EVAL_BUILDING, evalBuild, evalCallFilePath, evalCalls, evalChanges, evalDeleteExample, evalEditExample, evalEditRubric, evalExampleFilePath, evalExamples,
   evalGet, evalLabelCall, evalMessages, evalPost, evalRubric, evalSetReview, evalUploadExamples,
   type Eval, type EvalCall, type EvalChanges as Changes, type EvalExample, type EvalItem, type EvalLabel, type EvalMessage, type EvalRubricVersion,
 } from "@/lib/evals-api";
@@ -95,10 +95,6 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
     await load();
   };
 
-  const decide = async (proposalId: string, decision: "approve" | "reject", note: string) => {
-    setChanges(await evalDecide(id, proposalId, decision, note));
-    await load();
-  };
   const setReview = async (required: boolean) => {
     setChanges(await evalSetReview(id, required));
     await load();
@@ -132,9 +128,9 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
         <div className="flex min-w-0 flex-col gap-2 lg:min-h-0">
           {(error || notice) && <p role="alert" className="text-[12px] text-destructive">{error || notice}</p>}
           {busy && <p role="status" className="text-[12px] text-muted-foreground">{busy}</p>}
-          {tab === "channel" && <EvalChannel evalId={id} messages={messages} reading={reading} onSend={send} onLabel={label} onRemove={remove} onReview={() => setTab("changes")} />}
+          {tab === "channel" && <EvalChannel evalId={id} messages={messages} reading={reading} onSend={send} onLabel={label} onRemove={remove} />}
           {tab !== "channel" && <div className="scroll-thin lg:min-h-0 lg:overflow-y-auto">
-            {tab === "changes" && changes && <EvalChanges evalId={id} changes={changes} onDecide={decide} />}
+            {tab === "changes" && changes && <EvalChanges evalId={id} changes={changes} />}
             {tab === "examples" && <Examples id={id} examples={examples} disabled={!!busy} onUpload={(l, f) => void upload(l, f)}
               onDelete={(exampleId) => void run("Removing", () => evalDeleteExample(id, exampleId))} />}
             {tab === "calls" && <Calls id={id} calls={calls} onLabel={(callId, l, note) => void run("Saving", () => evalLabelCall(id, callId, l, note))} />}

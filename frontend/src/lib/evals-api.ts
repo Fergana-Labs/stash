@@ -143,6 +143,8 @@ export interface EvalChangeExample extends EvalSnippet {
   added_by_name: string | null; added_via: "web" | "api" | ""; caller: string;
 }
 export interface EvalChangeCall extends EvalSnippet { caller: string; created_at: string }
+/** A comment on a proposed change; trait names the rubric trait it is about, "" for the whole change. */
+export interface EvalComment { id: string; author: string | null; trait: string; body: string; created_at: string }
 /** A proposed change to the rubric: what it would become, on which version, and its checks. */
 export interface EvalProposal {
   id: string;
@@ -171,6 +173,7 @@ export interface EvalProposal {
   stale: boolean;
   examples: Record<string, EvalChangeExample>;
   calls: Record<string, EvalChangeCall>;
+  comments: EvalComment[];
   created_at: string;
 }
 export interface EvalChanges { review_required: boolean; proposals: EvalProposal[] }
@@ -196,6 +199,8 @@ export const evalSetReview = (id: string, required: boolean) =>
   apiFetch<EvalChanges>(`${T}/${id}/review`, { method: "PUT", body: JSON.stringify({ required }) });
 export const evalDecide = (id: string, proposalId: string, decision: "approve" | "reject", note: string) =>
   apiFetch<EvalChanges>(`${T}/${id}/changes/${proposalId}/${decision}`, { method: "POST", body: JSON.stringify({ note }) });
+export const evalComment = (id: string, proposalId: string, body: string, trait = "") =>
+  apiFetch<EvalChanges>(`${T}/${id}/changes/${proposalId}/comments`, { method: "POST", body: JSON.stringify({ body, trait }) });
 export const evalMessages = (id: string) => apiFetch<{ messages: EvalMessage[]; busy: boolean }>(`${T}/${id}/messages`);
 
 /** Files per request when posting to the channel; bigger drops go up in parts. */

@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 CALLS = 10  # recent agent calls graded again with the proposed rubric
 LISTED = 50
 SNIPPET = 400
+COMMENT = 5000
 
 
 def _proposal(row) -> dict:
@@ -349,9 +350,16 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
         eval_id,
         list(call_ids),
     )
+    comments = await get_pool().fetch(
+        """SELECT id, proposal_id, author, trait, body, created_at
+           FROM eval_rubric_proposal_comments WHERE proposal_id = ANY($1::uuid[])
+           ORDER BY created_at, id""",
+        [p["id"] for p in found],
+    )
     names = await _names(
         {p[k] for p in found for k in ("proposed_by", "decided_by") if p[k]}
         | {e["added_by"] for e in examples if e["added_by"]}
+        | {c["author"] for c in comments if c["author"]}
     )
     shown_examples = {
         str(e["id"]): {
@@ -413,6 +421,17 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
                 "stale": p["status"] == "open" and p["base"] != current,
                 "examples": {i: shown_examples[i] for i in ids if i in shown_examples},
                 "calls": {c["id"]: shown_calls[c["id"]] for c in graded if c["id"] in shown_calls},
+                "comments": [
+                    {
+                        "id": c["id"],
+                        "author": names.get(c["author"]),
+                        "trait": c["trait"],
+                        "body": c["body"],
+                        "created_at": c["created_at"],
+                    }
+                    for c in comments
+                    if c["proposal_id"] == p["id"]
+                ],
             }
         )
     return out
@@ -524,6 +543,33 @@ async def reject(owner: UUID, eval_id: UUID, proposal_id: UUID, note: str = "") 
             note.strip()[:2000],
         )
     await _report(eval_id, row, owner, "rejected: the rubric stays as it is", note)
+    return await listing(owner, eval_id)
+
+
+async def comment(
+    owner: UUID, eval_id: UUID, proposal_id: UUID, body: str, trait: str = ""
+) -> dict:
+    """Comment on a proposed change, open or decided: on the whole change, or on one trait of
+    the rubric it proposes or replaces."""
+    await service._owned(owner, eval_id)
+    body = body.strip()
+    if not body:
+        raise ValueError("A comment needs some text")
+    found = await get_pool().fetchval(
+        "SELECT 1 FROM eval_rubric_proposals WHERE id=$1 AND model_id=$2 AND status <> 'replaced'",
+        proposal_id,
+        eval_id,
+    )
+    if found is None:
+        raise service.NotFound("Proposed change not found")
+    await get_pool().execute(
+        """INSERT INTO eval_rubric_proposal_comments (proposal_id, author, trait, body)
+           VALUES ($1, $2, $3, $4)""",
+        proposal_id,
+        owner,
+        trait.strip()[:200],
+        body[:COMMENT],
+    )
     return await listing(owner, eval_id)
 
 

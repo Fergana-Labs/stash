@@ -48,7 +48,8 @@ it("shows the rubric's quality, who approved each version and the calls it score
   render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
   expect(screen.getByText("Quality").nextElementSibling).toHaveTextContent("81");
   fireEvent.click(screen.getByText("History"));
-  expect(screen.getByText("Change #4 approved by Reviewer")).toBeVisible();
+  expect(screen.getByRole("link", { name: "Change #4" })).toHaveAttribute("href", `/reward-models/evals/${data().id}/changes/4`);
+  expect(screen.getByText("approved by Reviewer")).toBeVisible();
   expect(screen.getByText(/Scored 12 calls, Oct 25, pr-bot, support-agent/)).toBeVisible();
 });
 
