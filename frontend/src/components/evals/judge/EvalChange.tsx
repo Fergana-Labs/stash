@@ -138,12 +138,24 @@ function Conversation({ proposal: p, onDecide }: {
   const before = p.comments.filter((c) => !p.decided_at || c.created_at <= p.decided_at);
   const after = p.comments.filter((c) => p.decided_at && c.created_at > p.decided_at);
   const calls = p.checks?.calls;
+  const [hideSame, setHideSame] = useState(false);
   return <section aria-label="Conversation" className="min-w-0 space-y-2">
     <Entry who={p.opened_by ?? "Unknown"} what="opened" at={p.created_at}>
-      {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
-      {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
-      {(p.checks?.calls?.calls.length ?? 0) > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2 first:mt-0 first:border-t-0 first:pt-0">
-        <CallList proposal={p} />
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
+          {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
+        </div>
+        {calls?.calls.some(unchanged) && <button type="button" role="switch" aria-checked={hideSame} onClick={() => setHideSame(!hideSame)}
+          className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground">
+          Hide unchanged
+          <span aria-hidden className={cn("flex h-3.5 w-6 items-center rounded px-0.5 transition-colors", hideSame ? "bg-foreground" : "bg-border")}>
+            <span className={cn("size-2.5 rounded-sm bg-background transition-transform", hideSame && "translate-x-2.5")} />
+          </span>
+        </button>}
+      </div>
+      {(calls?.calls.length ?? 0) > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2">
+        <CallList proposal={p} hideSame={hideSame} />
       </div>}
     </Entry>
     {before.map((c) => <CommentEntry key={c.id} comment={c} />)}
@@ -401,9 +413,8 @@ function delta(f: EvalFlip): string {
 /** A score that reads the same to two decimals under both rubrics. */
 const unchanged = (f: EvalFlip) => Math.abs(f.after - f.before) < 0.005;
 
-function CallList({ proposal: p }: { proposal: EvalProposal }) {
+function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame: boolean }) {
   const [query, setQuery] = useState("");
-  const [hideSame, setHideSame] = useState(false);
   const all = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
     .map((r) => ({ ...r, name: r.call.name || r.call.asked || r.call.text.split("\n")[0] || r.call.files[0]?.name || "" }))
     .sort((a, b) => (b.flip.after - b.flip.before) - (a.flip.after - a.flip.before));
@@ -422,10 +433,6 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
               <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search evals"
                 className="h-6 w-44 rounded border border-border bg-background pr-2 pl-6 text-[12px] font-normal normal-case tracking-normal text-foreground outline-none focus:border-foreground/40" />
             </span>
-            {all.some((r) => unchanged(r.flip)) && <label className="flex cursor-pointer items-center gap-1 font-normal normal-case tracking-normal">
-              <input type="checkbox" checked={hideSame} onChange={(e) => setHideSame(e.target.checked)} className="size-3 accent-foreground" />
-              Hide unchanged
-            </label>}
           </span>
         </th>
         <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
