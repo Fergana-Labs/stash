@@ -152,7 +152,7 @@ function Attachment({ evalId, attachment, actions }: { evalId: string; attachmen
   // A file as a chip, the way a chat shows an attachment: its icon or a small preview, its
   // name (which opens the example), its label, and an X on hover. The reason usually repeats
   // what the message says, so it shows on hover, not on each file.
-  return <figure className="group/attachment m-0 inline-flex h-7 max-w-full items-center gap-1.5 rounded border border-border bg-background pr-1 pl-1.5 text-[12px]" title={attachment.note || undefined}>
+  return <figure className="group/attachment relative m-0 inline-flex h-7 max-w-full items-center gap-1.5 rounded border border-border bg-background pr-1 pl-1.5 text-[12px]" title={attachment.note || undefined}>
     {image
       ? <FileThumb path={evalExampleFilePath(evalId, attachment.example_id, 0)} alt={attachment.name} className="size-5 shrink-0" />
       : <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
@@ -163,7 +163,7 @@ function Attachment({ evalId, attachment, actions }: { evalId: string; attachmen
         {(["good", "bad"] as const).map((label) => (
           <button key={label} type="button" disabled={saving} aria-pressed={attachment.label === label} onClick={() => void set(label)}
             className={cn("px-1.5 leading-none transition-colors disabled:opacity-60", attachment.label === label
-              ? label === "good" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+              ? "bg-surface font-medium text-foreground"
               : "text-muted-foreground hover:bg-surface")}>
             {label === "good" ? "Good" : "Bad"}
           </button>
@@ -171,7 +171,7 @@ function Attachment({ evalId, attachment, actions }: { evalId: string; attachmen
       </div>
     </figcaption>
     <button type="button" aria-label={`Remove ${attachment.name}`} title="Remove from the eval" disabled={saving} onClick={() => void remove()}
-      className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:opacity-60 group-hover/attachment:opacity-100 max-sm:opacity-100">
+      className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-sm border border-border bg-background text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:opacity-60 group-hover/attachment:opacity-100 max-sm:opacity-100">
       <X className="size-3" />
     </button>
   </figure>;
