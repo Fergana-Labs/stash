@@ -88,7 +88,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>
       {p.stale && <span>Out of date</span>}
       <span className="tabular-nums">Rubric v{p.base} → v{p.version ?? p.base + 1}</span>
-      <span>{p.proposed_by ?? "Agent"}</span>
+      <span>{p.opened_by ?? "Unknown"}</span>
       <time dateTime={p.created_at}>{relativeTime(p.created_at)}</time>
     </div>
     <nav aria-label="Change sections" className="mt-3 mb-3 flex gap-1 border-b border-border pb-1.5">
@@ -121,7 +121,7 @@ function Conversation({ proposal: p, onDecide, onComment }: {
   const after = p.comments.filter((c) => p.decided_at && c.created_at > p.decided_at);
   const calls = p.checks?.calls;
   return <section aria-label="Conversation" className="min-w-0 space-y-2">
-    <Entry who={p.proposed_by ?? "Agent"} what="opened" at={p.created_at}>
+    <Entry who={p.opened_by ?? "Unknown"} what="opened" at={p.created_at}>
       {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
       {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
       <CallList proposal={p} />

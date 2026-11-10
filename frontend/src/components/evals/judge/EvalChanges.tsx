@@ -68,7 +68,7 @@ function ChangeRow({ evalId, proposal: p }: { evalId: string; proposal: EvalProp
         <MessageSquare aria-hidden className="size-3.5" />{p.comments.length}
       </span>}
       <ChecksMark proposal={p} />
-      <span className="whitespace-nowrap text-[12px] text-muted-foreground">{p.proposed_by ?? "Agent"}</span>
+      <span className="whitespace-nowrap text-[12px] text-muted-foreground">{p.opened_by ?? "Unknown"}</span>
       <time className="w-14 whitespace-nowrap text-right text-[12px] text-muted-foreground" dateTime={p.created_at}>{relativeTime(p.created_at)}</time>
     </Link>
   </li>;

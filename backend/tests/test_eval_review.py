@@ -91,6 +91,7 @@ async def test_a_build_proposes_a_change_with_its_checks_and_approval_applies_it
     assert [(p["number"], p["status"], p["base"]) for p in listed["proposals"]] == [(1, "open", 1)]
     proposal = listed["proposals"][0]
     assert proposal["proposed_by"] is None and proposal["source"] == "revised"
+    assert proposal["opened_by"]  # the eval's owner, whose examples the build answered
     assert [t["name"] for t in proposal["traits"]] == ["Color", "Stripes"]
     assert [t["name"] for t in proposal["before"]["traits"]] == ["Color"]
     assert proposal["changes"][0] == ADD_STRIPES["changes"][0]
@@ -201,6 +202,7 @@ async def test_a_persons_edit_is_proposed_and_goes_stale_when_the_rubric_moves(
     assert [v["number"] for v in resp.json()["versions"]] == [1]  # nothing saved
     edit = (await _changes(client, auth, eid))["proposals"][0]
     assert edit["proposed_by"] and edit["source"] == "edited"
+    assert edit["opened_by"] == edit["proposed_by"]
     assert edit["checks"] is None and edit["passed"] is None
     assert checks_queued == [edit["id"]]
 

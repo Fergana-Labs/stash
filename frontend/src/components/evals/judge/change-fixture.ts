@@ -26,7 +26,7 @@ export const proposal = (extra: Partial<EvalProposal> = {}): EvalProposal => ({
     manipulation: { n: 3, resisted: 3, worst: { score: 0.1, base: 0, claim: "" } }, short: null,
   },
   passed: true, quality: { before: { score: 82, parts: {} }, after: { score: 97, parts: {} } },
-  proposed_by: null, decided_by: null, decided_at: null, note: "", version: null, stale: false,
+  proposed_by: null, opened_by: "Owner", decided_by: null, decided_at: null, note: "", version: null, stale: false,
   examples: { e1: example("e1", { note: "striped" }), e2: example("e2", { caller: "support-agent" }) },
   calls: { c1: { id: "c1", name: "", asked: "draw a chart", text: "", files: [], caller: "support-agent", created_at: now } },
   comments: [],

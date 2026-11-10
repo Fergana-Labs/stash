@@ -165,8 +165,11 @@ export interface EvalProposal {
   quality: { before: EvalQuality | null; after: EvalQuality | null };
   /** The rubric it would replace. */
   before: { number: number; traits: EvalTrait[]; scoring: EvalRubricVersion["scoring"]; instructions: string } | null;
-  /** The person who proposed it; null when the agent did. */
+  /** The person who edited the rubric to propose it; null when the wizard drafted it. */
   proposed_by: string | null;
+  /** Who the change was opened by: that person, or the eval's owner when the wizard drafted it
+   * from their examples. */
+  opened_by: string | null;
   decided_by: string | null;
   decided_at: string | null;
   note: string;

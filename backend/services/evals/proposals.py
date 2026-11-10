@@ -425,8 +425,13 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
            ORDER BY created_at, id""",
         [p["id"] for p in found],
     )
+    # A change the wizard drafts is opened for the eval's owner: it answers their examples.
+    owner = await get_pool().fetchval(
+        "SELECT owner_user_id FROM intuition_models WHERE id=$1", eval_id
+    )
     names = await _names(
-        {p[k] for p in found for k in ("proposed_by", "decided_by") if p[k]}
+        {owner}
+        | {p[k] for p in found for k in ("proposed_by", "decided_by") if p[k]}
         | {e["added_by"] for e in examples if e["added_by"]}
         | {c["author"] for c in comments if c["author"]}
     )
@@ -474,6 +479,7 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
             {
                 **{k: v for k, v in p.items() if k not in ("refs", "thread_id")},
                 "proposed_by": names.get(p["proposed_by"]),
+                "opened_by": names.get(p["proposed_by"] or owner),
                 "decided_by": names.get(p["decided_by"]),
                 "before": base
                 and {k: base[k] for k in ("traits", "scoring", "instructions", "number")},

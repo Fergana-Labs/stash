@@ -19,7 +19,7 @@ it("lists open changes, each linking to its own page with its checks and comment
   expect(within(rows[0]).getByText("Add Stripes, tighten Color")).toBeVisible();
   expect(within(rows[0]).getByLabelText("Checks passed")).toBeVisible();
   expect(within(rows[0]).getByTitle("Comments")).toHaveTextContent("2");
-  expect(within(rows[0]).getByText("Agent")).toBeVisible();
+  expect(within(rows[0]).getByText("Owner")).toBeVisible();
 });
 
 it("lists merged and closed changes under Closed", () => {
