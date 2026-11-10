@@ -34,6 +34,8 @@ it("runs as one conversation: the agent's messages are in line, and a choice ans
   expect(screen.queryByText("You")).toBeNull();
   expect(screen.getByRole("article", { name: "Agent message" })).toHaveTextContent("Good or bad?");
   expect(within(screen.getByRole("article", { name: "Your message" })).getAllByRole("figure")).toHaveLength(2);
+  // The agent's turn is marked by how long it worked on the person's message.
+  expect(within(screen.getByRole("article", { name: "Agent message" })).getByText("Worked for 1m 0s")).toBeVisible();
   // Nothing is folded away, and there are no per-message reply boxes.
   expect(screen.getByText("Good or bad?")).toBeVisible();
   expect(screen.queryByText("1 reply")).toBeNull();
@@ -51,6 +53,7 @@ it("shows every message in the order it was sent, and what is typed continues th
     message("m5", { thread_id: "m4", author: "agent", text: "Go on", created_at: "2026-11-10T10:04:00Z" }),
   ]);
   expect(screen.getAllByRole("article").map((a) => a.querySelector("p")?.textContent)).toEqual(["these are bad", "Which ones?", "all of them", "one more thing", "Go on"]);
+  expect(screen.getAllByText(/^Worked for /).map((w) => w.textContent)).toEqual(["Worked for 1m 0s", "Worked for 1m 0s"]);
   const box = screen.getByRole("textbox", { name: "Message" });
   fireEvent.change(box, { target: { value: "never use gradients" } });
   fireEvent.keyDown(box, { key: "Enter" });

@@ -76,7 +76,7 @@ export default function EvalChannel({ evalId, messages, reading = false, onSend,
       <div ref={list} className="scroll-thin flex-1 space-y-1 px-3 py-3 lg:overflow-y-auto">
         {ordered.length === 0
           ? <UploadBox title="Drop screenshots of good and bad agent work" disabled={false} onFiles={setDropped} />
-          : ordered.map((m) => <Message key={m.id} evalId={evalId} message={m} actions={actions} />)}
+          : ordered.map((m, i) => <Message key={m.id} evalId={evalId} message={m} actions={actions} worked={workedFor(ordered[i - 1], m)} />)}
         {typing && <div className="py-1.5"><Typing /></div>}
         <div ref={bottom} />
       </div>
@@ -96,11 +96,32 @@ function Typing() {
   </div>;
 }
 
+/** How long the agent took over a message that answers the person: the seconds between their
+ * message just before it and this one. Null for the person's messages and for an agent message
+ * that follows another of the agent's. */
+function workedFor(previous: EvalMessage | undefined, message: EvalMessage): number | null {
+  if (message.author !== "agent" || previous?.author !== "user") return null;
+  const seconds = Math.round((Date.parse(message.created_at) - Date.parse(previous.created_at)) / 1000);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
+/** "38s", "4m 12s", "1h 3m". */
+function duration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
 /** One message, with no name on it: the person's sit on the right in a dark bubble with their
- * files above it, the agent's are plain text on the left. When it was sent shows on hover. */
-function Message({ evalId, message, actions }: { evalId: string; message: EvalMessage; actions: AttachmentActions }) {
+ * files above it, the agent's are plain text on the left under a "Worked for 2m 5s" line and a rule that mark
+ * where its turn starts. When it was sent shows on hover. */
+function Message({ evalId, message, actions, worked }: { evalId: string; message: EvalMessage; actions: AttachmentActions; worked: number | null }) {
   const sent = new Date(message.created_at).toLocaleString();
-  if (message.author === "agent") return <article aria-label="Agent message" title={sent} className="py-1.5 pr-12"><Body evalId={evalId} message={message} actions={actions} /></article>;
+  if (message.author === "agent") return <article aria-label="Agent message" title={sent} className="py-1.5">
+    {/* Where the agent's turn starts: how long it worked, and a rule under it. */}
+    {worked !== null && <div className="mb-2 border-b border-border pb-1.5 text-[12px] text-muted-foreground">Worked for {duration(worked)}</div>}
+    <div className="pr-12"><Body evalId={evalId} message={message} actions={actions} /></div>
+  </article>;
   return <article aria-label="Your message" title={sent} className="flex flex-col items-end gap-1.5 py-1.5 pl-12">
     {message.data.via && <span className="text-[11px] text-muted-foreground">via {message.data.via}</span>}
     {message.attachments.length > 0 && (
