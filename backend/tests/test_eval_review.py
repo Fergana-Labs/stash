@@ -11,6 +11,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.database import get_pool
 from backend.services.evals import proposals
 from backend.tasks import evals as eval_tasks
 
@@ -315,3 +316,27 @@ async def test_a_rubric_change_is_scored_by_the_eval_named_to_grade_rubrics(
 
     # Naming none again stops it.
     assert (await client.put(url, headers=auth, json={"eval_id": None})).status_code == 200
+
+
+async def test_a_change_that_replaces_an_open_one_keeps_its_name(client: AsyncClient, world):  # noqa: F811
+    auth = await _register(client)
+    eid = await _reviewed_eval(client, auth)
+    world.proposals.append(ADD_STRIPES)
+    await _build(eid)
+    first = (await _changes(client, auth, eid))["proposals"][0]
+    assert first["name"] == ""
+    await get_pool().execute(
+        "UPDATE eval_rubric_proposals SET name='no-stripes' WHERE id=$1", UUID(first["id"])
+    )
+
+    # The build drafts a different rubric on the same version: it takes the open one's place.
+    second = await proposals.create(
+        UUID(eid),
+        base=1,
+        candidate={"traits": [COLOR], "refs": [], "instructions": "", "scoring": "lowest"},
+        changes=[{"kind": "scoring", "trait": "the lowest trait", "why": ""}],
+        source="revised",
+    )
+    assert (second["number"], second["name"]) == (2, "no-stripes")
+    listed = (await _changes(client, auth, eid))["proposals"]
+    assert [(p["number"], p["name"]) for p in listed] == [(2, "no-stripes")]

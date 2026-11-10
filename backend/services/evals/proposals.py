@@ -275,19 +275,25 @@ async def create(
         )
         if latest != base:
             return None
+        name = ""
         if proposed_by is None:
-            await conn.execute(
-                """UPDATE eval_rubric_proposals SET status='replaced'
-                   WHERE model_id=$1 AND status='open' AND proposed_by IS NULL""",
-                model_id,
+            # The change that takes an open one's place keeps the name a person gave it.
+            name = (
+                await conn.fetchval(
+                    """UPDATE eval_rubric_proposals SET status='replaced'
+                       WHERE model_id=$1 AND status='open' AND proposed_by IS NULL
+                       RETURNING name""",
+                    model_id,
+                )
+                or ""
             )
         row = await conn.fetchrow(
             """INSERT INTO eval_rubric_proposals
                (model_id, number, base, traits, refs, instructions, scoring, source, changes,
-                checks, proposed_by, thread_id)
+                checks, proposed_by, thread_id, name)
                VALUES ($1, (SELECT COALESCE(max(number), 0) + 1 FROM eval_rubric_proposals
                             WHERE model_id=$1),
-                       $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *""",
+                       $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *""",
             model_id,
             base,
             candidate["traits"],
@@ -299,6 +305,7 @@ async def create(
             found,
             proposed_by,
             thread_id,
+            name,
         )
     return _proposal(row)
 
