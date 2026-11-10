@@ -110,9 +110,11 @@ it("shows how the eval that grades rubrics scored both rubrics, trait by trait, 
   const rows = within(quality).getAllByRole("row").slice(1).map((r) => [...r.children].map((c) => c.textContent));
   expect(rows).toEqual([
     ["Overall", "0.50", "0.75", "+0.25"],
-    ["Good and bad are both concreteStripes names plain and striped", "0.50", "1.00", "+0.50"],
-    ["One thing per traitColor and Stripes are separate", "0.50", "0.50", "0.00"],
+    ["Good and bad are both concrete", "0.50", "1.00", "+0.50"],
+    ["One thing per trait", "0.50", "0.50", "0.00"],
   ]);
+  // The reason for a score is on hover, not printed beside the trait.
+  expect(within(quality).getByRole("rowheader", { name: "Good and bad are both concrete" })).toHaveAttribute("title", "Stripes names plain and striped");
 });
 
 it("has no Rubric quality tab when no eval grades this eval's rubrics", () => {

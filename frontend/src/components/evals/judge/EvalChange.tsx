@@ -259,8 +259,8 @@ function RubricDiff({ diff }: { diff: ReturnType<typeof rubricDiff> }) {
 type Quality = NonNullable<NonNullable<EvalProposal["checks"]>["rubric_quality"]>;
 
 /** How the eval that grades this eval's rubrics scored the rubric in use and the proposed one:
- * an overall score, then each of its traits with the score under both, how far it moved, and
- * its reason for the proposed rubric's score. Its name links to it. */
+ * an overall score, then each of its traits with the score under both and how far it moved.
+ * Hovering a trait gives its reason for the proposed rubric's score. Its name links to it. */
 function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quality: Quality }) {
   const was = new Map((quality.before?.traits ?? []).map((t) => [t.trait, t]));
   const rows = [
@@ -289,10 +289,7 @@ function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quali
         {rows.map((r, i) => {
           const flip = moved(r.before, r.after);
           return <tr key={r.name} className="border-t border-border">
-            <th scope="row" className="py-1.5 pr-3 text-left align-top font-normal">
-              <span className={cn(i === 0 && "font-medium")}>{r.name}</span>
-              {r.why && <span className="ml-2 text-muted-foreground">{r.why}</span>}
-            </th>
+            <th scope="row" title={r.why || undefined} className={cn("py-1.5 pr-3 text-left align-top font-normal", i === 0 && "font-medium")}>{r.name}</th>
             <td className={cn(column, "py-1.5 text-muted-foreground")}>{r.before?.toFixed(2)}</td>
             <td className={cn(column, "py-1.5")}>{r.after.toFixed(2)}</td>
             <td className={cn(column, "py-1.5 font-medium", (!flip || unchanged(flip)) && "font-normal text-muted-foreground")}>{flip && delta(flip)}</td>
