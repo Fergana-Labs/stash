@@ -167,13 +167,11 @@ function Conversation({ proposal: p, onDecide }: {
   </section>;
 }
 
-const VERB: Record<string, string> = { add: "Add", tighten: "Tighten", fix: "Fix", point: "Point", remove: "Remove", request: "Change", write: "Rewrite", description: "Description", scoring: "Score by" };
 const labelTone = (label: string | null) => (label === "good" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400");
 
-/** From examples to rubric: the labeled examples added to the eval and taken out of it since
- * the rubric version the change was made on, then the edits to the rubric that followed from
- * them, each with its reason. An added example opens its page, which links to the trace step
- * it was taken from. */
+/** The labeled examples added to the eval and taken out of it since the rubric version the
+ * change was made on. An added example opens its page, which links to the trace step it was
+ * taken from. What they did to the rubric is the Diff tab. */
 function Examples({ evalId, proposal: p, added }: { evalId: string; proposal: EvalProposal; added: EvalChangeExample[] }) {
   const heading = "pb-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
   const name = (e: { files: { name: string }[]; name: string; text: string; asked: string }) => e.files[0]?.name || e.name || e.text.split("\n")[0] || e.asked;
@@ -203,17 +201,6 @@ function Examples({ evalId, proposal: p, added }: { evalId: string; proposal: Ev
             <td className="max-w-0 truncate py-1.5 pr-3 text-muted-foreground line-through">{name(e)}{e.note && <span className="ml-2">{e.note}</span>}</td>
             <td className="w-px whitespace-nowrap py-1.5 pl-3 text-muted-foreground">{e.removed_by_name}</td>
             <td className="w-px whitespace-nowrap py-1.5 pr-3 pl-3 text-right text-muted-foreground"><time dateTime={e.removed_at}>{relativeTime(e.removed_at)}</time></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>}
-    {p.changes.length > 0 && <table aria-label="Rubric edits" className="w-full border-collapse rounded border border-border text-[12px]">
-      <thead><tr><th scope="col" colSpan={2} className={cn(heading, "px-3 pt-2")}>Rubric edits <span className="tabular-nums">{p.changes.length}</span></th></tr></thead>
-      <tbody>
-        {p.changes.map((c, i) => (
-          <tr key={i} className="border-t border-border align-top">
-            <th scope="row" className="w-px whitespace-nowrap py-1.5 pr-4 pl-3 text-left font-medium">{VERB[c.kind] ?? c.kind}{c.trait ? ` ${c.trait}` : ""}</th>
-            <td className="py-1.5 pr-3 text-muted-foreground">{c.why}</td>
           </tr>
         ))}
       </tbody>

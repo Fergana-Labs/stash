@@ -48,7 +48,7 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
 
-it("shows the examples added and removed, and the rubric edits that followed, under their own tab", () => {
+it("shows the examples added and removed under their own tab", () => {
   show(proposal({ removed: [{ id: "r1", name: "", asked: "", text: "old output", files: [], label: "good", note: "no longer how we do it", removed_by_name: "Reviewer", removed_at: now }] }), "examples");
   expect(screen.getByRole("button", { name: /^Examples\s*\+2 -1$/ })).toHaveAttribute("aria-current", "page");
 
@@ -62,12 +62,8 @@ it("shows the examples added and removed, and the rubric edits that followed, un
   expect(within(removed).getByText("no longer how we do it")).toBeVisible();
   expect(within(removed).queryByRole("link")).toBeNull();
 
-  // How the examples changed the rubric: each edit with its reason.
-  const edits = screen.getByRole("table", { name: "Rubric edits" });
-  expect(within(edits).getAllByRole("row").slice(1).map((r) => [...r.children].map((c) => c.textContent))).toEqual([
-    ["Add Stripes", "the striped ones are bad"],
-    ["Tighten Color", "orange passed as red"],
-  ]);
+  // The rubric's edits are in the Diff tab only.
+  expect(screen.queryByRole("table", { name: "Rubric edits" })).toBeNull();
 });
 
 it("merges or closes an open change, with no comment box", async () => {
