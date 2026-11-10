@@ -6,7 +6,7 @@ import EvalDetail from "./EvalDetail";
 const { call } = vi.hoisted(() => ({ call: {
   id: "c1", input: { name: "", text: "", trace: [], files: [] } as unknown as EvalCall["input"],
   mode: "change", score: 0.25, explanation: "The change made the header worse.", fixes: [],
-  caller: "pr-bot", created_at: new Date().toISOString(), label: null, note: "",
+  caller: "pr-bot", rubric_version: 3, created_at: new Date().toISOString(), label: null, note: "",
   traits: [
     { trait: "No dashed lines", score: 0.25, why: "added a dashed border", touched: true, effect: "worse" },
     { trait: "Type hierarchy", score: null, why: "unchanged", touched: false, effect: null },

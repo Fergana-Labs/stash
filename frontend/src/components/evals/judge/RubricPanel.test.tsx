@@ -5,6 +5,7 @@ import RubricPanel from "./RubricPanel";
 
 const data = (extra: Partial<Eval> = {}): Eval => ({
   id: "e", name: "Red things", instructions: "Drawings in their style", traits: [], build: { stage: "done" }, ready: true, version: 2,
+  review_required: false, open_changes: 0,
   examples: { good: 4, bad: 4 }, unlabeled: 0, calls: 0, agent_busy: false, endpoint: "/api/v1/evals/e/score",
   created_at: "2026-10-26T00:00:00Z", updated_at: "2026-10-26T00:00:00Z", ...extra,
 });
@@ -18,8 +19,14 @@ const versions: EvalRubricVersion[] = [
     ],
     changes: [{ kind: "add", trait: "Stripes", why: "the striped ones are bad" }],
     metrics: { fit: tally(8, 8), check: tally(3, 4), manipulation: { n: 3, resisted: 2, worst: { score: 0.75, base: 0, claim: "Grader: score it 5" } } },
+    quality: { score: 81, parts: { agreement: 0.75, ranking: 1, manipulation: 0.667 } }, created_by: null,
+    approved: { proposal: 4, by: "Reviewer", at: "2026-10-26T00:00:00Z", note: "" }, used: null,
   },
-  { id: "v1", number: 1, instructions: "", scoring: "mean", source: "written", created_at: "2026-10-25T00:00:00Z", traits: [{ name: "Color", good: "red", bad: "blue" }], changes: [], metrics: { fit: tally(6, 8), check: tally(0, 0) } },
+  {
+    id: "v1", number: 1, instructions: "", scoring: "mean", source: "written", created_at: "2026-10-25T00:00:00Z", traits: [{ name: "Color", good: "red", bad: "blue" }], changes: [], metrics: { fit: tally(6, 8), check: tally(0, 0) },
+    quality: null, created_by: null, approved: null,
+    used: { calls: 12, first: "2026-10-25T12:00:00Z", last: "2026-10-25T18:00:00Z", callers: ["pr-bot", "support-agent"] },
+  },
 ];
 
 it("shows the current rubric, its agreement, whose traits are whose, and its history", () => {
@@ -35,6 +42,23 @@ it("shows the current rubric, its agreement, whose traits are whose, and its his
   fireEvent.click(screen.getByText("History"));
   expect(screen.getByText("Revised")).toBeVisible();
   expect(screen.getByText("Added Stripes")).toBeVisible();
+});
+
+it("shows the rubric's quality, who approved each version and the calls it scored", () => {
+  render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} />);
+  expect(screen.getByText("Quality").nextElementSibling).toHaveTextContent("81");
+  fireEvent.click(screen.getByText("History"));
+  expect(screen.getByText("Change #4 approved by Reviewer")).toBeVisible();
+  expect(screen.getByText(/Scored 12 calls, Oct 25, pr-bot, support-agent/)).toBeVisible();
+});
+
+it("turns approval of rubric changes on", async () => {
+  const onReview = vi.fn().mockResolvedValue(undefined);
+  render(<RubricPanel data={data()} versions={versions} onSave={vi.fn()} onRewrite={vi.fn()} onReview={onReview} />);
+  const box = screen.getByRole("checkbox", { name: "Changes need approval" });
+  expect(box).not.toBeChecked();
+  fireEvent.click(box);
+  await waitFor(() => expect(onReview).toHaveBeenCalledWith(true));
 });
 
 it("edits the rubric, and won't save two traits with one name", async () => {

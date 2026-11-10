@@ -6,20 +6,23 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame, evalSurfaceClass } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
+import EvalChanges from "./EvalChanges";
 import EvalChannel, { type Send } from "./EvalChannel";
 import FileThumb from "./FileThumb";
 import RubricPanel from "./RubricPanel";
 import UploadBox from "./UploadBox";
 import {
-  EVAL_BUILDING, evalBuild, evalCallFilePath, evalCalls, evalDeleteExample, evalEditExample, evalEditRubric, evalExampleFilePath, evalExamples,
-  evalGet, evalLabelCall, evalMessages, evalPost, evalRubric, evalUploadExamples,
-  type Eval, type EvalCall, type EvalExample, type EvalItem, type EvalLabel, type EvalMessage, type EvalRubricVersion,
+  EVAL_BUILDING, evalBuild, evalCallFilePath, evalCalls, evalChanges, evalDecide, evalDeleteExample, evalEditExample, evalEditRubric, evalExampleFilePath, evalExamples,
+  evalGet, evalLabelCall, evalMessages, evalPost, evalRubric, evalSetReview, evalUploadExamples,
+  type Eval, type EvalCall, type EvalChanges as Changes, type EvalExample, type EvalItem, type EvalLabel, type EvalMessage, type EvalRubricVersion,
 } from "@/lib/evals-api";
 
-type Tab = "channel" | "examples" | "calls";
+type Tab = "channel" | "changes" | "examples" | "calls";
+const TABS: Tab[] = ["channel", "changes", "examples", "calls"];
 
 /** A judge eval: its channel, where examples are dropped in and the agent asks about them,
- * beside its rubric, which keeps up with them. Examples and agent calls are a tab away. */
+ * beside its rubric, which keeps up with them. Examples and agent calls are a tab away, and
+ * so are the rubric changes waiting for approval when the eval requires it. */
 export default function EvalDetail({ id, initialTab }: { id: string; initialTab?: string }) {
   const [data, setData] = useState<Eval | null>(null);
   const [messages, setMessages] = useState<EvalMessage[]>([]);
@@ -27,7 +30,8 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
   const [versions, setVersions] = useState<EvalRubricVersion[]>([]);
   const [calls, setCalls] = useState<EvalCall[]>([]);
   const [examples, setExamples] = useState<EvalExample[]>([]);
-  const [tab, setTab] = useState<Tab>(initialTab === "examples" || initialTab === "calls" ? initialTab : "channel");
+  const [changes, setChanges] = useState<Changes | null>(null);
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "channel");
   const [error, setError] = useState("");
   // What a send left out (files that couldn't be read): kept until the next send, not
   // cleared by polling the way load errors are.
@@ -45,12 +49,16 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
       if (mine !== latest.current) return;
       setData(d); setMessages(m.messages); setReading(m.busy); setError("");
       // The rubric changes with its version, and its numbers when a build finishes.
-      const key = `${d.version}:${d.build?.stage ?? ""}`;
+      const key = `${d.version}:${d.build?.stage ?? ""}:${d.calls}`;
       if (key !== rubricKey.current) {
         const rubric = d.version ? await evalRubric(id) : [];
         if (mine !== latest.current) return;
         setVersions(rubric);
         rubricKey.current = key;
+      }
+      if (tab === "changes") {
+        const found = await evalChanges(id);
+        if (mine === latest.current) setChanges(found);
       }
       if (tab === "examples") setExamples(await evalExamples(id));
       if (tab === "calls") setCalls(await evalCalls(id));
@@ -87,11 +95,21 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
     await load();
   };
 
+  const decide = async (proposalId: string, decision: "approve" | "reject", note: string) => {
+    setChanges(await evalDecide(id, proposalId, decision, note));
+    await load();
+  };
+  const setReview = async (required: boolean) => {
+    setChanges(await evalSetReview(id, required));
+    await load();
+  };
+
   if (!data) return <EvalPageFrame title="Eval"><p role={error ? "alert" : "status"} className="text-sm text-muted-foreground">{error || "Loading"}</p></EvalPageFrame>;
   const panel = versions.length > 0 || building || data.build?.stage === "failed";
   const labeled = data.examples.good + data.examples.bad;
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "channel", label: "Eval wizard" },
+    ...(data.review_required || data.open_changes > 0 || tab === "changes" ? [{ key: "changes" as const, label: "Changes", count: data.open_changes }] : []),
     { key: "examples", label: "Examples", count: labeled + data.unlabeled },
     ...(data.calls > 0 ? [{ key: "calls" as const, label: "Agent calls", count: data.calls }] : []),
   ];
@@ -114,15 +132,16 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
         <div className="flex min-w-0 flex-col gap-2 lg:min-h-0">
           {(error || notice) && <p role="alert" className="text-[12px] text-destructive">{error || notice}</p>}
           {busy && <p role="status" className="text-[12px] text-muted-foreground">{busy}</p>}
-          {tab === "channel" && <EvalChannel evalId={id} messages={messages} reading={reading} onSend={send} onLabel={label} onRemove={remove} />}
+          {tab === "channel" && <EvalChannel evalId={id} messages={messages} reading={reading} onSend={send} onLabel={label} onRemove={remove} onReview={() => setTab("changes")} />}
           {tab !== "channel" && <div className="scroll-thin lg:min-h-0 lg:overflow-y-auto">
+            {tab === "changes" && changes && <EvalChanges evalId={id} changes={changes} onDecide={decide} />}
             {tab === "examples" && <Examples id={id} examples={examples} disabled={!!busy} onUpload={(l, f) => void upload(l, f)}
               onDelete={(exampleId) => void run("Removing", () => evalDeleteExample(id, exampleId))} />}
             {tab === "calls" && <Calls id={id} calls={calls} onLabel={(callId, l, note) => void run("Saving", () => evalLabelCall(id, callId, l, note))} />}
           </div>}
         </div>
         {panel && <div className="scroll-thin lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-          <RubricPanel data={data} versions={versions}
+          <RubricPanel data={data} versions={versions} onReview={setReview}
             onSave={async (traits, base) => { setVersions(await evalEditRubric(id, traits, base)); await load(); }}
             onRewrite={() => run("Rewriting the rubric", () => evalBuild(id, true))} />
         </div>}
@@ -153,7 +172,7 @@ function CallRow({ id, call, onLabel }: { id: string; call: EvalCall; onLabel: (
   return <div className="grid gap-4 px-4 py-3 md:grid-cols-[200px_1fr_220px]">
     <ItemPreview item={call.input} path={(i) => evalCallFilePath(id, call.id, i)} />
     <div className="min-w-0 text-[13px]">
-      <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)}, {call.caller || "unknown caller"}</div>
+      <div className="text-[12px] text-muted-foreground">{relativeTime(call.created_at)}, {call.caller || "unknown caller"}{call.rubric_version ? `, rubric v${call.rubric_version}` : ""}</div>
       <div className="mt-1 flex items-baseline gap-2">
         <span className="text-[15px] font-semibold tabular-nums">{call.score.toFixed(2)}</span>
         {call.mode === "change" && <span className="text-[12px] text-muted-foreground">Change</span>}

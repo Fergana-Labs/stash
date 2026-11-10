@@ -27,6 +27,9 @@ export interface Eval {
   build: EvalBuild | null;
   ready: boolean;
   version: number | null;
+  /** Rubric changes wait for approval instead of being saved; how many are waiting now. */
+  review_required: boolean;
+  open_changes: number;
   examples: { good: number; bad: number };
   unlabeled: number;
   calls: number;
@@ -63,6 +66,8 @@ export interface EvalCall {
   explanation: string;
   fixes: { issue: string; fix: string }[];
   caller: string;
+  /** The rubric version that scored this call. */
+  rubric_version: number | null;
   created_at: string;
   label: EvalLabel | null;
   note: string;
@@ -79,6 +84,8 @@ export interface EvalMessage {
   kind: "message" | "rubric";
   text: string;
   data: {
+    /** The proposed rubric change this message reports. */
+    proposal?: number;
     choices?: string[];
     about?: string;
     uploading?: boolean;
@@ -104,8 +111,69 @@ export interface EvalRubricVersion {
   source: "written" | "revised" | "edited";
   changes: EvalChange[];
   metrics: EvalMetrics | null;
+  quality: EvalQuality | null;
+  /** The person who edited the rubric directly. */
+  created_by: string | null;
+  /** The approved change this version came from. */
+  approved: { proposal: number; by: string | null; at: string; note: string } | null;
+  /** The agent calls this version scored. */
+  used: { calls: number; first: string; last: string; callers: string[] } | null;
   created_at: string;
 }
+/** A rubric's quality, 0-100: the mean of its parts (each 0-1). */
+export interface EvalQuality { score: number; parts: { agreement?: number; ranking?: number; manipulation?: number } }
+export interface EvalFlip { id: string; before: number; after: number }
+/** What a proposed rubric change was measured to do, against the version it would replace. */
+export interface EvalChecks {
+  before: { fit: EvalTally; check: EvalTally } | null;
+  after: { fit: EvalTally; check: EvalTally } | null;
+  /** Labeled examples whose verdict the change sets right, and the ones it sets wrong. */
+  fixed: EvalFlip[];
+  broke: EvalFlip[];
+  /** Examples added since the version the change was proposed on. */
+  evidence: string[];
+  /** Recent agent calls graded again with the proposed rubric. */
+  calls: { n: number; mean_before: number; mean_after: number; pass_before: number; pass_after: number; changed: EvalFlip[]; calls: EvalFlip[] } | null;
+  manipulation: EvalManipulation | null;
+  short: { graded: number; of: number } | null;
+}
+export interface EvalSnippet { id: string; name: string; asked: string; text: string; files: { name: string; content_type: string }[] }
+export interface EvalChangeExample extends EvalSnippet {
+  label: EvalLabel | null; note: string; held_out: boolean; created_at: string;
+  added_by_name: string | null; added_via: "web" | "api" | ""; caller: string;
+}
+export interface EvalChangeCall extends EvalSnippet { caller: string; created_at: string }
+/** A proposed change to the rubric: what it would become, on which version, and its checks. */
+export interface EvalProposal {
+  id: string;
+  number: number;
+  base: number;
+  status: "open" | "approved" | "rejected";
+  source: EvalRubricVersion["source"];
+  traits: EvalTrait[];
+  scoring: EvalRubricVersion["scoring"];
+  instructions: string;
+  changes: EvalChange[];
+  /** null while the checks are still running. */
+  checks: EvalChecks | null;
+  passed: boolean | null;
+  quality: { before: EvalQuality | null; after: EvalQuality | null };
+  /** The rubric it would replace. */
+  before: { number: number; traits: EvalTrait[]; scoring: EvalRubricVersion["scoring"]; instructions: string } | null;
+  /** The person who proposed it; null when the agent did. */
+  proposed_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  note: string;
+  /** The rubric version an approval saved. */
+  version: number | null;
+  /** Open, but made on a version that is no longer current: it can't be approved. */
+  stale: boolean;
+  examples: Record<string, EvalChangeExample>;
+  calls: Record<string, EvalChangeCall>;
+  created_at: string;
+}
+export interface EvalChanges { review_required: boolean; proposals: EvalProposal[] }
 
 export const evalCreate = (name: string, instructions = "") =>
   apiFetch<Eval>(T, { method: "POST", body: JSON.stringify({ name, instructions }) });
@@ -123,6 +191,11 @@ export const evalEditRubric = (id: string, traits: EvalTrait[], base: number) =>
     method: "PUT",
     body: JSON.stringify({ base, traits: traits.map(({ name, good, bad, basis }) => ({ name, good, bad, basis: basis ?? "" })) }),
   }).then((r) => r.versions);
+export const evalChanges = (id: string) => apiFetch<EvalChanges>(`${T}/${id}/changes`);
+export const evalSetReview = (id: string, required: boolean) =>
+  apiFetch<EvalChanges>(`${T}/${id}/review`, { method: "PUT", body: JSON.stringify({ required }) });
+export const evalDecide = (id: string, proposalId: string, decision: "approve" | "reject", note: string) =>
+  apiFetch<EvalChanges>(`${T}/${id}/changes/${proposalId}/${decision}`, { method: "POST", body: JSON.stringify({ note }) });
 export const evalMessages = (id: string) => apiFetch<{ messages: EvalMessage[]; busy: boolean }>(`${T}/${id}/messages`);
 
 /** Files per request when posting to the channel; bigger drops go up in parts. */

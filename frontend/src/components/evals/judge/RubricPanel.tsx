@@ -17,11 +17,13 @@ const MAX_TRAITS = 12;
 
 /** The eval's rubric, the living artifact: what the judge checks now, how well it agrees with
  * the person's labels, every version it has had and why, and the endpoint that scores with it. */
-export default function RubricPanel({ data, versions, onSave, onRewrite }: {
+export default function RubricPanel({ data, versions, onSave, onRewrite, onReview }: {
   data: Eval;
   versions: EvalRubricVersion[];
   onSave: (traits: EvalTrait[], base: number) => Promise<void>;
   onRewrite: () => Promise<void>;
+  /** Turn approval of rubric changes on or off. */
+  onReview?: (required: boolean) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const current = versions[0];
@@ -45,7 +47,8 @@ export default function RubricPanel({ data, versions, onSave, onRewrite }: {
         )}
       </header>
       {failed && <p role="alert" className="text-[12px] text-destructive">Update failed: {data.build?.error || "unknown error"}</p>}
-      {current && <Agreement metrics={current.metrics} scoring={current.scoring} />}
+      {current && <Agreement metrics={current.metrics} scoring={current.scoring} quality={current.quality} />}
+      {current && onReview && <ReviewToggle required={data.review_required} onReview={onReview} />}
       {data.instructions && <p className="text-[12px] text-muted-foreground">{data.instructions}</p>}
       {current && (editing
         ? <RubricEditor traits={current.traits} onCancel={() => setEditing(false)} onSave={async (traits) => { await onSave(traits, current.number); setEditing(false); }} />
@@ -62,10 +65,22 @@ function RewriteButton({ disabled, onRewrite }: { disabled: boolean; onRewrite: 
     onClick={() => { setBusy(true); void onRewrite().finally(() => setBusy(false)); }}>Rewrite from examples</button>;
 }
 
-function Agreement({ metrics, scoring }: { metrics: EvalMetrics | null; scoring: EvalRubricVersion["scoring"] }) {
+function ReviewToggle({ required, onReview }: { required: boolean; onReview: (required: boolean) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return <label className="flex items-center gap-1.5 text-[12px]">
+    <input type="checkbox" checked={required} disabled={busy} className="size-3.5 accent-foreground"
+      onChange={(e) => { setBusy(true); void onReview(e.target.checked).finally(() => setBusy(false)); }} />
+    Changes need approval
+  </label>;
+}
+
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+function Agreement({ metrics, scoring, quality }: { metrics: EvalMetrics | null; scoring: EvalRubricVersion["scoring"]; quality: EvalRubricVersion["quality"] }) {
   if (!metrics || (!metrics.fit?.n && !metrics.manipulation)) return null;
   const tried = metrics.manipulation;
   return <dl className="m-0 flex flex-wrap gap-x-4 gap-y-0.5 text-[12px]">
+    {quality && <div className="flex gap-1.5"><dt className="text-muted-foreground">Quality</dt><dd className="m-0 font-medium tabular-nums">{quality.score}</dd></div>}
     <div className="flex gap-1.5"><dt className="text-muted-foreground">Scored by</dt><dd className="m-0">{scoring === "lowest" ? "Lowest trait" : "Average"}</dd></div>
     {metrics.fit?.n > 0 && <div className="flex gap-1.5"><dt className="text-muted-foreground">Learned from</dt><dd className="m-0 tabular-nums">{metrics.fit.right}/{metrics.fit.n}</dd></div>}
     {metrics.check?.n > 0 && <div className="flex gap-1.5"><dt className="text-muted-foreground">Held out</dt><dd className="m-0 tabular-nums">{metrics.check.right}/{metrics.check.n}</dd></div>}
@@ -139,9 +154,16 @@ function History({ versions }: { versions: EvalRubricVersion[] }) {
           <div className="flex items-baseline gap-2">
             <span className="font-medium">v{v.number}</span>
             <span>{SOURCE[v.source]}</span>
+            {v.quality && <span className="tabular-nums">Quality {v.quality.score}</span>}
             {v.metrics && v.metrics.fit.n > 0 && <span className="tabular-nums text-muted-foreground">{v.metrics.fit.right}/{v.metrics.fit.n}{v.metrics.check.n > 0 ? `, held out ${v.metrics.check.right}/${v.metrics.check.n}` : ""}</span>}
             <time className="ml-auto text-muted-foreground" dateTime={v.created_at}>{relativeTime(v.created_at)}</time>
           </div>
+          {v.approved && <div className="text-muted-foreground">Change #{v.approved.proposal} approved{v.approved.by ? ` by ${v.approved.by}` : ""}</div>}
+          {!v.approved && v.created_by && <div className="text-muted-foreground">Edited by {v.created_by}</div>}
+          {v.used && <div className="text-muted-foreground">
+            Scored {v.used.calls} {v.used.calls === 1 ? "call" : "calls"}, {day(v.used.first) === day(v.used.last) ? day(v.used.first) : `${day(v.used.first)} to ${day(v.used.last)}`}
+            {v.used.callers.length > 0 ? `, ${v.used.callers.join(", ")}` : ""}
+          </div>}
           {v.changes.length > 0 && (
             <ul className="m-0 list-none p-0">
               {v.changes.map((c, i) => <li key={i}><span>{VERB[c.kind] ?? c.kind}{c.trait ? ` ${c.trait}` : ""}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
