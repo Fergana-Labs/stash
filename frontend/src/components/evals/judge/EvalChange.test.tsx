@@ -12,25 +12,28 @@ const show = (p: EvalProposal, tab?: string) => {
   render(<ChangeView evalId="e" proposal={p} initialTab={tab} onDecide={onDecide} />);
   return { onDecide };
 };
-const comment = (extra = {}) => ({ id: "k1", author: "Reviewer", trait: "", body: "too strict?", created_at: now, ...extra });
 
-it("opens on the conversation: how the agent fares under the proposed rubric and its evals", () => {
-  show(proposal({ comments: [comment()] }));
+it("opens on the evals: the header says what the change is and carries its description, the tab lists each eval under both rubrics", () => {
+  show(proposal());
   expect(screen.getByRole("heading", { name: "Add Stripes, tighten Color #2" })).toBeVisible();
   expect(screen.getByText("Open")).toBeVisible();
   expect(screen.getByLabelText("rubric from add-stripes")).toBeVisible();
   expect(screen.getByText("wants to merge 2 edits into", { exact: false })).toBeVisible();
-  expect(screen.getByRole("button", { name: /^Conversation\s*1$/ })).toHaveAttribute("aria-current", "page");
+  // The description and the decision are in the header, above the tabs, not inside one.
+  expect(screen.getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Approve and merge" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Conversation/ })).toBeNull();
+  expect(screen.getByRole("button", { name: /^Evals\s*1$/ })).toHaveAttribute("aria-current", "page");
 
-  const talk = screen.getByRole("region", { name: "Conversation" });
-  expect(within(talk).getByText("opened")).toBeVisible();
-  expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
+  const talk = screen.getByRole("region", { name: "Evals" });
+  expect(within(talk).queryByText("opened")).toBeNull();
+  expect(within(talk).queryByText(/Striped charts now fail/)).toBeNull();
   const evals = within(talk).getByRole("table", { name: "Evals" });
   expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Evals", "rubric", "add-stripes", "Change"]);
   expect(within(evals).getByRole("columnheader", { name: "Change" })).toHaveAttribute("aria-sort", "descending");
   const row = within(evals).getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30", "-0.50"]);
-  // The examples the change answers have their own tab, not a place in the conversation.
+  // The examples the change answers have their own tab.
   expect(within(talk).queryByRole("table", { name: "Examples" })).toBeNull();
   // Searching narrows the evals by name.
   fireEvent.change(within(evals).getByRole("searchbox", { name: "Search evals" }), { target: { value: "CHART" } });
@@ -40,7 +43,6 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(within(evals).getByText("No evals match")).toBeVisible();
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
-  expect(within(talk).getByText("too strict?")).toBeVisible();
   // There are no checks on the page: no tab, no panel, no result line.
   expect(screen.queryByRole("button", { name: /Checks/ })).toBeNull();
   expect(document.body).not.toHaveTextContent(/Checks passed|Agrees with/);
@@ -104,11 +106,15 @@ it("shows the rubric change as a git-style diff: removed and added lines, number
   expect(within(diff).queryByText("the striped ones are bad")).toBeNull();
 });
 
-it("falls back to the counts when a change has no summary", () => {
+it("shows no description when a change has none, and says so while its evals are being scored", () => {
   const plain = proposal();
   plain.checks!.summary = null;
-  show(plain);
-  expect(screen.getByText("7 of 10 agent calls pass, 8 before")).toBeVisible();
+  const { unmount } = render(<ChangeView evalId="e" proposal={plain} onDecide={vi.fn()} />);
+  expect(screen.queryByText(/agent calls pass/)).toBeNull();
+  expect(screen.getByRole("table", { name: "Evals" })).toBeVisible();
+  unmount();
+  show(proposal({ checks: null, passed: null }));
+  expect(screen.getByRole("status")).toHaveTextContent("Scoring");
 });
 
 it("merges whatever its measurements say, and only closes when out of date", () => {
@@ -177,16 +183,11 @@ it("calls a change by its own name when it has one", () => {
   expect(screen.getByLabelText("rubric from no-striped-charts")).toBeVisible();
 });
 
-it("shows a merged change with who merged it, and nothing left to decide", () => {
-  show(proposal({
-    status: "approved", decided_by: "Reviewer", decided_at: now, version: 5, note: "ok",
-    comments: [comment({ created_at: new Date(Date.now() + 60_000).toISOString(), body: "follow up" })],
-  }));
+it("shows a merged change with who merged it and the version it became, and nothing left to decide", () => {
+  show(proposal({ status: "approved", decided_by: "Reviewer", decided_at: now, version: 5 }));
   expect(screen.getByText("Merged")).toBeVisible();
-  const talk = screen.getByRole("region", { name: "Conversation" });
-  expect(within(talk).getByText("merged as rubric v5")).toBeVisible();
-  expect(within(talk).getByText("ok")).toBeVisible();
-  expect(within(talk).getByText("follow up")).toBeVisible();
+  expect(screen.getByText("merged 2 edits into", { exact: false })).toHaveTextContent("Reviewer merged 2 edits into");
+  expect(screen.getByText("now rubric v5")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   expect(screen.queryByRole("button", { name: /merge/i })).toBeNull();
 });

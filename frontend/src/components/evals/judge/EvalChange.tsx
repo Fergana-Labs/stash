@@ -10,12 +10,12 @@ import { diffLines, errorMessage, relativeTime } from "@/components/reward-model
 import { changeState, changeTitle } from "./EvalChanges";
 import {
   evalChanges, evalDecide, evalGet,
-  type EvalChangeCall, type EvalChangeExample, type EvalComment, type EvalFlip, type EvalProposal, type EvalTrait,
+  type EvalChangeCall, type EvalChangeExample, type EvalFlip, type EvalProposal, type EvalTrait,
 } from "@/lib/evals-api";
 
 type Decision = "approve" | "reject";
-type Tab = "conversation" | "examples" | "rubric" | "quality";
-const TABS: Tab[] = ["conversation", "examples", "rubric", "quality"];
+type Tab = "evals" | "examples" | "rubric" | "quality";
+const TABS: Tab[] = ["evals", "examples", "rubric", "quality"];
 
 const SCORING = { mean: "Average", lowest: "Lowest trait" };
 const STATE = {
@@ -71,33 +71,36 @@ export function changeBranch(p: EvalProposal): string {
   return words.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `change-${p.number}`;
 }
 
-/** A proposed change as a pull request on the rubric: a conversation that opens with how the
- * agent fares under the proposed rubric and ends in a merge or a close, the examples the change
- * answers, the rubric's diff, and how the eval that grades its rubrics scored both. */
+/** A proposed change as a pull request on the rubric. Its header says what it is, who wants it
+ * merged and into what, carries its description, and is where it is merged or closed. Its tabs
+ * are the evals scored under both rubrics, the examples the change answers, the rubric's diff,
+ * and how the eval that grades its rubrics scored both. */
 export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
   evalId: string;
   proposal: EvalProposal;
   initialTab?: string;
   onDecide: (decision: Decision, note: string) => Promise<void>;
 }) {
-  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "conversation");
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "evals");
   const state = STATE[changeState(p)];
   const Icon = state.icon;
   const diff = rubricDiff(p);
   const merged = p.status === "approved";
   const branch = changeBranch(p);
   const quality = p.checks?.rubric_quality;
+  const evals = p.checks?.calls?.calls.length ?? 0;
   // The examples added since the rubric version the change was made on: what it answers.
   const evidence = (p.checks?.evidence ?? []).map((id) => p.examples[id]).filter(Boolean);
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
-    { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
+    { key: "evals", label: "Evals", extra: evals > 0 ? <span className="tabular-nums text-muted-foreground">{evals}</span> : null },
     ...(evidence.length + p.removed.length > 0 ? [{ key: "examples" as const, label: "Examples", extra: <span className="tabular-nums text-muted-foreground">+{evidence.length} -{p.removed.length}</span> }] : []),
     { key: "rubric", label: "Diff", extra: <span className="tabular-nums text-muted-foreground">+{diff.added} -{diff.removed}</span> },
     ...(quality ? [{ key: "quality" as const, label: "Rubric quality", extra: <span className="tabular-nums text-muted-foreground">{quality.after.score.toFixed(2)}</span> }] : []),
   ];
   return <article aria-label={`Change request ${p.number}`} className="text-[13px]">
     <h1 className="mt-2 mb-1 text-[16px] font-semibold tracking-tight">{changeTitle(p.changes)} <span className="font-normal tabular-nums text-muted-foreground">#{p.number}</span></h1>
-    <div className="flex flex-wrap items-center gap-x-2.5 text-[12px] text-muted-foreground">
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 text-[12px] text-muted-foreground">
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>
       {p.stale && <span>Out of date</span>}
       <span><span className="font-medium text-foreground">{merged ? p.decided_by ?? "Unknown" : p.opened_by ?? "Unknown"}</span> {merged ? "merged" : p.status === "open" ? "wants to merge" : "wanted to merge"} {p.changes.length} {p.changes.length === 1 ? "edit" : "edits"} into</span>
@@ -106,8 +109,12 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
         <ArrowLeft aria-hidden className="size-3.5" />
         <span className={chipClass}>{branch}</span>
       </span>
+      {merged && p.version && <span className="tabular-nums">now rubric v{p.version}</span>}
       <time dateTime={merged && p.decided_at ? p.decided_at : p.created_at}>{relativeTime(merged && p.decided_at ? p.decided_at : p.created_at)}</time>
     </div>
+    {p.status === "open" && <Decide proposal={p} onDecide={onDecide} />}
+    </div>
+    {p.checks?.summary && <p className="m-0 mt-2">{p.checks.summary}</p>}
     <nav aria-label="Change sections" className="mt-3 mb-3 flex gap-1 border-b border-border pb-1.5">
       {tabs.map((t) => (
         <button key={t.key} type="button" aria-current={tab === t.key ? "page" : undefined} onClick={() => setTab(t.key)}
@@ -117,7 +124,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
       ))}
     </nav>
     <div className="min-w-0">
-      {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
+      {tab === "evals" && <Evals proposal={p} />}
       {tab === "examples" && <Examples evalId={evalId} proposal={p} added={evidence} />}
       {tab === "rubric" && <RubricDiff diff={diff} />}
       {tab === "quality" && quality && <RubricQuality proposal={p} quality={quality} />}
@@ -125,45 +132,25 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
   </article>;
 }
 
-// ── The conversation ─────────────────────────────────────────────────────
+// ── Evals ────────────────────────────────────────────────────────────────
 
-function Conversation({ proposal: p, onDecide }: {
-  proposal: EvalProposal;
-  onDecide: (decision: Decision, note: string) => Promise<void>;
-}) {
-  const state = changeState(p);
-  // Comments made before the decision come before it; the rest follow.
-  const before = p.comments.filter((c) => !p.decided_at || c.created_at <= p.decided_at);
-  const after = p.comments.filter((c) => p.decided_at && c.created_at > p.decided_at);
+/** The evals behind the change: each one's score under the rubric in use and under the
+ * proposed rubric, with a switch to hide the ones that didn't move. */
+function Evals({ proposal: p }: { proposal: EvalProposal }) {
   const calls = p.checks?.calls;
   const [hideSame, setHideSame] = useState(false);
-  return <section aria-label="Conversation" className="min-w-0 space-y-2">
-    <Entry who={p.opened_by ?? "Unknown"} what="opened" at={p.created_at}>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          {p.checks?.summary && <p className="m-0">{p.checks.summary}</p>}
-          {calls && !p.checks?.summary && <p className="m-0 tabular-nums">{calls.pass_after} of {calls.n} agent calls pass, {calls.pass_before} before</p>}
-        </div>
-        {calls?.calls.some(unchanged) && <button type="button" role="switch" aria-checked={hideSame} onClick={() => setHideSame(!hideSame)}
-          className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground">
-          Hide unchanged
-          <span aria-hidden className={cn("flex h-3.5 w-6 items-center rounded px-0.5 transition-colors", hideSame ? "bg-foreground" : "bg-border")}>
-            <span className={cn("size-2.5 rounded-sm bg-background transition-transform", hideSame && "translate-x-2.5")} />
-          </span>
-        </button>}
-      </div>
-      {(calls?.calls.length ?? 0) > 0 && <div className="-mx-3 mt-2 border-t border-border px-3 pt-2">
-        <CallList proposal={p} hideSame={hideSame} />
-      </div>}
-    </Entry>
-    {before.map((c) => <CommentEntry key={c.id} comment={c} />)}
-    {state !== "open" && p.decided_at && <Entry who={p.decided_by ?? "Someone"} at={p.decided_at}
-      what={state === "merged" ? `merged${p.version ? ` as rubric v${p.version}` : ""}` : "closed"}
-      icon={state === "merged" ? <GitMerge aria-hidden className={cn("size-3.5", STATE.merged.tone)} /> : <GitPullRequestClosed aria-hidden className={cn("size-3.5", STATE.closed.tone)} />}>
-      {p.note && <p className="m-0 whitespace-pre-wrap">{p.note}</p>}
-    </Entry>}
-    {after.map((c) => <CommentEntry key={c.id} comment={c} />)}
-    {p.status === "open" && <Decide proposal={p} onDecide={onDecide} />}
+  if (!calls?.calls.length) return <p role="status" className="m-0 text-[12px] text-muted-foreground">{p.checks ? "No evals" : "Scoring"}</p>;
+  return <section aria-label="Evals" className="rounded border border-border px-3 py-2">
+    {calls.calls.some(unchanged) && <div className="mb-2 flex justify-end">
+      <button type="button" role="switch" aria-checked={hideSame} onClick={() => setHideSame(!hideSame)}
+        className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground">
+        Hide unchanged
+        <span aria-hidden className={cn("flex h-3.5 w-6 items-center rounded px-0.5 transition-colors", hideSame ? "bg-foreground" : "bg-border")}>
+          <span className={cn("size-2.5 rounded-sm bg-background transition-transform", hideSame && "translate-x-2.5")} />
+        </span>
+      </button>
+    </div>}
+    <CallList proposal={p} hideSame={hideSame} />
   </section>;
 }
 
@@ -208,27 +195,6 @@ function Examples({ evalId, proposal: p, added }: { evalId: string; proposal: Ev
   </section>;
 }
 
-/** One step of the conversation: who did what and when, and what they said. */
-function Entry({ who, what, at, about, icon, children }: { who: string; what: string; at: string; about?: string; icon?: ReactNode; children?: ReactNode }) {
-  const body = Array.isArray(children) ? children.some(Boolean) : !!children;
-  return <div className="rounded border border-border">
-    <div className={cn("flex items-center gap-1.5 px-3 py-1.5 text-[12px]", body && "border-b border-border bg-surface/40")}>
-      {icon}
-      <span className="font-medium">{who}</span>
-      <span className="text-muted-foreground">{what}</span>
-      {about && <span className="min-w-0 truncate text-muted-foreground">on {about}</span>}
-      <time className="ml-auto whitespace-nowrap text-muted-foreground" dateTime={at}>{relativeTime(at)}</time>
-    </div>
-    {body && <div className="px-3 py-2">{children}</div>}
-  </div>;
-}
-
-function CommentEntry({ comment: c }: { comment: EvalComment }) {
-  return <Entry who={c.author ?? "Someone"} what="commented" about={c.trait || undefined} at={c.created_at}>
-    <p className="m-0 whitespace-pre-wrap">{c.body}</p>
-  </Entry>;
-}
-
 /** Where an open change is decided: close it, or approve it and merge it into the rubric.
  * One made on a version that is no longer current can only be closed. */
 function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (decision: Decision, note: string) => Promise<void> }) {
@@ -239,8 +205,8 @@ function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (
     try { await onDecide(decision, ""); } catch (e) { setError(errorMessage(e)); }
     setBusy(false);
   };
-  return <div className="flex flex-wrap items-center justify-end gap-1.5">
-    {error && <p role="alert" className="m-0 mr-auto text-[12px] text-destructive">{error}</p>}
+  return <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+    {error && <p role="alert" className="m-0 text-[12px] text-destructive">{error}</p>}
     <button type="button" disabled={busy} onClick={() => void decide("reject")} className={buttonClass}>Close</button>
     {!p.stale && <button type="button" disabled={busy} onClick={() => void decide("approve")} className={primaryClass}>Approve and merge</button>}
   </div>;
@@ -349,8 +315,6 @@ function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quali
     </table>
   </section>;
 }
-
-// ── Evals ────────────────────────────────────────────────────────────────
 
 /** How far a score moved, signed: "-0.88", "+0.03", "0.00". */
 function delta(f: EvalFlip): string {
