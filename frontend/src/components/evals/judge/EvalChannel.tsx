@@ -155,7 +155,7 @@ function RubricUpdate({ evalId, message }: { evalId: string; message: EvalMessag
   return <div className="text-[13px]">
     <p className="m-0 leading-5">{message.text}</p>
     {changes.length > 0 && (
-      <ul className="mt-1 space-y-0.5 text-[12px]">
+      <ul className="m-0 mt-1 list-none space-y-0.5 p-0 leading-5">
         {changes.map((c, i) => <li key={i}><span className="font-medium">{VERB[c.kind] ?? c.kind} {c.trait}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
       </ul>
     )}
