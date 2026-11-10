@@ -921,6 +921,27 @@ async def test_the_build_picks_the_scoring_rule_that_agrees_with_the_person(
     assert scored.status_code == 200 and scored.json()["score"] == 0.0
 
 
+async def test_an_edit_that_only_helps_under_the_other_scoring_rule_brings_it_along(
+    client: AsyncClient, world
+):
+    world.per_trait = True
+    auth = await _register(client)
+    eid = await _striped_eval(client, auth)
+    world.proposals.append(
+        {
+            "changes": [{"kind": "add", "trait": "Stripes", "why": "the striped ones are bad"}],
+            "traits": [COLOR, STRIPES],
+        }
+    )
+    await _build(eid)
+    versions_ = (await client.get(f"/api/v1/evals/{eid}/rubric", headers=auth)).json()["versions"]
+    # v1 (Color alone) passes striped red work. Averaged, the new Stripes trait leaves it on
+    # 0.5, still called good; with the lowest trait deciding, the edit fixes both misses.
+    assert [(v["number"], v["scoring"]) for v in versions_] == [(2, "lowest"), (1, "mean")]
+    assert [c["kind"] for c in versions_[0]["changes"]] == ["add", "scoring"]
+    assert versions_[0]["metrics"]["fit"]["right"] == 8
+
+
 # ── Review findings ──────────────────────────────────────────────────────
 
 

@@ -17,7 +17,9 @@ PATIENCE without a gain.
 
 The scoring rule is part of the rubric too: a score is the mean of the trait grades, or the
 lowest, for taste where one failing trait fails the work. Each build tries the other rule on
-the grades it already has (no judge calls) and switches under the same test as an edit.
+the grades it already has (no judge calls) and switches under the same test as an edit. An
+edit is tried under both rules as well, and takes the other one when that fixes more of the
+misses: a new trait that fails can't fail the work while the score is an average.
 
 Changes the person asks for in the channel are applied as asked whatever the agreement does,
 and reported with it. Traits the person wrote or changed are kept word for word by every
@@ -567,6 +569,23 @@ async def revise(
         if short := _short(wrong, new_grades):
             break
         fixed = sum(right(e, new_grades[e["id"]]) for e in wrong if e["id"] in new_grades)
+        # The same grades under the other scoring rule (no judge calls): averaged, one new
+        # trait that fails can't pull otherwise sound work under the line, so an edit that
+        # adds the missing trait may only fix its misses when the lowest trait decides.
+        flipped = "lowest" if candidate["scoring"] == "mean" else "mean"
+        alt = rescore(new_grades, flipped)
+        alt_fixed = sum(right(e, alt[e["id"]]) for e in wrong if e["id"] in alt)
+        if alt_fixed > fixed:
+            candidate["scoring"], new_grades, fixed = flipped, alt, alt_fixed
+            changes = [
+                *changes,
+                {
+                    "kind": "scoring",
+                    "trait": SCORING[flipped],
+                    "why": f"With these edits, scoring by {SCORING[flipped]} gets {alt_fixed} of "
+                    f"the {len(wrong)} misjudged examples right.",
+                },
+            ]
         if fixed == 0:
             tried.append(_tried(changes, 0, len(wrong)))
             stale += 1
@@ -598,7 +617,7 @@ async def revise(
             source="revised",
             changes=changes,
             metrics={"fit": tally(fit, new_grades), "check": tally(check, new_grades)},
-            scoring=version["scoring"],
+            scoring=candidate["scoring"],
         )
         if new is None:
             return {**done, "version": version, "conflict": True}
