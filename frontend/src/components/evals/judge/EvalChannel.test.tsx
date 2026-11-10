@@ -29,6 +29,11 @@ it("runs as one conversation: the agent's messages are in line, and a choice ans
     message("m1", { attachments: [attachment("a1"), attachment("a2")], created_at: "2026-11-10T10:00:00Z" }),
     message("m2", { thread_id: "m1", author: "agent", text: "Good or bad?", data: { choices: ["All good", "All bad"] }, created_at: "2026-11-10T10:01:00Z" }),
   ]);
+  // Nobody is named: the person's message and the agent's are told apart by where they sit.
+  expect(screen.queryByText("Agent")).toBeNull();
+  expect(screen.queryByText("You")).toBeNull();
+  expect(screen.getByRole("article", { name: "Agent message" })).toHaveTextContent("Good or bad?");
+  expect(within(screen.getByRole("article", { name: "Your message" })).getAllByRole("figure")).toHaveLength(2);
   // Nothing is folded away, and there are no per-message reply boxes.
   expect(screen.getByText("Good or bad?")).toBeVisible();
   expect(screen.queryByText("1 reply")).toBeNull();

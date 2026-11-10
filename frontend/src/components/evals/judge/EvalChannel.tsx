@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
+import { errorMessage } from "@/components/reward-models/rm-text";
 import FileThumb from "./FileThumb";
 import UploadBox from "./UploadBox";
 import { droppedFiles } from "./dropped-files";
@@ -17,8 +17,9 @@ interface AttachmentActions {
   remove: (exampleId: string) => Promise<void>;
 }
 
-/** The eval wizard as one conversation: the person's messages and the agent's run down the page
- * in the order they were sent, and one box at the bottom continues it. What the person types
+/** The eval wizard as one conversation, laid out like a chat: the person's messages on the
+ * right, the agent's on the left, nobody named, in the order they were sent, and one box at
+ * the bottom that continues it. What the person types
  * answers where the conversation is (it is sent as a reply to the latest exchange, so the
  * agent knows what it is about); files start a new exchange. When the agent's last message
  * offers choices, they are buttons above the box. */
@@ -75,8 +76,8 @@ export default function EvalChannel({ evalId, messages, reading = false, onSend,
       <div ref={list} className="scroll-thin flex-1 space-y-1 px-3 py-3 lg:overflow-y-auto">
         {ordered.length === 0
           ? <UploadBox title="Drop screenshots of good and bad agent work" disabled={false} onFiles={setDropped} />
-          : ordered.map((m) => <article key={m.id} className="rounded px-1 py-1.5"><Author message={m} /><Body evalId={evalId} message={m} actions={actions} /></article>)}
-        {typing && <div className="px-1 py-1.5"><Typing /></div>}
+          : ordered.map((m) => <Message key={m.id} evalId={evalId} message={m} actions={actions} />)}
+        {typing && <div className="py-1.5"><Typing /></div>}
         <div ref={bottom} />
       </div>
       <div className="sticky bottom-0 border-t border-border bg-background p-2">
@@ -87,30 +88,35 @@ export default function EvalChannel({ evalId, messages, reading = false, onSend,
   );
 }
 
-function Author({ message }: { message: EvalMessage }) {
-  const agent = message.author === "agent";
-  return <div className="flex items-baseline gap-2 text-[12px]">
-    <span className="font-semibold text-foreground">{agent ? "Agent" : "You"}</span>
-    {message.data.via && <span className="text-muted-foreground">via {message.data.via}</span>}
-    <time className="text-muted-foreground" dateTime={message.created_at}>{relativeTime(message.created_at)}</time>
+/** The agent is working on a reply: three dots that pulse in turn. */
+function Typing() {
+  return <div role="status" aria-label="Agent is replying" className="flex h-5 items-center gap-1">
+    {[0, 200, 400].map((delay) => <span key={delay} aria-hidden style={{ animationDelay: `${delay}ms` }}
+      className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-duration:1.2s] motion-reduce:animate-none" />)}
   </div>;
 }
 
-/** The agent is working on a reply: its name and three dots that pulse in turn. */
-function Typing() {
-  return <div role="status" aria-label="Agent is replying" className="flex items-center gap-2 text-[12px]">
-    <span className="font-semibold text-foreground">Agent</span>
-    <span aria-hidden className="flex items-center gap-1">
-      {[0, 200, 400].map((delay) => <span key={delay} style={{ animationDelay: `${delay}ms` }}
-        className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-duration:1.2s] motion-reduce:animate-none" />)}
-    </span>
-  </div>;
+/** One message, with no name on it: the person's sit on the right in a dark bubble with their
+ * files above it, the agent's are plain text on the left. When it was sent shows on hover. */
+function Message({ evalId, message, actions }: { evalId: string; message: EvalMessage; actions: AttachmentActions }) {
+  const sent = new Date(message.created_at).toLocaleString();
+  if (message.author === "agent") return <article aria-label="Agent message" title={sent} className="py-1.5 pr-12"><Body evalId={evalId} message={message} actions={actions} /></article>;
+  return <article aria-label="Your message" title={sent} className="flex flex-col items-end gap-1.5 py-1.5 pl-12">
+    {message.data.via && <span className="text-[11px] text-muted-foreground">via {message.data.via}</span>}
+    {message.attachments.length > 0 && (
+      <div className="flex flex-wrap justify-end gap-1.5">
+        {message.attachments.map((a) => <Attachment key={a.example_id} evalId={evalId} attachment={a} actions={actions} />)}
+      </div>
+    )}
+    {message.text && <p className="m-0 max-w-full whitespace-pre-wrap rounded bg-foreground px-3 py-1.5 text-[13px] leading-5 text-background">{message.text}</p>}
+    {message.data.uploading && <p role="status" className="m-0 text-[12px] text-muted-foreground">Uploading</p>}
+  </article>;
 }
 
 function Body({ evalId, message, actions }: { evalId: string; message: EvalMessage; actions: AttachmentActions }) {
   if (message.kind === "rubric") return <RubricUpdate evalId={evalId} message={message} />;
   return <>
-    {message.text && <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5">{message.text}</p>}
+    {message.text && <p className="m-0 whitespace-pre-wrap text-[13px] leading-5">{message.text}</p>}
     {message.about && <div className="mt-1 flex"><Attachment evalId={evalId} attachment={message.about} actions={actions} /></div>}
     {message.attachments.length > 0 && (
       <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -125,8 +131,8 @@ const VERB: Record<string, string> = { add: "Added", tighten: "Tightened", fix: 
 
 function RubricUpdate({ evalId, message }: { evalId: string; message: EvalMessage }) {
   const changes = (message.data.changes ?? []).filter((c) => c.trait);
-  return <div className="mt-1 rounded border border-border px-2.5 py-2 text-[13px]">
-    <p className="leading-5">{message.text}</p>
+  return <div className="text-[13px]">
+    <p className="m-0 leading-5">{message.text}</p>
     {changes.length > 0 && (
       <ul className="mt-1 space-y-0.5 text-[12px]">
         {changes.map((c, i) => <li key={i}><span className="font-medium">{VERB[c.kind] ?? c.kind} {c.trait}</span>{c.why && <span className="text-muted-foreground">: {c.why}</span>}</li>)}
