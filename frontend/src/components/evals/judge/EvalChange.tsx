@@ -390,32 +390,32 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
   </ul>;
 }
 
-/** The agent's recent calls whose verdict the proposed rubric flips: the ones that passed and
- * would now fail, then the ones that failed and would now pass. */
+/** The agent's recent calls as offline evals of the change: each one's name (what the agent
+ * was asked, else the start of what it wrote), the score it got under the rubric in use, and
+ * its score under the proposed rubric. The ones whose score moves most come first. */
 function CallList({ proposal: p }: { proposal: EvalProposal }) {
-  const calls = p.checks?.calls;
-  const rows = (calls?.changed ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call);
-  if (!calls || rows.length === 0) return null;
-  const groups = [
-    { title: "Would now fail", rows: rows.filter((r) => r.flip.after < 0.5) },
-    { title: "Would now pass", rows: rows.filter((r) => r.flip.after >= 0.5) },
-  ].filter((g) => g.rows.length > 0);
-  return <section aria-label="Agent calls" className="mt-2 space-y-2 first:mt-0">
-    {groups.map((g) => <div key={g.title}>
-      <h3 className={sectionTitle}>{g.title} <span className="tabular-nums normal-case">{g.rows.length} of the last {calls.n} agent calls</span></h3>
-      <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
-        {g.rows.map(({ flip, call }) => (
-          <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
-            <Snippet snippet={call} />
-            {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
-            {scores(flip)}
-            <span className="whitespace-nowrap text-muted-foreground">{call.caller || "unknown caller"}</span>
-            <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={call.created_at}>{relativeTime(call.created_at)}</time>
-          </li>
-        ))}
-      </ul>
-    </div>)}
-  </section>;
+  const rows = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
+    .sort((a, b) => Math.abs(b.flip.after - b.flip.before) - Math.abs(a.flip.after - a.flip.before));
+  if (rows.length === 0) return null;
+  const column = "w-14 whitespace-nowrap text-right tabular-nums";
+  return <table aria-label="Offline evals" className="mt-2 w-full border-collapse text-[12px] first:mt-0">
+    <thead>
+      <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+        <th scope="col" className="pb-1 font-medium">Offline eval</th>
+        <th scope="col" className={cn(column, "pb-1 font-medium")}>Before</th>
+        <th scope="col" className={cn(column, "pb-1 font-medium")}>After</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(({ flip, call }) => (
+        <tr key={call.id} title={flip.low ? `${flip.low.trait}: ${flip.low.why}` : undefined} className="border-t border-border">
+          <td className="max-w-0 truncate py-1.5 pr-3">{call.name || call.asked || call.text.split("\n")[0] || call.files[0]?.name}</td>
+          <td className={cn(column, "py-1.5 text-muted-foreground")}>{flip.before.toFixed(2)}</td>
+          <td className={cn(column, "py-1.5")}>{flip.after.toFixed(2)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>;
 }
 
 /** An example or a call in one line: its image if it has one, else the start of its text. */

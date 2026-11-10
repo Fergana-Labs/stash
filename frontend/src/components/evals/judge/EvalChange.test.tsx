@@ -26,11 +26,10 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   const talk = screen.getByRole("region", { name: "Conversation" });
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
-  const calls = within(talk).getByRole("region", { name: "Agent calls" });
-  expect(calls).toHaveTextContent(/Would now fail\s*1 of the last 10 agent calls/);
-  expect(within(calls).getByText("draw a chart")).toBeVisible();
-  expect(within(calls).getByText("Stripes")).toHaveAttribute("title", "it is striped");
-  expect(calls).toHaveTextContent(/0\.30\s*was 0\.80/);
+  const evals = within(talk).getByRole("table", { name: "Offline evals" });
+  expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Offline eval", "Before", "After"]);
+  const row = within(evals).getAllByRole("row")[1];
+  expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30"]);
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
@@ -91,7 +90,7 @@ it("lists the examples the checks point at: broken, fixed, and new since the bas
   expect(examples).toHaveTextContent(/0\.00\s*was 1\.00/);
   expect(within(examples).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e2");
   expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
-  expect(screen.queryByRole("region", { name: "Agent calls" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "Offline evals" })).toBeNull();
 });
 
 it("falls back to the counts when a change has no summary, and lists new examples under Checks", () => {
