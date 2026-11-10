@@ -133,6 +133,11 @@ it("sorts the evals by signed change: gains first, no change next, drops last", 
   show(mixed);
   const rows = within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1);
   expect(rows.map((r) => within(r).getAllByRole("cell")[3].textContent)).toEqual(["+0.80", "0.00", "-0.03"]);
+
+  // Hiding the evals whose score didn't move leaves the other two.
+  fireEvent.click(screen.getByRole("checkbox", { name: "Hide unchanged" }));
+  const left = within(screen.getByRole("table", { name: "Evals" })).getAllByRole("row").slice(1);
+  expect(left.map((r) => within(r).getAllByRole("cell")[3].textContent)).toEqual(["+0.80", "-0.03"]);
 });
 
 it("calls a change by its own name when it has one", () => {

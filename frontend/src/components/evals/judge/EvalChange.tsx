@@ -395,17 +395,21 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
 /** How far a score moved, signed: "-0.88", "+0.03", "0.00". */
 function delta(f: EvalFlip): string {
   const moved = f.after - f.before;
-  return Math.abs(moved) < 0.005 ? "0.00" : `${moved > 0 ? "+" : "-"}${Math.abs(moved).toFixed(2)}`;
+  return unchanged(f) ? "0.00" : `${moved > 0 ? "+" : "-"}${Math.abs(moved).toFixed(2)}`;
 }
+
+/** A score that reads the same to two decimals under both rubrics. */
+const unchanged = (f: EvalFlip) => Math.abs(f.after - f.before) < 0.005;
 
 function CallList({ proposal: p }: { proposal: EvalProposal }) {
   const [query, setQuery] = useState("");
+  const [hideSame, setHideSame] = useState(false);
   const all = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
     .map((r) => ({ ...r, name: r.call.name || r.call.asked || r.call.text.split("\n")[0] || r.call.files[0]?.name || "" }))
     .sort((a, b) => (b.flip.after - b.flip.before) - (a.flip.after - a.flip.before));
   if (all.length === 0) return null;
   const wanted = query.trim().toLowerCase();
-  const rows = wanted ? all.filter((r) => r.name.toLowerCase().includes(wanted)) : all;
+  const rows = all.filter((r) => (!wanted || r.name.toLowerCase().includes(wanted)) && !(hideSame && unchanged(r.flip)));
   const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
   return <table aria-label="Evals" className="w-full border-collapse text-[12px]">
     <thead>
@@ -418,6 +422,10 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
               <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search evals"
                 className="h-6 w-44 rounded border border-border bg-background pr-2 pl-6 text-[12px] font-normal normal-case tracking-normal text-foreground outline-none focus:border-foreground/40" />
             </span>
+            {all.some((r) => unchanged(r.flip)) && <label className="flex cursor-pointer items-center gap-1 font-normal normal-case tracking-normal">
+              <input type="checkbox" checked={hideSame} onChange={(e) => setHideSame(e.target.checked)} className="size-3 accent-foreground" />
+              Hide unchanged
+            </label>}
           </span>
         </th>
         <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
@@ -433,7 +441,7 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
           <td className="max-w-0 truncate py-1.5 pr-3">{name}</td>
           <td className={cn(column, "py-1.5 text-muted-foreground")}>{flip.before.toFixed(2)}</td>
           <td className={cn(column, "py-1.5")}>{flip.after.toFixed(2)}</td>
-          <td className={cn(column, "py-1.5 font-medium", Math.abs(flip.after - flip.before) < 0.005 && "font-normal text-muted-foreground")}>{delta(flip)}</td>
+          <td className={cn(column, "py-1.5 font-medium", unchanged(flip) && "font-normal text-muted-foreground")}>{delta(flip)}</td>
         </tr>
       ))}
       {rows.length === 0 && <tr className="border-t border-border"><td colSpan={4} className="py-1.5 text-muted-foreground">No evals match</td></tr>}
