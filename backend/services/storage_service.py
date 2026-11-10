@@ -4,6 +4,7 @@ Supports AWS S3, MinIO, Cloudflare R2, and other S3-compatible services.
 Configured via environment variables.
 """
 
+import asyncio
 import logging
 import os
 from datetime import UTC
@@ -26,6 +27,10 @@ S3_REGION = os.getenv("S3_REGION", "us-east-1")
 # clip images, which must load from a plain <img> tag with no auth header.
 S3_PUBLIC_BUCKET = os.getenv("S3_PUBLIC_BUCKET", "")
 S3_PUBLIC_BASE_URL = os.getenv("S3_PUBLIC_BASE_URL", "")
+
+# Attempts at one upload, and the pause before the second (the third waits twice as long).
+PUT_ATTEMPTS = 3
+PUT_BACKOFF = 0.5
 
 _client: httpx.AsyncClient | None = None
 
@@ -136,18 +141,41 @@ async def _signed_put(bucket: str, key: str, content: bytes, content_type: str) 
         f"SignedHeaders={signed_headers}, Signature={signature}"
     )
 
-    client = _get_client()
-    resp = await client.put(
-        f"{scheme}://{host}{uri}",
-        content=content,
-        headers={
-            "Authorization": auth_header,
-            "x-amz-content-sha256": payload_hash,
-            "x-amz-date": amz_date,
-            "Content-Type": content_type,
-        },
-    )
-    resp.raise_for_status()
+    headers = {
+        "Authorization": auth_header,
+        "x-amz-content-sha256": payload_hash,
+        "x-amz-date": amz_date,
+        "Content-Type": content_type,
+    }
+    # The store now and then answers a PUT with a 5xx or drops the connection. Writing the
+    # same bytes to the same key again is safe, so those are retried; anything else (a 403
+    # from a bad signature, say) fails at once.
+    for attempt in range(1, PUT_ATTEMPTS + 1):
+        last = attempt == PUT_ATTEMPTS
+        try:
+            resp = await _get_client().put(
+                f"{scheme}://{host}{uri}", content=content, headers=headers
+            )
+        except httpx.TransportError as exc:
+            if last:
+                logger.error("Storage PUT failed after %d attempts: %r", attempt, exc)
+                raise
+            logger.warning("Storage PUT attempt %d failed (%r); retrying", attempt, exc)
+        else:
+            if resp.status_code < 400:
+                return
+            if last or not (resp.status_code >= 500 or resp.status_code == 429):
+                logger.error(
+                    "Storage PUT failed with status %d after %d attempts: %s",
+                    resp.status_code,
+                    attempt,
+                    resp.text[:300],
+                )
+                resp.raise_for_status()
+            logger.warning(
+                "Storage PUT attempt %d got status %d; retrying", attempt, resp.status_code
+            )
+        await asyncio.sleep(PUT_BACKOFF * attempt)
 
 
 async def get_file_url(key: str, expires_in: int = 3600) -> str:
