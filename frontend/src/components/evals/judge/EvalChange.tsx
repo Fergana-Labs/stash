@@ -425,7 +425,7 @@ function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame:
   return <table aria-label="Evals" className="w-full border-collapse text-[12px]">
     <thead>
       <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-        <th scope="col" className="pb-1 font-medium">
+        <th scope="col" className="pb-2 font-medium">
           <span className="flex items-center gap-2">
             Evals
             <span className="relative flex items-center">
@@ -435,9 +435,9 @@ function CallList({ proposal: p, hideSame }: { proposal: EvalProposal; hideSame:
             </span>
           </span>
         </th>
-        <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
-        <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
-        <th scope="col" aria-sort="descending" className={cn(column, "pb-1 font-medium text-foreground")}>
+        <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
+        <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
+        <th scope="col" aria-sort="descending" className={cn(column, "pb-2 font-medium text-foreground")}>
           <span className="inline-flex items-center gap-0.5">Change<ChevronDown aria-hidden className="size-3" /></span>
         </th>
       </tr>
