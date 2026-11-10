@@ -64,6 +64,15 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   </EvalPageFrame>;
 }
 
+/** The change's name as a branch would have one: the rubric is what a pull request's base
+ * branch is, and stays "rubric" from version to version; the change is the branch merged
+ * into it, named after its first edit ("add-stripes"). */
+export function changeBranch(p: EvalProposal): string {
+  const first = p.changes[0];
+  const words = first ? `${first.kind} ${first.trait}` : `change ${p.number}`;
+  return words.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `change-${p.number}`;
+}
+
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
  * agent fares under the proposed rubric and ends in a merge or a close, the rubric before and
  * after, and the checks that measured it. */
@@ -79,7 +88,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
   const Icon = state.icon;
   const diff = rubricDiff(p);
   const merged = p.status === "approved";
-  const next = p.version ?? p.base + 1;
+  const branch = changeBranch(p);
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
     { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
     { key: "rubric", label: "Rubric changes", extra: <span className="tabular-nums text-muted-foreground">{diff.count}</span> },
@@ -91,10 +100,10 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>
       {p.stale && <span>Out of date</span>}
       <span><span className="font-medium text-foreground">{merged ? p.decided_by ?? "Unknown" : p.opened_by ?? "Unknown"}</span> {merged ? "merged" : p.status === "open" ? "wants to merge" : "wanted to merge"} {diff.count} {diff.count === 1 ? "edit" : "edits"} into</span>
-      <span aria-label={`rubric v${p.base} from rubric v${next}`} className="inline-flex items-center gap-1.5">
-        <span className={chipClass}>rubric v{p.base}</span>
+      <span aria-label={`rubric from ${branch}`} className="inline-flex items-center gap-1.5">
+        <span className={chipClass}>rubric</span>
         <ArrowLeft aria-hidden className="size-3.5" />
-        <span className={chipClass}>rubric v{next}</span>
+        <span className={chipClass}>{branch}</span>
       </span>
       <time dateTime={merged && p.decided_at ? p.decided_at : p.created_at}>{relativeTime(merged && p.decided_at ? p.decided_at : p.created_at)}</time>
     </div>

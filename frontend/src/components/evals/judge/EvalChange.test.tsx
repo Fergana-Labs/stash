@@ -19,7 +19,7 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   show(proposal({ comments: [comment()] }));
   expect(screen.getByRole("heading", { name: "Add Stripes, tighten Color #2" })).toBeVisible();
   expect(screen.getByText("Open")).toBeVisible();
-  expect(screen.getByLabelText("rubric v4 from rubric v5")).toBeVisible();
+  expect(screen.getByLabelText("rubric from add-stripes")).toBeVisible();
   expect(screen.getByText("wants to merge 3 edits into", { exact: false })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Conversation\s*1$/ })).toHaveAttribute("aria-current", "page");
 
