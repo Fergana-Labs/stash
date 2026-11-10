@@ -9,7 +9,8 @@ carries checks, measured before anyone decides:
 - the examples added since the base version, which are what the change answers;
 - recent agent calls graded again with the proposed rubric, beside the score each got, and
   a short summary of how the agent fares differently under it;
-- the manipulation check (robustness.py) on the proposed rubric.
+- the manipulation check (robustness.py) on the proposed rubric;
+- the rubric verifier's grade (rubric_quality.py) of both rubrics' text, trait by trait.
 Approving saves the proposal as the next rubric version (refused when the rubric has changed
 since it was proposed); rejecting keeps the rubric and is shown to later builds, so they
 don't propose the same edit. A build's new proposal replaces its earlier open one.
@@ -21,7 +22,7 @@ from uuid import UUID
 
 from ...database import get_pool
 from .. import llm
-from . import channel, items, judge, revise, robustness, service, versions
+from . import channel, items, judge, revise, robustness, rubric_quality, service, versions
 
 log = logging.getLogger(__name__)
 
@@ -193,6 +194,7 @@ async def checks(
         ],
         "calls": None,
         "summary": None,
+        "rubric_quality": None,
         "manipulation": None,
         "short": None,
     }
@@ -222,6 +224,15 @@ async def checks(
             out["summary"] = await _summarize(model_id, changes or [], out["calls"], texts)
     except Exception:
         log.exception("Grading agent calls with a proposed rubric failed for %s", model_id)
+    try:
+        # The rubric verifier reads each rubric's text: the one in use and the proposed one.
+        before_quality, after_quality = await asyncio.gather(
+            rubric_quality.grade(base), rubric_quality.grade(candidate)
+        )
+        if after_quality:
+            out["rubric_quality"] = {"before": before_quality, "after": after_quality}
+    except Exception:
+        log.exception("Grading the quality of a proposed rubric failed for %s", model_id)
     try:
         bad = [e for e in examples if e["split"] == "train" and e["label"] == "bad"]
         out["manipulation"] = await robustness.check(model_id, candidate, bad)

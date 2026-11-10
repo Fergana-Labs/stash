@@ -41,7 +41,7 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(within(talk).getByText("too strict?")).toBeVisible();
   // There are no checks on the page: no tab, no panel, no result line.
   expect(screen.queryByRole("button", { name: /Checks/ })).toBeNull();
-  expect(document.body).not.toHaveTextContent(/Checks passed|Rubric quality|Agrees with/);
+  expect(document.body).not.toHaveTextContent(/Checks passed|Agrees with/);
   // Before-and-after values sit in columns or read "was"; no arrow characters.
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
@@ -99,6 +99,26 @@ it("merges whatever its measurements say, and only closes when out of date", () 
   expect(screen.getByText("Out of date")).toBeVisible();
   expect(screen.queryByRole("button", { name: /merge/i })).toBeNull();
   expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+});
+
+it("shows how the rubric verifier graded both rubrics, trait by trait", () => {
+  show(proposal(), "quality");
+  expect(screen.getByRole("button", { name: /^Rubric quality\s*0\.75$/ })).toHaveAttribute("aria-current", "page");
+  const quality = screen.getByRole("region", { name: "Rubric quality" });
+  expect(within(quality).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Trait", "rubric", "add-stripes", "Change"]);
+  const rows = within(quality).getAllByRole("row").slice(1).map((r) => [...r.children].map((c) => c.textContent));
+  expect(rows).toEqual([
+    ["Overall", "0.50", "0.75", "+0.25"],
+    ["Good and bad are both concreteStripes names plain and striped", "0.50", "1.00", "+0.50"],
+    ["One thing per traitColor and Stripes are separate", "0.50", "0.50", "0.00"],
+  ]);
+});
+
+it("has no Rubric quality tab when the verifier's grade is missing", () => {
+  const plain = proposal();
+  plain.checks!.rubric_quality = null;
+  show(plain);
+  expect(screen.queryByRole("button", { name: /Rubric quality/ })).toBeNull();
 });
 
 it("sorts the evals by signed change: gains first, no change next, drops last", () => {

@@ -11,7 +11,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.services.evals import proposals
+from backend.services.evals import proposals, rubric_quality
 from backend.tasks import evals as eval_tasks
 
 from .test_eval_channel import (  # noqa: F401 (world is a fixture)
@@ -110,6 +110,17 @@ async def test_a_build_proposes_a_change_with_its_checks_and_approval_applies_it
     # alike), and the change says in a line how the agent fares under the proposed rubric.
     assert found["calls"]["changed"][0]["low"]["trait"] in ("Color", "Stripes")
     assert found["summary"] == "Striped outputs now fail on Stripes."
+    # The rubric verifier graded both rubrics' text on its own traits, each 0-1 with a reason.
+    graded = found["rubric_quality"]
+    assert (graded["before"]["score"], graded["after"]["score"]) == (0.25, 0.75)
+    assert [t["trait"] for t in graded["after"]["traits"]] == [
+        t["name"] for t in rubric_quality.TRAITS
+    ]
+    assert graded["after"]["traits"][0] == {
+        "trait": "Checks reasoning, not just a value",
+        "score": 0.75,
+        "why": "as written",
+    }
     assert "1 pass under the rubric in use, 0 under the proposed one" in world.summary_texts[-1]
     assert "1.00 pass -> 0.00 fail; lowest trait now:" in world.summary_texts[-1]
     assert proposal["calls"][before["call_id"]]["caller"] == "support-agent"

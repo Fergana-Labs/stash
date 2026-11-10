@@ -14,8 +14,8 @@ import {
 } from "@/lib/evals-api";
 
 type Decision = "approve" | "reject";
-type Tab = "conversation" | "rubric";
-const TABS: Tab[] = ["conversation", "rubric"];
+type Tab = "conversation" | "rubric" | "quality";
+const TABS: Tab[] = ["conversation", "rubric", "quality"];
 
 const SCORING = { mean: "Average", lowest: "Lowest trait" };
 const STATE = {
@@ -72,7 +72,8 @@ export function changeBranch(p: EvalProposal): string {
 }
 
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
- * agent fares under the proposed rubric and ends in a merge or a close, and the rubric's diff. */
+ * agent fares under the proposed rubric and ends in a merge or a close, the rubric's diff, and
+ * how the rubric verifier graded both rubrics. */
 export function ChangeView({ proposal: p, initialTab, onDecide }: {
   proposal: EvalProposal;
   initialTab?: string;
@@ -84,9 +85,11 @@ export function ChangeView({ proposal: p, initialTab, onDecide }: {
   const diff = rubricDiff(p);
   const merged = p.status === "approved";
   const branch = changeBranch(p);
+  const quality = p.checks?.rubric_quality;
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
     { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
     { key: "rubric", label: "Diff", extra: <span className="tabular-nums text-muted-foreground">+{diff.added} -{diff.removed}</span> },
+    ...(quality ? [{ key: "quality" as const, label: "Rubric quality", extra: <span className="tabular-nums text-muted-foreground">{quality.after.score.toFixed(2)}</span> }] : []),
   ];
   return <article aria-label={`Change ${p.number}`} className="text-[13px]">
     <h1 className="mt-2 mb-1 text-[16px] font-semibold tracking-tight">{changeTitle(p.changes)} <span className="font-normal tabular-nums text-muted-foreground">#{p.number}</span></h1>
@@ -112,6 +115,7 @@ export function ChangeView({ proposal: p, initialTab, onDecide }: {
     <div className="min-w-0">
       {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
       {tab === "rubric" && <RubricDiff diff={diff} />}
+      {tab === "quality" && quality && <RubricQuality proposal={p} quality={quality} />}
     </div>
   </article>;
 }
@@ -247,6 +251,49 @@ function RubricDiff({ diff }: { diff: ReturnType<typeof rubricDiff> }) {
         <span className="whitespace-pre-wrap break-words pr-3">{l.text}</span>
       </div>;
     })}
+  </section>;
+}
+
+// ── Rubric quality ───────────────────────────────────────────────────────
+
+type Quality = NonNullable<NonNullable<EvalProposal["checks"]>["rubric_quality"]>;
+
+/** How the rubric verifier graded the rubric in use and the proposed one: an overall score,
+ * then each quality trait with its score under both, how far it moved, and the verifier's
+ * reason for the proposed rubric's score. */
+function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quality: Quality }) {
+  const was = new Map((quality.before?.traits ?? []).map((t) => [t.trait, t]));
+  const rows = [
+    { name: "Overall", before: quality.before?.score, after: quality.after.score, why: "" },
+    ...quality.after.traits.map((t) => ({ name: t.trait, before: was.get(t.trait)?.score, after: t.score, why: t.why })),
+  ];
+  const column = "w-px whitespace-nowrap pl-3 text-right align-top tabular-nums";
+  const moved = (before: number | undefined, after: number) => (before === undefined ? null : { id: "", before, after });
+  return <section aria-label="Rubric quality" className="rounded border border-border px-3 py-2">
+    <table className="w-full border-collapse text-[12px]">
+      <thead>
+        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+          <th scope="col" className="pb-2 font-medium">Trait</th>
+          <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
+          <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
+          <th scope="col" className={cn(column, "pb-2 font-medium text-foreground")}>Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => {
+          const flip = moved(r.before, r.after);
+          return <tr key={r.name} className="border-t border-border">
+            <th scope="row" className="py-1.5 pr-3 text-left align-top font-normal">
+              <span className={cn(i === 0 && "font-medium")}>{r.name}</span>
+              {r.why && <span className="ml-2 text-muted-foreground">{r.why}</span>}
+            </th>
+            <td className={cn(column, "py-1.5 text-muted-foreground")}>{r.before?.toFixed(2)}</td>
+            <td className={cn(column, "py-1.5")}>{r.after.toFixed(2)}</td>
+            <td className={cn(column, "py-1.5 font-medium", (!flip || unchanged(flip)) && "font-normal text-muted-foreground")}>{flip && delta(flip)}</td>
+          </tr>;
+        })}
+      </tbody>
+    </table>
   </section>;
 }
 

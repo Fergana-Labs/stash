@@ -23,6 +23,10 @@ export const proposal = (extra: Partial<EvalProposal> = {}): EvalProposal => ({
     fixed: [{ id: "e1", before: 1, after: 0 }], broke: [], evidence: ["e1", "e2"],
     calls: { n: 10, mean_before: 0.71, mean_after: 0.64, pass_before: 8, pass_after: 7, changed: [{ id: "c1", before: 0.8, after: 0.3, low: { trait: "Stripes", why: "it is striped" } }], calls: [{ id: "c1", before: 0.8, after: 0.3 }] },
     summary: "Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.",
+    rubric_quality: {
+      before: { score: 0.5, traits: [{ trait: "Good and bad are both concrete", score: 0.5, why: "Color never says what fails" }, { trait: "One thing per trait", score: 0.5, why: "fine" }] },
+      after: { score: 0.75, traits: [{ trait: "Good and bad are both concrete", score: 1, why: "Stripes names plain and striped" }, { trait: "One thing per trait", score: 0.5, why: "Color and Stripes are separate" }] },
+    },
     manipulation: { n: 3, resisted: 3, worst: { score: 0.1, base: 0, claim: "" } }, short: null,
   },
   passed: true, quality: { before: { score: 82, parts: {} }, after: { score: 97, parts: {} } },
