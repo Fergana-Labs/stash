@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowLeft, Check, ChevronDown, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EvalPageFrame, evalInputClass } from "@/components/evals/eval-ui";
+import { EvalPageFrame } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import { ChecksMark, changeState, changeTitle } from "./EvalChanges";
 import FileThumb from "./FileThumb";
@@ -117,7 +117,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
       ))}
     </nav>
     <div className="min-w-0">
-      {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} onComment={onComment} />}
+      {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
       {tab === "rubric" && <RubricDiff proposal={p} diff={diff} onComment={onComment} />}
       {tab === "checks" && <div className="min-w-0 space-y-3">
         <Checks proposal={p} />
@@ -129,10 +129,9 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
 
 // ── The conversation ─────────────────────────────────────────────────────
 
-function Conversation({ proposal: p, onDecide, onComment }: {
+function Conversation({ proposal: p, onDecide }: {
   proposal: EvalProposal;
   onDecide: (decision: Decision, note: string) => Promise<void>;
-  onComment: (body: string, trait: string) => Promise<void>;
 }) {
   const state = changeState(p);
   // Comments made before the decision come before it; the rest follow.
@@ -152,7 +151,7 @@ function Conversation({ proposal: p, onDecide, onComment }: {
       {p.note && <p className="m-0 whitespace-pre-wrap">{p.note}</p>}
     </Entry>}
     {after.map((c) => <CommentEntry key={c.id} comment={c} />)}
-    <Composer proposal={p} onDecide={onDecide} onComment={(body) => onComment(body, "")} />
+    {p.status === "open" && <Decide proposal={p} onDecide={onDecide} />}
   </section>;
 }
 
@@ -177,36 +176,24 @@ function CommentEntry({ comment: c }: { comment: EvalComment }) {
   </Entry>;
 }
 
-/** Where the change is commented on, and while it is open, merged into the rubric or closed.
- * What is typed goes with whichever button is pressed. */
-function Composer({ proposal: p, onDecide, onComment }: {
-  proposal: EvalProposal;
-  onDecide: (decision: Decision, note: string) => Promise<void>;
-  onComment: (body: string) => Promise<void>;
-}) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState("");
+/** Where an open change is decided: whether its checks hold, then close it or approve it and
+ * merge it into the rubric. */
+function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (decision: Decision, note: string) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const run = async (what: string, action: () => Promise<void>) => {
-    setBusy(what); setError("");
-    try { await action(); setText(""); } catch (e) { setError(errorMessage(e)); }
-    setBusy("");
+  const decide = async (decision: Decision) => {
+    setBusy(true); setError("");
+    try { await onDecide(decision, ""); } catch (e) { setError(errorMessage(e)); }
+    setBusy(false);
   };
-  const open = p.status === "open";
-  return <div className="space-y-1.5 rounded border border-border p-2">
-    {open && <div className="flex items-center gap-1.5 px-1 text-[12px]">
-      <ChecksMark proposal={p} />
-      <span>{p.stale ? "Out of date" : p.passed === null ? "Checking" : p.passed ? "Checks passed" : "Checks failed"}</span>
-    </div>}
-    <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={2000} placeholder="Comment" aria-label="Comment" className={evalInputClass} />
-    <div className="flex flex-wrap items-center justify-end gap-1.5">
-      {error && <p role="alert" className="m-0 mr-auto text-[12px] text-destructive">{error}</p>}
-      {open && <button type="button" disabled={!!busy} onClick={() => void run("reject", () => onDecide("reject", text.trim()))} className={buttonClass}>Close</button>}
-      <button type="button" disabled={!!busy || !text.trim()} onClick={() => void run("comment", () => onComment(text.trim()))} className={buttonClass}>Comment</button>
-      {open && !p.stale && (p.passed === false
-        ? <button type="button" disabled={!!busy} onClick={() => void run("approve", () => onDecide("approve", text.trim()))} className={buttonClass}>Merge anyway</button>
-        : <button type="button" disabled={!!busy || p.passed === null} onClick={() => void run("approve", () => onDecide("approve", text.trim()))} className={primaryClass}>Approve and merge</button>)}
-    </div>
+  return <div className="flex flex-wrap items-center gap-1.5 rounded border border-border px-3 py-2">
+    <ChecksMark proposal={p} />
+    <span className="mr-auto text-[12px]">{p.stale ? "Out of date" : p.passed === null ? "Checking" : p.passed ? "Checks passed" : "Checks failed"}</span>
+    {error && <p role="alert" className="m-0 text-[12px] text-destructive">{error}</p>}
+    <button type="button" disabled={busy} onClick={() => void decide("reject")} className={buttonClass}>Close</button>
+    {!p.stale && (p.passed === false
+      ? <button type="button" disabled={busy} onClick={() => void decide("approve")} className={buttonClass}>Merge anyway</button>
+      : <button type="button" disabled={busy || p.passed === null} onClick={() => void decide("approve")} className={primaryClass}>Approve and merge</button>)}
   </div>;
 }
 

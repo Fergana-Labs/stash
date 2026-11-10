@@ -48,19 +48,11 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
 });
 
-it("comments, merges with what was typed as the note, and closes", async () => {
-  const { onDecide, onComment } = show(proposal());
-  const box = screen.getByRole("textbox", { name: "Comment" });
-  expect(screen.getByRole("button", { name: "Comment" })).toBeDisabled();
-  fireEvent.change(box, { target: { value: " is this too strict? " } });
-  fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-  await waitFor(() => expect(onComment).toHaveBeenCalledWith("is this too strict?", ""));
-  await waitFor(() => expect(box).toHaveValue(""));
-
-  fireEvent.change(box, { target: { value: "matches support" } });
+it("merges or closes an open change, with no comment box", async () => {
+  const { onDecide } = show(proposal());
+  expect(screen.queryByRole("textbox", { name: "Comment" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Approve and merge" }));
-  await waitFor(() => expect(onDecide).toHaveBeenCalledWith("approve", "matches support"));
-  await waitFor(() => expect(box).toHaveValue(""));
+  await waitFor(() => expect(onDecide).toHaveBeenCalledWith("approve", ""));
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   await waitFor(() => expect(onDecide).toHaveBeenCalledWith("reject", ""));
 });
@@ -137,7 +129,7 @@ it("calls a change by its own name when it has one", () => {
   expect(screen.getByLabelText("rubric from no-striped-charts")).toBeVisible();
 });
 
-it("shows a merged change with who merged it, and still takes comments", () => {
+it("shows a merged change with who merged it, and nothing left to decide", () => {
   show(proposal({
     status: "approved", decided_by: "Reviewer", decided_at: now, version: 5, note: "ok",
     comments: [comment({ created_at: new Date(Date.now() + 60_000).toISOString(), body: "follow up" })],
@@ -149,5 +141,5 @@ it("shows a merged change with who merged it, and still takes comments", () => {
   expect(within(talk).getByText("follow up")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   expect(screen.queryByRole("button", { name: /merge/i })).toBeNull();
-  expect(screen.getByRole("textbox", { name: "Comment" })).toBeVisible();
+  expect(screen.queryByText("Checks passed")).toBeNull();
 });
