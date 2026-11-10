@@ -185,8 +185,8 @@ function Attachment({ evalId, attachment, actions }: { evalId: string; attachmen
       : <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
     <figcaption className="contents">
       <Link href={`/reward-models/evals/${evalId}/examples/${attachment.example_id}`} title={attachment.name} className="min-w-0 max-w-56 truncate text-foreground no-underline hover:underline">{attachment.name}</Link>
-      {attachment.held_out && <span className="shrink-0 text-[10px] text-muted-foreground">Held out</span>}
-      <div role="group" aria-label={`Label ${attachment.name}`} className="inline-flex h-5 shrink-0 overflow-hidden rounded-sm border border-border text-[10px]">
+      {attachment.held_out && <span className="shrink-0 text-muted-foreground">Held out</span>}
+      <div role="group" aria-label={`Label ${attachment.name}`} className="inline-flex h-5 shrink-0 overflow-hidden rounded-sm border border-border">
         {(["good", "bad"] as const).map((label) => (
           <button key={label} type="button" disabled={saving} aria-pressed={attachment.label === label} onClick={() => void set(label)}
             className={cn("px-1.5 leading-none transition-colors disabled:opacity-60", attachment.label === label
