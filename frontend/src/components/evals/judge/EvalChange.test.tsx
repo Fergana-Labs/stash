@@ -101,11 +101,12 @@ it("merges whatever its measurements say, and only closes when out of date", () 
   expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
 });
 
-it("shows how the rubric verifier graded both rubrics, trait by trait", () => {
+it("shows how the eval that grades rubrics scored both rubrics, trait by trait, and links to it", () => {
   show(proposal(), "quality");
   expect(screen.getByRole("button", { name: /^Rubric quality\s*0\.75$/ })).toHaveAttribute("aria-current", "page");
   const quality = screen.getByRole("region", { name: "Rubric quality" });
-  expect(within(quality).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Trait", "rubric", "add-stripes", "Change"]);
+  expect(within(quality).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Rubric qualityv3", "rubric", "add-stripes", "Change"]);
+  expect(within(quality).getByRole("link", { name: /Rubric quality/ })).toHaveAttribute("href", "/reward-models/evals/q");
   const rows = within(quality).getAllByRole("row").slice(1).map((r) => [...r.children].map((c) => c.textContent));
   expect(rows).toEqual([
     ["Overall", "0.50", "0.75", "+0.25"],
@@ -114,7 +115,7 @@ it("shows how the rubric verifier graded both rubrics, trait by trait", () => {
   ]);
 });
 
-it("has no Rubric quality tab when the verifier's grade is missing", () => {
+it("has no Rubric quality tab when no eval grades this eval's rubrics", () => {
   const plain = proposal();
   plain.checks!.rubric_quality = null;
   show(plain);

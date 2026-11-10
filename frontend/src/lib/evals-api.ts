@@ -123,9 +123,9 @@ export interface EvalRubricVersion {
 /** A rubric's quality, 0-100: the mean of its parts (each 0-1). */
 export interface EvalQuality { score: number; parts: { agreement?: number; ranking?: number; manipulation?: number } }
 /** low: the trait a regraded agent call scores lowest on under the proposed rubric, and why. */
-/** How good a rubric is to grade with, as the rubric verifier judged its text: an overall score
- * and one per quality trait, each 0-1 with the reason. */
-export interface EvalRubricQuality { score: number; traits: { trait: string; score: number; why: string }[] }
+/** One rubric's score from the eval that grades rubrics: overall, and per trait of that eval's
+ * own rubric, each 0-1 with the reason. call_id is the scored call on that eval. */
+export interface EvalRubricQuality { score: number; traits: { trait: string; score: number; why: string }[]; call_id?: string }
 export interface EvalFlip { id: string; before: number; after: number; low?: { trait: string; why: string } | null }
 /** What a proposed rubric change was measured to do, against the version it would replace. */
 export interface EvalChecks {
@@ -138,8 +138,9 @@ export interface EvalChecks {
   evidence: string[];
   /** Recent agent calls graded again with the proposed rubric. */
   calls: { n: number; mean_before: number; mean_after: number; pass_before: number; pass_after: number; changed: EvalFlip[]; calls: EvalFlip[] } | null;
-  /** The rubric verifier's grade of each rubric's text: the one in use and the proposed one. */
-  rubric_quality?: { before: EvalRubricQuality | null; after: EvalRubricQuality } | null;
+  /** The rubric in use and the proposed one, each scored by the eval this one names to grade its
+   * rubrics (eval); null when it names none. */
+  rubric_quality?: { eval?: { id: string; name: string; version: number | null }; before: EvalRubricQuality | null; after: EvalRubricQuality } | null;
   /** What kind of agent output the proposed rubric treats differently from the one in use, in one sentence. */
   summary?: string | null;
   manipulation: EvalManipulation | null;

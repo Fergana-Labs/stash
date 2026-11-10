@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import UploadFile as FormFile
 
 from ..auth import get_current_user
-from ..services.evals import channel, judge, proposals, revise, service
+from ..services.evals import channel, judge, proposals, revise, rubric_quality, service
 from .reward_models import require_reward_models
 
 router = APIRouter(
@@ -94,6 +94,10 @@ class EditRubric(Body):
 
 class Review(Body):
     required: bool
+
+
+class RubricEval(Body):
+    eval_id: UUID | None = Field(description="The eval that grades this eval's rubrics, or null")
 
 
 class Decide(Body):
@@ -269,6 +273,13 @@ async def changes(eval_id: UUID, user: User):
 async def set_review(eval_id: UUID, body: Review, user: User):
     """Require approval before the rubric changes, or stop requiring it."""
     return await checked(proposals.set_required(user["id"], eval_id, body.required))
+
+
+@router.put("/{eval_id}/rubric-eval")
+async def set_rubric_eval(eval_id: UUID, body: RubricEval, user: User):
+    """Name one of your evals as the one that grades this eval's rubrics: each proposed rubric
+    change is then scored with it, beside the rubric in use."""
+    return await checked(rubric_quality.set_eval(user["id"], eval_id, body.eval_id))
 
 
 @router.post("/{eval_id}/changes/{proposal_id}/approve")

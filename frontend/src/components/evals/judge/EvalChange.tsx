@@ -73,7 +73,7 @@ export function changeBranch(p: EvalProposal): string {
 
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
  * agent fares under the proposed rubric and ends in a merge or a close, the rubric's diff, and
- * how the rubric verifier graded both rubrics. */
+ * how the eval that grades its rubrics scored both. */
 export function ChangeView({ proposal: p, initialTab, onDecide }: {
   proposal: EvalProposal;
   initialTab?: string;
@@ -258,9 +258,9 @@ function RubricDiff({ diff }: { diff: ReturnType<typeof rubricDiff> }) {
 
 type Quality = NonNullable<NonNullable<EvalProposal["checks"]>["rubric_quality"]>;
 
-/** How the rubric verifier graded the rubric in use and the proposed one: an overall score,
- * then each quality trait with its score under both, how far it moved, and the verifier's
- * reason for the proposed rubric's score. */
+/** How the eval that grades this eval's rubrics scored the rubric in use and the proposed one:
+ * an overall score, then each of its traits with the score under both, how far it moved, and
+ * its reason for the proposed rubric's score. Its name links to it. */
 function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quality: Quality }) {
   const was = new Map((quality.before?.traits ?? []).map((t) => [t.trait, t]));
   const rows = [
@@ -273,7 +273,13 @@ function RubricQuality({ proposal: p, quality }: { proposal: EvalProposal; quali
     <table className="w-full border-collapse text-[12px]">
       <thead>
         <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-          <th scope="col" className="pb-2 font-medium">Trait</th>
+          <th scope="col" className="pb-2 font-medium">
+            {quality.eval
+              ? <Link href={`/reward-models/evals/${quality.eval.id}`} className="normal-case tracking-normal text-foreground underline-offset-2 hover:underline">
+                {quality.eval.name}{quality.eval.version ? <span className="ml-1.5 text-muted-foreground">v{quality.eval.version}</span> : null}
+              </Link>
+              : "Trait"}
+          </th>
           <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
           <th scope="col" className="whitespace-nowrap pb-2 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
           <th scope="col" className={cn(column, "pb-2 font-medium text-foreground")}>Change</th>

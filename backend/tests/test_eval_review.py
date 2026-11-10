@@ -11,7 +11,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.services.evals import proposals, rubric_quality
+from backend.services.evals import proposals
 from backend.tasks import evals as eval_tasks
 
 from .test_eval_channel import (  # noqa: F401 (world is a fixture)
@@ -110,23 +110,8 @@ async def test_a_build_proposes_a_change_with_its_checks_and_approval_applies_it
     # alike), and the change says in a line how the agent fares under the proposed rubric.
     assert found["calls"]["changed"][0]["low"]["trait"] in ("Color", "Stripes")
     assert found["summary"] == "Striped outputs now fail on Stripes."
-    # The rubric verifier graded both rubrics' text on its own traits, each 0-1 with a reason.
-    graded = found["rubric_quality"]
-    assert (graded["before"]["score"], graded["after"]["score"]) == (0.25, 0.75)
-    assert [t["trait"] for t in graded["after"]["traits"]] == [
-        t["name"] for t in rubric_quality.TRAITS
-    ]
-    assert graded["after"]["traits"][0] == {
-        "trait": "Checks reasoning, not just a value",
-        "score": 0.75,
-        "why": "as written",
-    }
-    assert "1 pass under the rubric in use, 0 under the proposed one" in world.summary_texts[-1]
-    assert "1.00 pass -> 0.00 fail; lowest trait now:" in world.summary_texts[-1]
-    assert proposal["calls"][before["call_id"]]["caller"] == "support-agent"
-    assert found["manipulation"]["resisted"] == found["manipulation"]["n"]
-    assert proposal["passed"] is True and proposal["stale"] is False
-    assert proposal["quality"]["after"]["score"] > proposal["quality"]["before"]["score"]
+    # No eval is named to grade this eval's rubrics, so the change has no rubric quality score.
+    assert found["rubric_quality"] is None
 
     update = (await _messages(client, auth, eid))["messages"][-1]
     assert update["thread_id"] == note["id"] and update["data"]["proposal"] == 1
@@ -295,3 +280,38 @@ async def test_a_change_is_discussed_before_and_after_it_is_decided(
     # Someone else's eval is not found.
     other = await _register(client)
     assert (await client.post(url, headers=other, json={"body": "hi"})).status_code == 404
+
+
+async def test_a_rubric_change_is_scored_by_the_eval_named_to_grade_rubrics(
+    client: AsyncClient,
+    world,  # noqa: F811
+):
+    auth = await _register(client)
+    eid = await _reviewed_eval(client, auth)
+    # An ordinary eval of the same person's, built, whose submissions will be rubrics.
+    grader = await _striped_eval(client, auth)
+    await _build(grader)
+    url = f"/api/v1/evals/{eid}/rubric-eval"
+    assert (await client.put(url, headers=auth, json={"eval_id": eid})).status_code == 422
+    other = await _register(client)
+    theirs = await _striped_eval(client, other)
+    assert (await client.put(url, headers=auth, json={"eval_id": theirs})).status_code == 404
+    named = await client.put(url, headers=auth, json={"eval_id": grader})
+    assert named.status_code == 200 and named.json() == {"rubric_eval_id": grader}
+
+    world.proposals.append(ADD_STRIPES)
+    await _build(eid)
+    graded = (await _changes(client, auth, eid))["proposals"][0]["checks"]["rubric_quality"]
+    assert graded["eval"]["id"] == grader and graded["eval"]["version"] == 1
+    # The fake judge fails the color-only rubric in use and passes the one that adds Stripes.
+    assert (graded["before"]["score"], graded["after"]["score"]) == (0.0, 1.0)
+    assert graded["after"]["traits"] == [{"trait": "Color", "score": 1.0, "why": "seen"}]
+
+    # Both scores are ordinary calls on the grading eval, with the rubric's text as the input.
+    calls = (await client.get(f"/api/v1/evals/{grader}/calls", headers=auth)).json()["calls"]
+    assert [c["caller"] for c in calls] == ["rubric change", "rubric change"]
+    assert {c["id"] for c in calls} == {graded["before"]["call_id"], graded["after"]["call_id"]}
+    assert any("## Stripes" in c["input"]["text"] for c in calls)
+
+    # Naming none again stops it.
+    assert (await client.put(url, headers=auth, json={"eval_id": None})).status_code == 200

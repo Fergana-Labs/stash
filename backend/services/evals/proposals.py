@@ -10,7 +10,7 @@ carries checks, measured before anyone decides:
 - recent agent calls graded again with the proposed rubric, beside the score each got, and
   a short summary of how the agent fares differently under it;
 - the manipulation check (robustness.py) on the proposed rubric;
-- the rubric verifier's grade (rubric_quality.py) of both rubrics' text, trait by trait.
+- both rubrics scored by the eval this one names to grade its rubrics (rubric_quality.py).
 Approving saves the proposal as the next rubric version (refused when the rubric has changed
 since it was proposed); rejecting keeps the rubric and is shown to later builds, so they
 don't propose the same edit. A build's new proposal replaces its earlier open one.
@@ -225,12 +225,8 @@ async def checks(
     except Exception:
         log.exception("Grading agent calls with a proposed rubric failed for %s", model_id)
     try:
-        # The rubric verifier reads each rubric's text: the one in use and the proposed one.
-        before_quality, after_quality = await asyncio.gather(
-            rubric_quality.grade(base), rubric_quality.grade(candidate)
-        )
-        if after_quality:
-            out["rubric_quality"] = {"before": before_quality, "after": after_quality}
+        # The eval this one names to grade its rubrics scores the one in use and the proposed one.
+        out["rubric_quality"] = await rubric_quality.grade(model_id, base, candidate)
     except Exception:
         log.exception("Grading the quality of a proposed rubric failed for %s", model_id)
     try:
