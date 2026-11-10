@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, ChevronDown, ChevronUp, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, Search, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronUp, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame } from "@/components/evals/eval-ui";
-import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
+import { diffLines, errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import { ChecksMark, changeState, changeTitle } from "./EvalChanges";
 import FileThumb from "./FileThumb";
 import {
-  evalChanges, evalComment, evalDecide, evalExampleFilePath, evalGet,
+  evalChanges, evalDecide, evalExampleFilePath, evalGet,
   type EvalChangeCall, type EvalChangeExample, type EvalComment, type EvalFlip, type EvalProposal, type EvalTally, type EvalTrait,
 } from "@/lib/evals-api";
 
@@ -24,7 +24,7 @@ const STATE = {
   merged: { label: "Merged", icon: GitMerge, tone: "text-violet-700 dark:text-violet-400" },
   closed: { label: "Closed", icon: GitPullRequestClosed, tone: "text-red-700 dark:text-red-400" },
 };
-const chipClass = "rounded bg-brand-50 px-1.5 py-px font-mono text-[11px] text-brand-700 dark:bg-brand-600/15 dark:text-brand-300";
+const chipClass = "rounded bg-brand-50 px-1.5 py-px font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[11px] text-brand-700 dark:bg-brand-600/15 dark:text-brand-300";
 const sectionTitle = "m-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
 const buttonClass = "h-7 rounded border border-border px-2.5 text-[12px] hover:bg-surface disabled:opacity-50";
 const primaryClass = "h-7 rounded bg-foreground px-2.5 text-[12px] text-background disabled:opacity-50";
@@ -59,8 +59,7 @@ export default function EvalChange({ evalId, number, initialTab }: { evalId: str
   return <EvalPageFrame>
     {back}
     <ChangeView evalId={evalId} proposal={proposal} initialTab={initialTab}
-      onDecide={async (decision, note) => setProposals((await evalDecide(evalId, proposal.id, decision, note)).proposals)}
-      onComment={async (body, trait) => setProposals((await evalComment(evalId, proposal.id, body, trait)).proposals)} />
+      onDecide={async (decision, note) => setProposals((await evalDecide(evalId, proposal.id, decision, note)).proposals)} />
   </EvalPageFrame>;
 }
 
@@ -75,14 +74,13 @@ export function changeBranch(p: EvalProposal): string {
 }
 
 /** A proposed change as a pull request on the rubric: a conversation that opens with how the
- * agent fares under the proposed rubric and ends in a merge or a close, the rubric before and
- * after, and the checks that measured it. */
-export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onComment }: {
+ * agent fares under the proposed rubric and ends in a merge or a close, the rubric's diff, and
+ * the checks that measured it. */
+export function ChangeView({ evalId, proposal: p, initialTab, onDecide }: {
   evalId: string;
   proposal: EvalProposal;
   initialTab?: string;
   onDecide: (decision: Decision, note: string) => Promise<void>;
-  onComment: (body: string, trait: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "conversation");
   const state = STATE[changeState(p)];
@@ -92,7 +90,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
   const branch = changeBranch(p);
   const tabs: { key: Tab; label: string; extra?: ReactNode }[] = [
     { key: "conversation", label: "Conversation", extra: p.comments.length > 0 ? <span className="tabular-nums text-muted-foreground">{p.comments.length}</span> : null },
-    { key: "rubric", label: "Rubric changes", extra: <span className="tabular-nums text-muted-foreground">{diff.count}</span> },
+    { key: "rubric", label: "Diff", extra: <span className="tabular-nums text-muted-foreground">+{diff.added} -{diff.removed}</span> },
     { key: "checks", label: "Checks", extra: <ChecksMark proposal={p} /> },
   ];
   return <article aria-label={`Change ${p.number}`} className="text-[13px]">
@@ -100,7 +98,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
     <div className="flex flex-wrap items-center gap-x-2.5 text-[12px] text-muted-foreground">
       <span className={cn("inline-flex items-center gap-1 font-medium", state.tone)}><Icon aria-hidden className="size-3.5" />{state.label}</span>
       {p.stale && <span>Out of date</span>}
-      <span><span className="font-medium text-foreground">{merged ? p.decided_by ?? "Unknown" : p.opened_by ?? "Unknown"}</span> {merged ? "merged" : p.status === "open" ? "wants to merge" : "wanted to merge"} {diff.count} {diff.count === 1 ? "edit" : "edits"} into</span>
+      <span><span className="font-medium text-foreground">{merged ? p.decided_by ?? "Unknown" : p.opened_by ?? "Unknown"}</span> {merged ? "merged" : p.status === "open" ? "wants to merge" : "wanted to merge"} {p.changes.length} {p.changes.length === 1 ? "edit" : "edits"} into</span>
       <span aria-label={`rubric from ${branch}`} className="inline-flex items-center gap-1.5">
         <span className={chipClass}>rubric</span>
         <ArrowLeft aria-hidden className="size-3.5" />
@@ -118,7 +116,7 @@ export function ChangeView({ evalId, proposal: p, initialTab, onDecide, onCommen
     </nav>
     <div className="min-w-0">
       {tab === "conversation" && <Conversation proposal={p} onDecide={onDecide} />}
-      {tab === "rubric" && <RubricDiff proposal={p} diff={diff} onComment={onComment} />}
+      {tab === "rubric" && <RubricDiff diff={diff} />}
       {tab === "checks" && <div className="min-w-0 space-y-3">
         <Checks proposal={p} />
         <Flipped evalId={evalId} proposal={p} />
@@ -213,91 +211,56 @@ function Decide({ proposal: p, onDecide }: { proposal: EvalProposal; onDecide: (
 
 // ── The rubric, before and after ─────────────────────────────────────────
 
-const key = (name: string) => name.trim().toLowerCase();
-type Line = ["+" | "-", string, string];
-interface Diffed { sign: "+" | "-" | "~"; name: string; why?: string; lines: Line[]; trait: boolean }
+type Rubric = { traits: EvalTrait[]; scoring: EvalProposal["scoring"]; instructions: string };
+const CONTEXT = 3; // unchanged lines kept around each change, as git does
 
-/** What the change does to the rubric, trait by trait, then its scoring rule and description. */
-function rubricDiff(p: EvalProposal): { items: Diffed[]; general: string[]; unchanged: number; count: number } {
-  const before = p.before?.traits ?? [];
-  const old = new Map(before.map((t) => [key(t.name), t]));
-  const now = new Map(p.traits.map((t) => [key(t.name), t]));
-  const why = new Map(p.changes.filter((c) => c.trait).map((c) => [key(c.trait), c.why]));
-  const changed = (a: EvalTrait, b: EvalTrait) => a.good !== b.good || a.bad !== b.bad;
-  const items: Diffed[] = [];
-  let untouched = 0;
-  for (const t of p.traits) {
-    const was = old.get(key(t.name));
-    if (!was) items.push({ sign: "+", name: t.name, why: why.get(key(t.name)), trait: true, lines: [["+", "Good", t.good], ["+", "Bad", t.bad]] });
-    else if (changed(was, t)) {
-      const lines: Line[] = [];
-      if (was.good !== t.good) lines.push(["-", "Good", was.good], ["+", "Good", t.good]);
-      if (was.bad !== t.bad) lines.push(["-", "Bad", was.bad], ["+", "Bad", t.bad]);
-      items.push({ sign: "~", name: t.name, why: why.get(key(t.name)), trait: true, lines });
-    } else untouched += 1;
-  }
-  for (const t of before) if (!now.has(key(t.name))) items.push({ sign: "-", name: t.name, why: why.get(key(t.name)), trait: true, lines: [["-", "Good", t.good], ["-", "Bad", t.bad]] });
-  if (p.before && p.before.scoring !== p.scoring) items.push({ sign: "~", name: "Scored by", why: p.changes.find((c) => c.kind === "scoring")?.why, trait: false, lines: [["-", "", SCORING[p.before.scoring]], ["+", "", SCORING[p.scoring]]] });
-  if (p.before && p.before.instructions !== p.instructions) items.push({ sign: "~", name: "Description", trait: false, lines: [["-", "", p.before.instructions], ["+", "", p.instructions]] });
-  const general = p.changes.filter((c) => !c.trait && c.why && c.kind !== "description").map((c) => c.why);
-  return { items, general, unchanged: untouched, count: items.length };
+/** A rubric as the text file it would be: how it is scored, its description, then each trait
+ * with what good and bad look like. */
+function rubricText(r: Rubric): string {
+  const lines = [`Scored by: ${SCORING[r.scoring]}`];
+  if (r.instructions) lines.push("", r.instructions);
+  for (const t of r.traits) lines.push("", `## ${t.name}`, `Good: ${t.good}`, `Bad: ${t.bad}`);
+  return lines.join("\n");
 }
 
-function RubricDiff({ proposal: p, diff, onComment }: { proposal: EvalProposal; diff: ReturnType<typeof rubricDiff>; onComment: (body: string, trait: string) => Promise<void> }) {
-  return <section aria-label="Rubric changes" className="min-w-0 space-y-1.5">
-    {diff.general.map((text, i) => <p key={i} className="m-0 text-[12px] text-muted-foreground">{text}</p>)}
-    {diff.items.map((d) => <TraitDiff key={d.name} diff={d}
-      comments={d.trait ? p.comments.filter((c) => key(c.trait) === key(d.name)) : []}
-      onComment={d.trait ? (body) => onComment(body, d.name) : undefined} />)}
-    {diff.unchanged > 0 && <p className="m-0 text-[12px] text-muted-foreground">{diff.unchanged} {diff.unchanged === 1 ? "trait" : "traits"} unchanged</p>}
-  </section>;
+interface NumberedLine { kind: "same" | "add" | "del"; text: string; old?: number; now?: number }
+
+/** The line diff between the rubric in use and the proposed one, numbered on both sides. */
+function rubricDiff(p: EvalProposal): { lines: NumberedLine[]; added: number; removed: number } {
+  let old = 0, now = 0;
+  const lines = diffLines(p.before ? rubricText(p.before) : "", rubricText(p)).map((l): NumberedLine => ({
+    ...l, old: l.kind === "add" ? undefined : ++old, now: l.kind === "del" ? undefined : ++now,
+  }));
+  return { lines, added: lines.filter((l) => l.kind === "add").length, removed: lines.filter((l) => l.kind === "del").length };
 }
 
-function TraitDiff({ diff: d, comments, onComment }: { diff: Diffed; comments: EvalComment[]; onComment?: (body: string) => Promise<void> }) {
-  const [writing, setWriting] = useState(false);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const send = async () => {
-    if (!onComment || !text.trim()) return;
-    setBusy(true); setError("");
-    try { await onComment(text.trim()); setText(""); setWriting(false); } catch (e) { setError(errorMessage(e)); }
-    setBusy(false);
-  };
-  return <div className="overflow-hidden rounded-sm border border-border">
-    <div className="flex items-start gap-2 px-2 py-1">
-      <span aria-hidden className={cn("w-3 font-mono text-[12px] leading-5", d.sign === "+" ? "text-emerald-700 dark:text-emerald-400" : d.sign === "-" ? "text-red-700 dark:text-red-400" : "text-muted-foreground")}>{d.sign}</span>
-      <span className="whitespace-nowrap font-medium leading-5">{d.name}</span>
-      <span className="min-w-0 flex-1 text-[12px] leading-5 text-muted-foreground">{d.why}</span>
-      {onComment && <button type="button" aria-label={`Comment on ${d.name}`} title="Comment" onClick={() => setWriting(!writing)}
-        className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-surface hover:text-foreground">
-        <MessageSquare aria-hidden className="size-3.5" />
-      </button>}
+/** The rubric change as a git-style diff of one file: removed lines in red, added lines in
+ * green, a few unchanged lines around each change, and the rest folded away. */
+function RubricDiff({ diff }: { diff: ReturnType<typeof rubricDiff> }) {
+  const { lines } = diff;
+  const near = lines.map((_, i) => lines.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some((l) => l.kind !== "same"));
+  const cell = "select-none px-2 text-right tabular-nums text-muted-foreground";
+  return <section aria-label="Rubric diff" className="min-w-0 overflow-hidden rounded border border-border font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[12px] leading-5">
+    <div className="flex items-center gap-2 border-b border-border bg-surface/40 px-3 py-1.5">
+      <span>rubric</span>
+      <span className="tabular-nums text-emerald-700 dark:text-emerald-400">+{diff.added}</span>
+      <span className="tabular-nums text-red-700 dark:text-red-400">-{diff.removed}</span>
     </div>
-    {d.lines.filter(([, , text]) => text).map(([kind, label, text], i) => (
-      <div key={i} className={cn("flex gap-2 border-l-2 px-2 py-0.5 text-[12px]", kind === "+" ? "border-l-emerald-600" : "border-l-red-500")}>
-        <span aria-hidden className={cn("w-3 font-mono", kind === "+" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{kind}</span>
-        {label && <span className="w-8 shrink-0 text-muted-foreground">{label}</span>}
-        <span className={cn("min-w-0 flex-1", kind === "-" && "text-muted-foreground")}>{text}</span>
-      </div>
-    ))}
-    {comments.map((c) => (
-      <div key={c.id} className="border-t border-border px-2 py-1.5 text-[12px]">
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-medium">{c.author ?? "Someone"}</span>
-          <time className="text-muted-foreground" dateTime={c.created_at}>{relativeTime(c.created_at)}</time>
-        </div>
-        <p className="m-0 whitespace-pre-wrap">{c.body}</p>
-      </div>
-    ))}
-    {writing && <div className="flex flex-wrap items-center gap-1.5 border-t border-border p-1.5">
-      <input autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} maxLength={2000}
-        placeholder="Comment" aria-label={`Comment on ${d.name}`}
-        className="h-6 min-w-40 flex-1 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-foreground/40" />
-      <button type="button" disabled={busy || !text.trim()} onClick={() => void send()} className="h-6 rounded border border-border px-2 text-[12px] hover:bg-surface disabled:opacity-50">Comment</button>
-      {error && <p role="alert" className="m-0 w-full text-[12px] text-destructive">{error}</p>}
-    </div>}
-  </div>;
+    {lines.map((l, i) => {
+      if (!near[i]) {
+        // One marker for each folded run of unchanged lines, saying where the next lines start.
+        if (i > 0 && !near[i - 1]) return null;
+        const next = lines.slice(i).find((x, k) => near[i + k]);
+        return next ? <div key={i} className="bg-surface/40 px-3 text-muted-foreground">@@ -{next.old ?? ""} +{next.now ?? ""} @@</div> : null;
+      }
+      return <div key={i} data-kind={l.kind} className={cn("grid grid-cols-[40px_40px_16px_minmax(0,1fr)]", l.kind === "add" && "bg-emerald-500/10", l.kind === "del" && "bg-red-500/10")}>
+        <span className={cell}>{l.old}</span>
+        <span className={cell}>{l.now}</span>
+        <span aria-hidden className={cn("select-none", l.kind === "add" ? "text-emerald-700 dark:text-emerald-400" : l.kind === "del" ? "text-red-700 dark:text-red-400" : "")}>{l.kind === "add" ? "+" : l.kind === "del" ? "-" : ""}</span>
+        <span className="whitespace-pre-wrap break-words pr-3">{l.text}</span>
+      </div>;
+    })}
+  </section>;
 }
 
 // ── Checks ───────────────────────────────────────────────────────────────

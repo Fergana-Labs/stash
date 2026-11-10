@@ -9,9 +9,8 @@ vi.mock("./FileThumb", () => ({ default: ({ alt }: { alt: string }) => <img alt=
 
 const show = (p: EvalProposal, tab?: string) => {
   const onDecide = vi.fn().mockResolvedValue(undefined);
-  const onComment = vi.fn().mockResolvedValue(undefined);
-  render(<ChangeView evalId="e" proposal={p} initialTab={tab} onDecide={onDecide} onComment={onComment} />);
-  return { onDecide, onComment };
+  render(<ChangeView evalId="e" proposal={p} initialTab={tab} onDecide={onDecide} />);
+  return { onDecide };
 };
 const comment = (extra = {}) => ({ id: "k1", author: "Reviewer", trait: "", body: "too strict?", created_at: now, ...extra });
 
@@ -20,7 +19,7 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(screen.getByRole("heading", { name: "Add Stripes, tighten Color #2" })).toBeVisible();
   expect(screen.getByText("Open")).toBeVisible();
   expect(screen.getByLabelText("rubric from add-stripes")).toBeVisible();
-  expect(screen.getByText("wants to merge 3 edits into", { exact: false })).toBeVisible();
+  expect(screen.getByText("wants to merge 2 edits into", { exact: false })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Conversation\s*1$/ })).toHaveAttribute("aria-current", "page");
 
   const talk = screen.getByRole("region", { name: "Conversation" });
@@ -57,21 +56,33 @@ it("merges or closes an open change, with no comment box", async () => {
   await waitFor(() => expect(onDecide).toHaveBeenCalledWith("reject", ""));
 });
 
-it("shows the rubric before and after, and takes a comment on one trait", async () => {
-  const { onComment } = show(proposal({ comments: [comment({ trait: "Stripes", body: "pinstripes too?" })] }), "rubric");
-  expect(screen.getByRole("button", { name: /^Rubric changes\s*3$/ })).toHaveAttribute("aria-current", "page");
-  const rubric = screen.getByRole("region", { name: "Rubric changes" });
-  expect(within(rubric).getByText("the striped ones are bad")).toBeVisible();
-  expect(within(rubric).getByText("warm red")).toBeVisible();
-  expect(within(rubric).getByText("red")).toBeVisible(); // the wording it replaces
-  expect(within(rubric).getByText("Shape")).toBeVisible(); // removed
-  expect(within(rubric).getByText("1 trait unchanged")).toBeVisible();
-  expect(within(rubric).getByText("pinstripes too?")).toBeVisible();
-
-  fireEvent.click(within(rubric).getByRole("button", { name: "Comment on Color" }));
-  fireEvent.change(within(rubric).getByRole("textbox", { name: "Comment on Color" }), { target: { value: "orange is fine" } });
-  fireEvent.click(within(rubric).getByRole("button", { name: "Comment" }));
-  await waitFor(() => expect(onComment).toHaveBeenCalledWith("orange is fine", "Color"));
+it("shows the rubric change as a git-style diff: removed and added lines, numbered, with unchanged lines around them", () => {
+  show(proposal(), "rubric");
+  expect(screen.getByRole("button", { name: /^Diff\s*\+5 -5$/ })).toHaveAttribute("aria-current", "page");
+  const diff = screen.getByRole("region", { name: "Rubric diff" });
+  const rows = [...diff.querySelectorAll("[data-kind]")].map((r) => `${r.getAttribute("data-kind")} ${r.textContent}`);
+  expect(rows).toEqual([
+    "same 11Scored by: Average",
+    "same 22",
+    "same 33## Color",
+    "del 4-Good: red",
+    "add 4+Good: warm red",
+    "same 55Bad: blue",
+    "same 66",
+    "add 7+## Stripes",
+    "add 8+Good: plain",
+    "add 9+Bad: striped",
+    "add 10+",
+    "same 711## Size",
+    "same 812Good: large",
+    "same 913Bad: small",
+    "del 10-",
+    "del 11-## Shape",
+    "del 12-Good: round",
+    "del 13-Bad: square",
+  ]);
+  // The reasons for each edit are not part of a diff.
+  expect(within(diff).queryByText("the striped ones are bad")).toBeNull();
 });
 
 it("lists the examples the checks point at: broken, fixed, and new since the base version", () => {
@@ -99,7 +110,7 @@ it("falls back to the counts when a change has no summary, and lists new example
   const plain = proposal();
   plain.checks!.summary = null;
   plain.checks!.fixed = [];
-  const { unmount } = render(<ChangeView evalId="e" proposal={plain} onDecide={vi.fn()} onComment={vi.fn()} />);
+  const { unmount } = render(<ChangeView evalId="e" proposal={plain} onDecide={vi.fn()} />);
   expect(screen.getByText("7 of 10 agent calls pass, 8 before")).toBeVisible();
   unmount();
   show(plain, "checks");
@@ -107,13 +118,13 @@ it("falls back to the counts when a change has no summary, and lists new example
 });
 
 it("offers only an override when a check failed, and no merge when out of date or still checking", () => {
-  const { unmount } = render(<ChangeView evalId="e" proposal={proposal({ passed: false })} onDecide={vi.fn()} onComment={vi.fn()} />);
+  const { unmount } = render(<ChangeView evalId="e" proposal={proposal({ passed: false })} onDecide={vi.fn()} />);
   expect(screen.getByText("Checks failed")).toBeVisible();
   expect(screen.getByRole("button", { name: "Merge anyway" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Approve and merge" })).toBeNull();
   unmount();
 
-  const stale = render(<ChangeView evalId="e" proposal={proposal({ stale: true })} onDecide={vi.fn()} onComment={vi.fn()} />);
+  const stale = render(<ChangeView evalId="e" proposal={proposal({ stale: true })} onDecide={vi.fn()} />);
   expect(screen.getAllByText("Out of date").length).toBeGreaterThan(0);
   expect(screen.queryByRole("button", { name: /merge/i })).toBeNull();
   expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
