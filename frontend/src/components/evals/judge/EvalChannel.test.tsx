@@ -21,8 +21,8 @@ beforeEach(() => {
   onSend = vi.fn<(send: Send, onProgress: (sent: number) => void) => Promise<void>>().mockResolvedValue(undefined);
   onLabel = vi.fn<(exampleId: string, label: EvalLabel | null) => Promise<void>>().mockResolvedValue(undefined);
 });
-const show = (messages: EvalMessage[]) =>
-  render(<EvalChannel evalId="e" messages={messages} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
+const show = (messages: EvalMessage[], reading = false) =>
+  render(<EvalChannel evalId="e" messages={messages} reading={reading} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
 
 it("folds the agent's reply into a thread, like Slack, and a choice answers in that thread", async () => {
   show([
@@ -108,4 +108,23 @@ it("starts empty with a drop box, and shows no reading indicator", () => {
   show([]);
   expect(screen.getByText("Drop screenshots of good and bad agent work")).toBeVisible();
   expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("shows the agent typing under the message it hasn't read yet, folded or open, and only while it reads", () => {
+  const thread = [
+    message("m1", { text: "hello?" }),
+    message("m2", { thread_id: "m1", author: "agent", text: "Hey" }),
+    message("m3", { thread_id: "m1", text: "these are bad", unread: true }),
+    message("m4", { text: "read already" }),
+  ];
+  const { rerender } = show(thread, true);
+  const waiting = screen.getByText("hello?").closest("article")!;
+  expect(within(waiting).getByRole("status", { name: "Agent is replying" })).toBeVisible();
+  expect(within(screen.getByText("read already").closest("article")!).queryByRole("status")).toBeNull();
+
+  fireEvent.click(within(waiting).getByRole("button", { name: /2 replies/ }));
+  expect(within(waiting).getAllByRole("status", { name: "Agent is replying" })).toHaveLength(1);
+
+  rerender(<EvalChannel evalId="e" messages={thread} reading={false} onSend={onSend} onLabel={onLabel} onRemove={onRemove} />);
+  expect(screen.queryByRole("status", { name: "Agent is replying" })).toBeNull();
 });

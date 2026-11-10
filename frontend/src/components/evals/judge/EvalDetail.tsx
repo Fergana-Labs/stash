@@ -114,7 +114,7 @@ export default function EvalDetail({ id, initialTab }: { id: string; initialTab?
         <div className="flex min-w-0 flex-col gap-2 lg:min-h-0">
           {(error || notice) && <p role="alert" className="text-[12px] text-destructive">{error || notice}</p>}
           {busy && <p role="status" className="text-[12px] text-muted-foreground">{busy}</p>}
-          {tab === "channel" && <EvalChannel evalId={id} messages={messages} onSend={send} onLabel={label} onRemove={remove} />}
+          {tab === "channel" && <EvalChannel evalId={id} messages={messages} reading={reading} onSend={send} onLabel={label} onRemove={remove} />}
           {tab !== "channel" && <div className="scroll-thin lg:min-h-0 lg:overflow-y-auto">
             {tab === "examples" && <Examples id={id} examples={examples} disabled={!!busy} onUpload={(l, f) => void upload(l, f)}
               onDelete={(exampleId) => void run("Removing", () => evalDeleteExample(id, exampleId))} />}

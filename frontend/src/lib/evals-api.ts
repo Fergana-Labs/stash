@@ -90,6 +90,8 @@ export interface EvalMessage {
   };
   attachments: EvalAttachment[];
   about: EvalAttachment | null;
+  /** The person's message the agent hasn't read yet. */
+  unread?: boolean;
   created_at: string;
 }
 export interface EvalRubricVersion {

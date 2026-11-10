@@ -19,9 +19,11 @@ interface AttachmentActions {
 /** The eval's channel, like a Slack channel: the person's posts run down the middle, and the
  * agent, like a bot, only ever replies in a post's thread, and only when it has something to
  * say. Threads stay folded behind their reply count until opened. */
-export default function EvalChannel({ evalId, messages, onSend, onLabel, onRemove }: {
+export default function EvalChannel({ evalId, messages, reading = false, onSend, onLabel, onRemove }: {
   evalId: string;
   messages: EvalMessage[];
+  /** The agent is reading the channel: threads with a message it hasn't read show it typing. */
+  reading?: boolean;
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   onLabel: (exampleId: string, label: EvalLabel | null) => Promise<void>;
   onRemove: (exampleId: string) => Promise<void>;
@@ -71,7 +73,7 @@ export default function EvalChannel({ evalId, messages, onSend, onLabel, onRemov
       <div ref={list} className="scroll-thin flex-1 space-y-1 px-3 py-3 lg:overflow-y-auto">
         {top.length === 0
           ? <UploadBox title="Drop screenshots of good and bad agent work" disabled={false} onFiles={setDropped} />
-          : top.map((m) => <Message key={m.id} evalId={evalId} message={m} replies={replies.get(m.id) ?? []} onSend={onSend} actions={actions} />)}
+          : top.map((m) => <Message key={m.id} evalId={evalId} message={m} replies={replies.get(m.id) ?? []} reading={reading} onSend={onSend} actions={actions} />)}
         <div ref={bottom} />
       </div>
       <div className="sticky bottom-0 border-t border-border bg-background p-2">
@@ -90,10 +92,22 @@ function Author({ message }: { message: EvalMessage }) {
   </div>;
 }
 
-function Message({ evalId, message, replies, onSend, actions }: {
+/** The agent is working on a reply: its name and three dots that pulse in turn. */
+function Typing() {
+  return <div role="status" aria-label="Agent is replying" className="flex items-center gap-2 text-[12px]">
+    <span className="font-semibold text-violet-600 dark:text-violet-400">Agent</span>
+    <span aria-hidden className="flex items-center gap-1">
+      {[0, 200, 400].map((delay) => <span key={delay} style={{ animationDelay: `${delay}ms` }}
+        className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-duration:1.2s] motion-reduce:animate-none" />)}
+    </span>
+  </div>;
+}
+
+function Message({ evalId, message, replies, reading, onSend, actions }: {
   evalId: string;
   message: EvalMessage;
   replies: EvalMessage[];
+  reading: boolean;
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   actions: AttachmentActions;
 }) {
@@ -105,6 +119,7 @@ function Message({ evalId, message, replies, onSend, actions }: {
   const waiting = !!last && last.author === "agent" && last.kind === "message"
     && (!!last.data.choices?.length || !!last.data.about || last.text.trim().endsWith("?"));
   const count = replies.length === 1 ? "1 reply" : `${replies.length} replies`;
+  const typing = reading && (!!message.unread || replies.some((r) => r.unread));
   return (
     <article className="group rounded px-1 py-1.5 hover:bg-surface/40">
       <Author message={message} />
@@ -116,8 +131,9 @@ function Message({ evalId, message, replies, onSend, actions }: {
           {!open && <span className="text-muted-foreground">{last.author === "agent" ? "Agent" : "You"} {relativeTime(last.created_at)}</span>}
         </button>
       )}
+      {typing && !open && <div className="mt-1.5 border-l-2 border-border pl-3"><Typing /></div>}
       {(open || replies.length === 0) && (
-        <Thread evalId={evalId} message={message} replies={replies} open={open} onSend={onSend} actions={actions} />
+        <Thread evalId={evalId} message={message} replies={replies} open={open} typing={typing} onSend={onSend} actions={actions} />
       )}
     </article>
   );
@@ -187,11 +203,12 @@ function Attachment({ evalId, attachment, actions }: { evalId: string; attachmen
   </figure>;
 }
 
-function Thread({ evalId, message, replies, open, onSend, actions }: {
+function Thread({ evalId, message, replies, open, typing, onSend, actions }: {
   evalId: string;
   message: EvalMessage;
   replies: EvalMessage[];
   open: boolean;
+  typing: boolean;
   onSend: (send: Send, onProgress: (sent: number) => void) => Promise<void>;
   actions: AttachmentActions;
 }) {
@@ -207,6 +224,7 @@ function Thread({ evalId, message, replies, open, onSend, actions }: {
   }
   return <div className="mt-1.5 space-y-1.5 border-l-2 border-border pl-3">
     {replies.map((r) => <div key={r.id}><Author message={r} /><Body evalId={evalId} message={r} actions={actions} /></div>)}
+    {typing && <Typing />}
     {choices.length > 0 && <div className="flex flex-wrap gap-1.5">{choices.map((c) => <ChoiceButton key={c} onClick={() => reply(c)}>{c}</ChoiceButton>)}</div>}
     <ThreadComposer onSend={reply} />
   </div>;

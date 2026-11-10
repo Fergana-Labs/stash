@@ -274,7 +274,8 @@ async def test_a_drop_becomes_unlabeled_examples_and_wakes_the_agent(client: Asy
     listed = await _messages(client, auth, eid)
     assert listed["busy"] is True  # waiting for the agent
     assert [m["id"] for m in listed["messages"]] == [message["id"]]
-    examples = (await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()["examples"]
+    assert message["unread"] is True and listed["messages"][0]["unread"] is True
+    examples =(await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()["examples"]
     assert len(examples) == 3 and all(e["label"] is None for e in examples)
     detail = (await client.get(f"/api/v1/evals/{eid}", headers=auth)).json()
     assert detail["examples"] == {"good": 0, "bad": 0} and detail["unlabeled"] == 3
@@ -310,6 +311,7 @@ async def test_the_agent_labels_from_words_and_asks_in_a_thread_when_unsure(
     assert [a["label"] for a in listed["messages"][1]["attachments"]] == ["good"] * 3
     assert listed["messages"][-1]["thread_id"] == unsure["id"]  # replies stay in the thread
     assert listed["busy"] is False
+    assert not any(m["unread"] for m in listed["messages"])
     # Like a bot in a Slack channel, the agent only ever replies in threads.
     assert all(m["thread_id"] for m in listed["messages"] if m["author"] == "agent")
     # The agent saw the thread's files with the reply, and every message was read once.
