@@ -27,7 +27,7 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
   const calls = within(talk).getByRole("region", { name: "Agent calls" });
-  expect(within(calls).getByText("Fail")).toBeVisible();
+  expect(calls).toHaveTextContent(/Would now fail\s*1 of the last 10 agent calls/);
   expect(within(calls).getByText("draw a chart")).toBeVisible();
   expect(within(calls).getByText("Stripes")).toHaveAttribute("title", "it is striped");
   expect(calls).toHaveTextContent(/0\.30\s*was 0\.80/);

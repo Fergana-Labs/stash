@@ -390,24 +390,31 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
   </ul>;
 }
 
+/** The agent's recent calls whose verdict the proposed rubric flips: the ones that passed and
+ * would now fail, then the ones that failed and would now pass. */
 function CallList({ proposal: p }: { proposal: EvalProposal }) {
-  const rows = (p.checks?.calls?.changed ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call);
-  if (rows.length === 0) return null;
-  const verdict = (score: number) => (score >= 0.5 ? "Pass" : "Fail");
-  return <section aria-label="Agent calls" className="mt-2 first:mt-0">
-    <h3 className={sectionTitle}>Agent calls that change <span className="tabular-nums">{rows.length}</span></h3>
-    <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
-      {rows.map(({ flip, call }) => (
-        <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
-          <span className={cn("w-8 shrink-0 font-medium", flip.after >= 0.5 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>{verdict(flip.after)}</span>
-          <Snippet snippet={call} />
-          {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
-          {scores(flip)}
-          <span className="whitespace-nowrap text-muted-foreground">{call.caller || "unknown caller"}</span>
-          <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={call.created_at}>{relativeTime(call.created_at)}</time>
-        </li>
-      ))}
-    </ul>
+  const calls = p.checks?.calls;
+  const rows = (calls?.changed ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call);
+  if (!calls || rows.length === 0) return null;
+  const groups = [
+    { title: "Would now fail", rows: rows.filter((r) => r.flip.after < 0.5) },
+    { title: "Would now pass", rows: rows.filter((r) => r.flip.after >= 0.5) },
+  ].filter((g) => g.rows.length > 0);
+  return <section aria-label="Agent calls" className="mt-2 space-y-2 first:mt-0">
+    {groups.map((g) => <div key={g.title}>
+      <h3 className={sectionTitle}>{g.title} <span className="tabular-nums normal-case">{g.rows.length} of the last {calls.n} agent calls</span></h3>
+      <ul className="m-0 mt-1.5 list-none divide-y divide-border rounded-sm border border-border p-0">
+        {g.rows.map(({ flip, call }) => (
+          <li key={call.id} className="flex items-center gap-2.5 px-2 py-1.5 text-[12px]">
+            <Snippet snippet={call} />
+            {flip.low && <span title={flip.low.why} className="max-w-[40%] truncate text-muted-foreground">{flip.low.trait}</span>}
+            {scores(flip)}
+            <span className="whitespace-nowrap text-muted-foreground">{call.caller || "unknown caller"}</span>
+            <time className="w-14 whitespace-nowrap text-right text-muted-foreground" dateTime={call.created_at}>{relativeTime(call.created_at)}</time>
+          </li>
+        ))}
+      </ul>
+    </div>)}
   </section>;
 }
 
