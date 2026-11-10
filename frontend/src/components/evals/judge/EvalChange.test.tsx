@@ -30,11 +30,8 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(within(evals).getByRole("columnheader", { name: "Change" })).toHaveAttribute("aria-sort", "descending");
   const row = within(evals).getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30", "-0.50"]);
-  // The examples the change answers are listed, each opening its page.
-  const examples = within(talk).getByRole("table", { name: "Examples" });
-  expect(within(examples).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/reward-models/evals/e/examples/e1", "/reward-models/evals/e/examples/e2"]);
-  expect(within(examples).getByText("striped")).toBeVisible();
-  expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
+  // The examples the change answers have their own tab, not a place in the conversation.
+  expect(within(talk).queryByRole("table", { name: "Examples" })).toBeNull();
   // Searching narrows the evals by name.
   fireEvent.change(within(evals).getByRole("searchbox", { name: "Search evals" }), { target: { value: "CHART" } });
   expect(within(evals).getByText("draw a chart")).toBeVisible();
@@ -49,6 +46,28 @@ it("opens on the conversation: how the agent fares under the proposed rubric and
   expect(document.body).not.toHaveTextContent(/Checks passed|Agrees with/);
   // Before-and-after values sit in columns or read "was"; no arrow characters.
   expect(document.body.textContent).not.toMatch(/[→←]|->/);
+});
+
+it("shows the examples added and removed, and the rubric edits that followed, under their own tab", () => {
+  show(proposal({ removed: [{ id: "r1", name: "", asked: "", text: "old output", files: [], label: "good", note: "no longer how we do it", removed_by_name: "Reviewer", removed_at: now }] }), "examples");
+  expect(screen.getByRole("button", { name: /^Examples\s*\+2 -1$/ })).toHaveAttribute("aria-current", "page");
+
+  const added = screen.getByRole("table", { name: "Added examples" });
+  expect(within(added).getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["/reward-models/evals/e/examples/e1", "/reward-models/evals/e/examples/e2"]);
+  expect(within(added).getByText("striped")).toBeVisible();
+  expect(within(added).getByText("Reviewer, support-agent")).toBeVisible();
+
+  const removed = screen.getByRole("table", { name: "Removed examples" });
+  expect(within(removed).getByText("old output")).toBeVisible();
+  expect(within(removed).getByText("no longer how we do it")).toBeVisible();
+  expect(within(removed).queryByRole("link")).toBeNull();
+
+  // How the examples changed the rubric: each edit with its reason.
+  const edits = screen.getByRole("table", { name: "Rubric edits" });
+  expect(within(edits).getAllByRole("row").slice(1).map((r) => [...r.children].map((c) => c.textContent))).toEqual([
+    ["Add Stripes", "the striped ones are bad"],
+    ["Tighten Color", "orange passed as red"],
+  ]);
 });
 
 it("merges or closes an open change, with no comment box", async () => {

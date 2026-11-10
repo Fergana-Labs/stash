@@ -340,3 +340,25 @@ async def test_a_change_that_replaces_an_open_one_keeps_its_name(client: AsyncCl
     assert (second["number"], second["name"]) == (2, "no-stripes")
     listed = (await _changes(client, auth, eid))["proposals"]
     assert [(p["number"], p["name"]) for p in listed] == [(2, "no-stripes")]
+
+
+async def test_a_change_lists_the_examples_removed_since_its_base_version(
+    client: AsyncClient,
+    world,  # noqa: F811
+):
+    auth = await _register(client)
+    eid = await _reviewed_eval(client, auth)
+    listed = (await client.get(f"/api/v1/evals/{eid}/examples", headers=auth)).json()
+    gone = next(e for e in listed.get("examples", listed) if e["label"] == "good")
+    removed = await client.delete(f"/api/v1/evals/{eid}/examples/{gone['id']}", headers=auth)
+    assert removed.status_code in (200, 204), removed.text
+
+    world.proposals.append(ADD_STRIPES)
+    await _build(eid)
+    proposal = (await _changes(client, auth, eid))["proposals"][0]
+    assert [(r["label"], r["files"][0]["name"]) for r in proposal["removed"]] == [
+        ("good", gone["item"]["files"][0]["name"])
+    ]
+    assert proposal["removed"][0]["removed_by_name"] and proposal["removed"][0]["removed_at"]
+    # It is no longer among the examples the change was measured on or says were added.
+    assert gone["id"] not in proposal["examples"]

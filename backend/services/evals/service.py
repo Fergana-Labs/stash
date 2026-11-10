@@ -345,12 +345,27 @@ async def delete_example(owner: UUID, eval_id: UUID, example_id: UUID) -> None:
     A post with the person's own words keeps them."""
     await _owned(owner, eval_id)
     row = await get_pool().fetchrow(
-        "DELETE FROM intuition_examples WHERE id=$1 AND model_id=$2 RETURNING item, label, message_id",
+        """DELETE FROM intuition_examples WHERE id=$1 AND model_id=$2
+           RETURNING item, label, note, message_id, created_at""",
         example_id,
         eval_id,
     )
     if row is None:
         raise NotFound("Example not found")
+    if row["label"]:
+        # A labeled example shaped the rubric: keep what was removed, for the next rubric change.
+        await get_pool().execute(
+            """INSERT INTO eval_example_removals
+               (model_id, example_id, item, label, note, added_at, removed_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+            eval_id,
+            example_id,
+            row["item"],
+            row["label"],
+            row["note"],
+            row["created_at"],
+            owner,
+        )
     if row["message_id"]:
         parent = await get_pool().fetchval(
             "SELECT thread_id FROM eval_messages WHERE id=$1", row["message_id"]

@@ -445,8 +445,14 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
     owner = await get_pool().fetchval(
         "SELECT owner_user_id FROM intuition_models WHERE id=$1", eval_id
     )
+    removals = await get_pool().fetch(
+        """SELECT id, item, label, note, removed_by, removed_at FROM eval_example_removals
+           WHERE model_id=$1 ORDER BY removed_at""",
+        eval_id,
+    )
     names = await _names(
         {owner}
+        | {r["removed_by"] for r in removals if r["removed_by"]}
         | {p[k] for p in found for k in ("proposed_by", "decided_by") if p[k]}
         | {e["added_by"] for e in examples if e["added_by"]}
         | {c["author"] for c in comments if c["author"]}
@@ -512,6 +518,21 @@ async def _render(eval_id: UUID, rows: list) -> list[dict]:
                 "stale": p["status"] == "open" and p["base"] != current,
                 "examples": {i: shown_examples[i] for i in ids if i in shown_examples},
                 "calls": {c["id"]: shown_calls[c["id"]] for c in graded if c["id"] in shown_calls},
+                # Labeled examples taken out between the version it was made on and the change.
+                "removed": [
+                    {
+                        "id": r["id"],
+                        **_snippet(r["item"]),
+                        "label": r["label"],
+                        "note": r["note"],
+                        "removed_by_name": names.get(r["removed_by"]),
+                        "removed_at": r["removed_at"],
+                    }
+                    for r in removals
+                    if base
+                    and base.get("created_at")
+                    and base["created_at"] < r["removed_at"] <= p["created_at"]
+                ],
                 "comments": [
                     {
                         "id": c["id"],

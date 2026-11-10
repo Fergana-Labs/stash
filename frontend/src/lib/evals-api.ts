@@ -152,6 +152,8 @@ export interface EvalChangeExample extends EvalSnippet {
   label: EvalLabel | null; note: string; held_out: boolean; created_at: string;
   added_by_name: string | null; added_via: "web" | "api" | ""; caller: string;
 }
+/** A labeled example taken out of the eval since the rubric version a change was made on. */
+export interface EvalRemovedExample extends EvalSnippet { label: EvalLabel; note: string; removed_by_name: string | null; removed_at: string }
 export interface EvalChangeCall extends EvalSnippet { caller: string; created_at: string }
 /** A comment on a proposed change; trait names the rubric trait it is about, "" for the whole change. */
 export interface EvalComment { id: string; author: string | null; trait: string; body: string; created_at: string }
@@ -188,6 +190,7 @@ export interface EvalProposal {
   stale: boolean;
   examples: Record<string, EvalChangeExample>;
   calls: Record<string, EvalChangeCall>;
+  removed: EvalRemovedExample[];
   comments: EvalComment[];
   created_at: string;
 }

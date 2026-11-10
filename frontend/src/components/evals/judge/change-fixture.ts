@@ -34,6 +34,7 @@ export const proposal = (extra: Partial<EvalProposal> = {}): EvalProposal => ({
   proposed_by: null, opened_by: "Owner", decided_by: null, decided_at: null, note: "", version: null, stale: false,
   examples: { e1: example("e1", { note: "striped" }), e2: example("e2", { caller: "support-agent" }) },
   calls: { c1: { id: "c1", name: "", asked: "draw a chart", text: "", files: [], caller: "support-agent", created_at: now } },
+  removed: [],
   comments: [],
   created_at: now, ...extra,
 });
