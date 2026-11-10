@@ -46,8 +46,9 @@ def _label(actor, **fields):
 
 REQUEST = _label("user", intent="new_request", verdict="none", sentiment="neutral")
 ANSWER = _label(
-    "agent", type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1"
-)
+    "agent", type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1",
+    grounding="supported",
+)  # fmt: skip
 
 
 def rejects(target):
@@ -93,7 +94,7 @@ async def test_ingested_trace_is_labeled_and_scored_without_any_setup(client, po
     assert await pool.fetchval("SELECT count(*) FROM rm_wb_graders") == 0
     assert calls == ["u1", "a1"]  # one labeling call per chunk
     result = (await get_eval(client, user, tid))["current"]
-    # An answer nobody reacted to scores 0.3: neither a success nor a failure.
+    # A supported answer nobody reacted to scores 0.3: neither a success nor a failure.
     assert result["status"] == "completed" and result["outcome"] == "partial_success"
     assert result["outcome_probabilities"] == {"score": 0.3}
     assert result["credited_actions"] == result["total_actions"] == 1

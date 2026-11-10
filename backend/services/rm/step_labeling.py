@@ -48,7 +48,7 @@ class LabelingSkipped(Exception):
 
 
 def fingerprint(steps: list[dict]) -> str:
-    digest = hashlib.sha256()
+    digest = hashlib.sha256(step_labeler.RUBRIC_VERSION.encode())
     for step in steps:
         digest.update(
             json.dumps(
@@ -72,7 +72,11 @@ def check_state(chunks: list[dict], target: dict, label: dict) -> dict:
         context, JEV_STATE_CHARS - len(step) - 2_000, partial=len(context) < len(chunks)
     )
     described = (label["type"] or "other").replace("_", " ")
-    if label["is_output"]:
+    if label["actor"] == "user":
+        described = (
+            f"user message reacting to {label.get('verdict_target') or 'the previous response'}"
+        )
+    elif label["is_output"]:
         described = f"response to the user; outcome: {label['outcome']}; stance: {label['stance']}; coverage: {label['coverage']}"
     elif label["type"] == "tool_call":
         described = f"tool call to {label.get('tool')}; effect: {label['effect']}; result: {label['result'] or 'none recorded'}"
@@ -82,18 +86,13 @@ def check_state(chunks: list[dict], target: dict, label: dict) -> dict:
 async def quality_check(
     client: httpx.AsyncClient, chunks: list[dict], chunk: dict, label: dict, rubric: str
 ) -> dict:
-    """The grading model's answer to one step's quality check, as level probabilities."""
-    question, levels = step_scoring.CHECKS[rubric]
+    """The grading model's answer to one question about a step (a step check or
+    an unclear label), as option probabilities."""
+    question, criteria = step_scoring.check_question(rubric)
     body = {
         "model": settings.JEV_MODEL,
         "state": check_state(chunks, chunk, label),
-        "questions": {
-            "grade": {
-                "type": "score",
-                "instructions": question,
-                "criteria": [text for text, _, _ in levels],
-            }
-        },
+        "questions": {"grade": {"type": "score", "instructions": question, "criteria": criteria}},
     }
     try:
         response = await client.post(
@@ -121,33 +120,44 @@ async def quality_check(
 
 async def score_steps(chunks: list[dict], labels: dict[str, dict]) -> tuple[dict[str, dict], dict]:
     """Scores for the labeled agent chunks, keyed by step index, and the task
-    scores. Quality checks are asked only when the grading model is
-    configured; without it the labels' fixed points stand."""
-    verdicts = {
-        label["verdict_target"]: label["verdict"]
-        for label in labels.values()
+    scores. Jev's questions are asked only when the grading model is
+    configured; without it the labels' fixed points stand and unclear labels
+    take their fallback."""
+    by_id = {c["chunk_id"]: c for c in chunks}
+    reactions = {
+        label["verdict_target"]: (by_id.get(chunk_id), label)
+        for chunk_id, label in labels.items()
         if label["actor"] == "user"
         and label["verdict"] not in (None, "none")
         and label["verdict_target"]
     }
     agent_steps = [
         {"chunk_id": c["chunk_id"], "task_id": labels[c["chunk_id"]]["task_id"], "label": labels[c["chunk_id"]],
-         "verdict": verdicts.get(c["chunk_id"]), "check": None, "chunk": c}
+         "reaction": reactions.get(c["chunk_id"], (None, None))[1], "checks": {}, "chunk": c}
         for c in chunks if c["actor"] == "agent"
     ]  # fmt: skip
     if settings.TYPESAFE_API_KEY:
         gate = asyncio.Semaphore(CONCURRENCY)
         async with httpx.AsyncClient(timeout=settings.JEV_TIMEOUT_SECONDS) as client:
 
-            async def check(step: dict) -> None:
-                rubric = step_scoring.check_for(step["label"], step["verdict"])
-                if rubric is not None:
-                    async with gate:
-                        step["check"] = await quality_check(
-                            client, chunks, step["chunk"], step["label"], rubric
-                        )
+            async def check(step: dict, rubric: str) -> None:
+                chunk, label = step["chunk"], step["label"]
+                if rubric == "verdict":  # asked about the user's message, not the answer
+                    chunk, label = reactions[step["chunk_id"]]
+                    if chunk is None:
+                        return
+                async with gate:
+                    step["checks"][rubric] = await quality_check(
+                        client, chunks, chunk, label, rubric
+                    )
 
-            await asyncio.gather(*(check(step) for step in agent_steps))
+            await asyncio.gather(
+                *(
+                    check(step, rubric)
+                    for step in agent_steps
+                    for rubric in step_scoring.checks_for(step["label"], step["reaction"])
+                )
+            )
     rewards, episodes = step_scoring.score_trace(agent_steps)
     by_idx = {c["chunk_id"]: str(c["idx"]) for c in chunks}
     return {
@@ -156,7 +166,8 @@ async def score_steps(chunks: list[dict], labels: dict[str, dict]) -> tuple[dict
 
 
 def chunk_hash(chunk: dict) -> str:
-    return hashlib.sha256(json.dumps(chunk, sort_keys=True, default=str).encode()).hexdigest()
+    payload = [step_labeler.RUBRIC_VERSION, chunk]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
 async def label_steps(
