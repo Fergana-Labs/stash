@@ -26,11 +26,17 @@ it("opens on the conversation: how the agent fares under the proposed rubric, th
   const talk = screen.getByRole("region", { name: "Conversation" });
   expect(within(talk).getByText("opened")).toBeVisible();
   expect(within(talk).getByText("Striped charts now fail on Stripes: 7 of 10 calls pass, down from 8.")).toBeVisible();
-  const evals = within(talk).getByRole("table", { name: "Offline evals" });
-  expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Offline eval", "rubric", "add-stripes", "Change"]);
+  const evals = within(talk).getByRole("table", { name: "Evals" });
+  expect(within(evals).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Evals", "rubric", "add-stripes", "Change"]);
   expect(within(evals).getByRole("columnheader", { name: "Change" })).toHaveAttribute("aria-sort", "descending");
   const row = within(evals).getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["draw a chart", "0.80", "0.30", "-0.50"]);
+  // Searching narrows the evals by name.
+  fireEvent.change(within(evals).getByRole("searchbox", { name: "Search evals" }), { target: { value: "CHART" } });
+  expect(within(evals).getByText("draw a chart")).toBeVisible();
+  fireEvent.change(within(evals).getByRole("searchbox", { name: "Search evals" }), { target: { value: "memo" } });
+  expect(within(evals).queryByText("draw a chart")).toBeNull();
+  expect(within(evals).getByText("No evals match")).toBeVisible();
   // The reasons for each edit are on the rubric diff, not here.
   expect(within(talk).queryByText("the striped ones are bad")).toBeNull();
   expect(within(talk).getByText("too strict?")).toBeVisible();
@@ -91,7 +97,7 @@ it("lists the examples the checks point at: broken, fixed, and new since the bas
   expect(examples).toHaveTextContent(/0\.00\s*was 1\.00/);
   expect(within(examples).getAllByRole("link")[0]).toHaveAttribute("href", "/reward-models/evals/e/examples/e2");
   expect(within(examples).getByText("Reviewer, support-agent")).toBeVisible();
-  expect(screen.queryByRole("table", { name: "Offline evals" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "Evals" })).toBeNull();
 });
 
 it("falls back to the counts when a change has no summary, and lists new examples under Checks", () => {

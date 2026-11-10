@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, ChevronDown, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EvalPageFrame, evalInputClass } from "@/components/evals/eval-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
@@ -390,7 +390,7 @@ function ExampleRows({ evalId, rows }: { evalId: string; rows: { example: EvalCh
   </ul>;
 }
 
-/** The agent's recent calls as offline evals of the change: each one's name (what the agent
+/** The agent's recent calls as evals of the change, searchable by name: each one's name (what the agent
  * was asked, else the start of what it wrote), the score it got under the rubric in use, and
  * its score under the proposed rubric, in columns headed as the page header names the two:
  * "rubric" and the change's own name. A last column gives how far the score moved, and the
@@ -402,14 +402,27 @@ function delta(f: EvalFlip): string {
 }
 
 function CallList({ proposal: p }: { proposal: EvalProposal }) {
-  const rows = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
+  const [query, setQuery] = useState("");
+  const all = (p.checks?.calls?.calls ?? []).map((f) => ({ flip: f, call: p.calls[f.id] })).filter((r): r is { flip: EvalFlip; call: EvalChangeCall } => !!r.call)
+    .map((r) => ({ ...r, name: r.call.name || r.call.asked || r.call.text.split("\n")[0] || r.call.files[0]?.name || "" }))
     .sort((a, b) => Math.abs(b.flip.after - b.flip.before) - Math.abs(a.flip.after - a.flip.before));
-  if (rows.length === 0) return null;
+  if (all.length === 0) return null;
+  const wanted = query.trim().toLowerCase();
+  const rows = wanted ? all.filter((r) => r.name.toLowerCase().includes(wanted)) : all;
   const column = "w-px whitespace-nowrap pl-3 text-right tabular-nums";
-  return <table aria-label="Offline evals" className="mt-2 w-full border-collapse text-[12px] first:mt-0">
+  return <table aria-label="Evals" className="mt-2 w-full border-collapse text-[12px] first:mt-0">
     <thead>
       <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-        <th scope="col" className="pb-1 font-medium">Offline eval</th>
+        <th scope="col" className="pb-1 font-medium">
+          <span className="flex items-center gap-2">
+            Evals
+            <span className="relative flex items-center">
+              <Search aria-hidden className="pointer-events-none absolute left-1.5 size-3" />
+              <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search evals"
+                className="h-6 w-44 rounded border border-border bg-background pr-2 pl-6 text-[12px] font-normal normal-case tracking-normal text-foreground outline-none focus:border-foreground/40" />
+            </span>
+          </span>
+        </th>
         <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>rubric</span></th>
         <th scope="col" className="whitespace-nowrap pb-1 pl-3 text-right font-normal normal-case tracking-normal"><span className={chipClass}>{changeBranch(p)}</span></th>
         <th scope="col" aria-sort="descending" className={cn(column, "pb-1 font-medium text-foreground")}>
@@ -418,14 +431,15 @@ function CallList({ proposal: p }: { proposal: EvalProposal }) {
       </tr>
     </thead>
     <tbody>
-      {rows.map(({ flip, call }) => (
+      {rows.map(({ flip, call, name }) => (
         <tr key={call.id} title={flip.low ? `${flip.low.trait}: ${flip.low.why}` : undefined} className="border-t border-border">
-          <td className="max-w-0 truncate py-1.5 pr-3">{call.name || call.asked || call.text.split("\n")[0] || call.files[0]?.name}</td>
+          <td className="max-w-0 truncate py-1.5 pr-3">{name}</td>
           <td className={cn(column, "py-1.5 text-muted-foreground")}>{flip.before.toFixed(2)}</td>
           <td className={cn(column, "py-1.5")}>{flip.after.toFixed(2)}</td>
           <td className={cn(column, "py-1.5 font-medium", Math.abs(flip.after - flip.before) < 0.005 && "font-normal text-muted-foreground")}>{delta(flip)}</td>
         </tr>
       ))}
+      {rows.length === 0 && <tr className="border-t border-border"><td colSpan={4} className="py-1.5 text-muted-foreground">No evals match</td></tr>}
     </tbody>
   </table>;
 }
