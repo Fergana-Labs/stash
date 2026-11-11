@@ -19,6 +19,8 @@ from stashai.plugin.upload_status import record_upload_failure
 # location, so there's nothing to sync at session start.
 # Hermes loads ~/.hermes/skills natively; ~/.agents/skills only counts if the
 # user opts into skills.external_dirs, so we sync to the always-loaded dir.
+# Pi scans both ~/.agents/skills and ~/.pi/agent/skills, so the cross-agent
+# copy is whatever the user left there by hand — pi gets its own root.
 _SKILLS_DIR_BY_CLIENT = {
     "claude_code": "~/.claude/skills",
     "codex_cli": "~/.agents/skills",
@@ -26,6 +28,7 @@ _SKILLS_DIR_BY_CLIENT = {
     "opencode": "~/.agents/skills",
     "openclaw": "~/.openclaw/skills",
     "hermes": "~/.hermes/skills",
+    "pi": "~/.pi/agent/skills",
 }
 
 

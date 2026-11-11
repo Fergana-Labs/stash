@@ -1,0 +1,1 @@
+{"session_id": "pi-1", "cwd": "/Users/alice/repo", "hook_event_name": "tool_use", "turn_id": "t1", "tool_name": "bash", "tool_input": {"command": "ls"}, "tool_use_id": "tu-1"}

@@ -184,3 +184,27 @@ def test_agent_folder_candidates_never_offer_a_relative_path(monkeypatch, tmp_pa
 
     assert [str(p) for p, _ in candidates] == [str(real)]
     assert all(p.is_absolute() for p, _ in candidates)
+
+
+# --- Pi: pi ships no manifest, so its config dir is the only trace it leaves ---
+#
+# `pi` is on PATH for some users and not others (the same is true of Claude
+# Code), so detection must not hinge on PATH either: `stash setup` runs
+# `_agent_present` to decide what to offer, and a pi install that only ever
+# wrote ~/.pi/ still deserves the offer.
+
+
+def test_pi_detected_by_its_config_dir_without_binary(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    (tmp_path / ".pi").mkdir()
+
+    assert _agent_present("pi")
+
+
+def test_pi_not_detected_without_binary_or_config_dir(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    assert not _agent_present("pi")
