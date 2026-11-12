@@ -228,7 +228,10 @@ async def create_workspace(req: WorkspaceRequest):
             raise HTTPException(status_code=409, detail=f"workspace for {domain} already exists")
         raise
     bootstrap_key = await create_api_key(
-        workspace["scope_user_id"], name="workspace bootstrap", key_type="machine", access="full"
+        workspace["scope_user_id"],
+        name="workspace bootstrap",
+        key_type="developer",
+        access="full",
     )
     return {
         "workspace_id": str(workspace["id"]),
@@ -292,7 +295,7 @@ async def mint_workspace_key(workspace_id: UUID, req: WorkspaceKeyRequest):
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     key = await create_api_key(
-        workspace["scope_user_id"], name=req.name, key_type="machine", access=req.access
+        workspace["scope_user_id"], name=req.name, key_type="developer", access=req.access
     )
     return {"workspace_id": str(workspace_id), "api_key": key, "access": req.access}
 
