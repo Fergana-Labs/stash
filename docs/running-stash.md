@@ -89,7 +89,8 @@ training is separate from the ingestion workers. Local compute still requires S3
 
 Use a server with Git and Docker Compose, a domain pointing at that server, and
 ports 80 and 443 available. The deployment uses prebuilt GHCR images pinned in
-[docker-compose.prod.yml](../docker-compose.prod.yml).
+[docker-compose.prod.yml](../docker-compose.prod.yml). For older frontend images, see the
+[libvips license texts, source, and rebuild instructions](licenses/sharp-libvips.md).
 
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git

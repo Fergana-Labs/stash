@@ -57,6 +57,15 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Catch changes to Next's standalone trace before publishing a self-host image.
+RUN set -eu; \
+    found="$(find /app \( -path '*/node_modules/sharp' -o -path '*/@img/sharp-*' \
+        -o -name 'libvips*.so*' -o -name 'sharp*.wasm' \) -print -quit)"; \
+    if [ -n "$found" ]; then \
+        echo "Unexpected image optimizer in runner: $found" >&2; \
+        exit 1; \
+    fi
+
 USER nextjs
 
 EXPOSE 3457

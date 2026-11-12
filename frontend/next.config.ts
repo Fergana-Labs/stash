@@ -20,6 +20,9 @@ const agentUserAgent = "^(?!.*[Mm]ozilla).+";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Serve original assets. package.json gives Next's optional sharp dependency
+  // an empty version range so npm skips its native and WebAssembly libraries.
+  images: { unoptimized: true },
   // Dev StrictMode double-mounts effects, which makes the collaboration editor
   // open → close → reopen its WebSocket on every load (slow, flaky first paint).
   // Production never double-mounts; turning it off keeps dev in parity.

@@ -9,6 +9,9 @@ const MANAGED_APP_URL =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Serve original assets. package.json gives Next's optional sharp dependency
+  // an empty version range so npm skips its native and WebAssembly libraries.
+  images: { unoptimized: true },
   turbopack: {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
