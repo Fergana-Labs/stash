@@ -13,7 +13,6 @@ on:
     paths:
       - "backend/requirements.txt"
       - "backend/requirements-dev.txt"
-      - "rm_worker/requirements.txt"
       - "pyproject.toml"
       - "sdk/pyproject.toml"
       - "frontend/package-lock.json"
@@ -39,9 +38,6 @@ jobs:
 
       - name: Audit backend Python requirements
         run: python -m pip_audit -r backend/requirements.txt -r backend/requirements-dev.txt
-
-      - name: Audit training worker Python requirements
-        run: python -m pip_audit -r rm_worker/requirements.txt
 
       - name: Audit CLI Python package
         run: python -m pip_audit .

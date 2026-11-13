@@ -18,7 +18,7 @@ the same scheduled task multiple times.
 
 from celery import Celery
 from celery.schedules import crontab
-from kombu import Exchange, Queue
+from kombu import Queue
 
 from .config import settings
 
@@ -40,14 +40,6 @@ celery = Celery(
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
-        "backend.tasks.reward_models",
-        "backend.tasks.workbench",
-        "backend.tasks.optimization",
-        "backend.tasks.intuitions",
-        "backend.tasks.behaviors",
-        "backend.tasks.agent_judge",
-        "backend.tasks.evals",
-        "backend.tasks.test_sets",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
         "backend.exports.pptx",
@@ -62,7 +54,6 @@ celery.conf.update(
         Queue("default"),
         Queue("heavy"),
         Queue("sync"),
-        Queue("reward", exchange=Exchange("reward"), routing_key="reward"),
     ),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
@@ -75,21 +66,6 @@ celery.conf.update(
         "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
         "backend.tasks.viz.precompute": {"queue": "heavy"},
-        "backend.tasks.reward_models.train_reward_model": {"queue": "reward"},
-        "backend.tasks.reward_models.run_gepa": {"queue": "reward"},
-        "backend.tasks.reward_models.playground_score": {"queue": "reward"},
-        "backend.tasks.reward_models.score_trace": {"queue": "reward"},
-        "backend.tasks.reward_models.score_batch": {"queue": "reward"},
-        "backend.tasks.reward_models.collect_examples": {"queue": "reward"},
-        "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
-        "backend.tasks.optimization.score_run": {"queue": "reward"},
-        "backend.tasks.intuitions.improve": {"queue": "heavy"},
-        "backend.tasks.intuitions.refine": {"queue": "heavy"},
-        "backend.tasks.behaviors.scan_models": {"queue": "heavy"},
-        "backend.tasks.behaviors.triage": {"queue": "heavy"},
-        "backend.tasks.agent_judge.investigate": {"queue": "heavy"},
-        "backend.tasks.evals.build_eval": {"queue": "heavy"},
-        "backend.tasks.test_sets.score_run": {"queue": "heavy"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
@@ -108,27 +84,6 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
-        "prompt-optimization-reconcile": {
-            "task": "backend.tasks.optimization.reconcile",
-            "schedule": 30.0,
-        },
-        "workbench-reconcile": {
-            "task": "backend.tasks.workbench.reconcile",
-            "schedule": 15.0,
-        },
-        "shared-evaluator-reconcile": {
-            "task": "backend.tasks.reward_models.reconcile",
-            "schedule": 30.0,
-        },
-        "behaviors-reconcile": {
-            "task": "backend.tasks.behaviors.reconcile",
-            "schedule": 30.0,
-        },
-        # Restarts eval builds and channel reads a lost task left stuck.
-        "evals-sweep": {
-            "task": "backend.tasks.evals.sweep",
-            "schedule": 60.0,
-        },
         "embedding-reconcile": {
             "task": "backend.tasks.embeddings.reconcile",
             "schedule": 60.0,
