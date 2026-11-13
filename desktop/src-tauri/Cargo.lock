@@ -1340,9 +1340,8 @@ dependencies = [
 
 [[package]]
 name = "gio-sys"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37566df850baf5e4cb0dfb78af2e4b9898d817ed9263d1090a2df958c64737d2"
+version = "0.18.5"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?rev=67cb73c083bb87d623283ea684f532b18be4c7a9#67cb73c083bb87d623283ea684f532b18be4c7a9"
 dependencies = [
  "glib-sys",
  "gobject-sys",
@@ -1354,8 +1353,7 @@ dependencies = [
 [[package]]
 name = "glib"
 version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?rev=67cb73c083bb87d623283ea684f532b18be4c7a9#67cb73c083bb87d623283ea684f532b18be4c7a9"
 dependencies = [
  "bitflags 2.13.1",
  "futures-channel",
@@ -1377,8 +1375,7 @@ dependencies = [
 [[package]]
 name = "glib-macros"
 version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bb0228f477c0900c880fd78c8759b95c7636dbd7842707f49e132378aa2acdc"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?rev=67cb73c083bb87d623283ea684f532b18be4c7a9#67cb73c083bb87d623283ea684f532b18be4c7a9"
 dependencies = [
  "heck 0.4.1",
  "proc-macro-crate 2.0.2",
@@ -1390,9 +1387,8 @@ dependencies = [
 
 [[package]]
 name = "glib-sys"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "063ce2eb6a8d0ea93d2bf8ba1957e78dbab6be1c2220dd3daca57d5a9d869898"
+version = "0.18.5"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?rev=67cb73c083bb87d623283ea684f532b18be4c7a9#67cb73c083bb87d623283ea684f532b18be4c7a9"
 dependencies = [
  "libc",
  "system-deps",
@@ -1406,9 +1402,8 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "gobject-sys"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0850127b514d1c4a4654ead6dedadb18198999985908e6ffe4436f53c785ce44"
+version = "0.18.5"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?rev=67cb73c083bb87d623283ea684f532b18be4c7a9#67cb73c083bb87d623283ea684f532b18be4c7a9"
 dependencies = [
  "glib-sys",
  "libc",
@@ -3001,9 +2996,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.42"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c54fcab019b409d04215d3a17cb438fd7fbf192ee61461f20f4fe18704bc138"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "once_cell",
  "ring",
@@ -3025,9 +3020,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.13"
+version = "0.103.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
+checksum = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 dependencies = [
  "ring",
  "rustls-pki-types",

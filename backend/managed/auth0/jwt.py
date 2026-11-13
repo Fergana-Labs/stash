@@ -3,9 +3,8 @@
 import time
 
 import httpx
+import jwt
 from fastapi import HTTPException, status
-from jose import jwt
-from jose.exceptions import JWTError
 
 from backend.config import settings
 
@@ -38,7 +37,7 @@ async def validate_auth0_token(token: str) -> dict:
 
     try:
         header = jwt.get_unverified_header(token)
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed token")
 
     kid = header.get("kid")
@@ -58,12 +57,16 @@ async def validate_auth0_token(token: str) -> dict:
     try:
         claims = jwt.decode(
             token,
-            signing_key,
+            jwt.PyJWK.from_dict(signing_key, algorithm="RS256").key,
             algorithms=["RS256"],
             audience=settings.AUTH0_AUDIENCE,
             issuer=f"https://{settings.AUTH0_DOMAIN}/",
         )
-    except JWTError:
+        # This endpoint accepts access tokens. An ID token's at_hash requires a
+        # separate access token to validate, which this endpoint never receives.
+        if "at_hash" in claims:
+            raise jwt.InvalidTokenError("Unexpected at_hash in access token")
+    except (jwt.PyJWTError, ValueError, TypeError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     return claims

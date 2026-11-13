@@ -6,10 +6,11 @@ like a returning user). If this flag stops distinguishing new from returning
 users, new Google-OAuth users silently skip onboarding.
 """
 
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
-from jose.exceptions import JWTError
 
 from backend.managed.auth0 import jwt as auth0_jwt
 from backend.managed.auth0 import router as auth0_router
@@ -341,26 +342,34 @@ async def test_managed_auth0_cli_key_cannot_approve_cli_sessions(client, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_auth0_invalid_token_errors_are_redacted(monkeypatch):
+async def test_auth0_verifies_signed_access_tokens(monkeypatch):
+    issuer = "https://tenant.example.com/"
+    audience = "stash-api"
     monkeypatch.setattr(auth0_jwt.settings, "AUTH0_DOMAIN", "tenant.example.com")
-    monkeypatch.setattr(auth0_jwt.settings, "AUTH0_AUDIENCE", "stash-api")
-    monkeypatch.setattr(auth0_jwt.jwt, "get_unverified_header", lambda _token: {"kid": "kid-1"})
+    monkeypatch.setattr(auth0_jwt.settings, "AUTH0_AUDIENCE", audience)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_jwk = jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
 
-    async def fake_fetch_jwks():
-        return {"keys": [{"kid": "kid-1"}]}
+    async def fetch_jwks():
+        return {"keys": [{**public_jwk, "kid": "kid-1"}]}
 
-    def fail_decode(*_args, **_kwargs):
-        raise JWTError("issuer=https://tenant.example.com raw-token-secret")
+    monkeypatch.setattr(auth0_jwt, "_fetch_jwks", fetch_jwks)
+    claims = {"sub": "auth0|user", "iss": issuer, "aud": audience}
 
-    monkeypatch.setattr(auth0_jwt, "_fetch_jwks", fake_fetch_jwks)
-    monkeypatch.setattr(auth0_jwt.jwt, "decode", fail_decode)
+    def sign(payload):
+        return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "kid-1"})
 
-    with pytest.raises(HTTPException) as exc:
-        await validate_auth0_token("bad-token")
-
-    assert exc.value.status_code == 401
-    assert exc.value.detail == "Invalid token"
-    assert "raw-token-secret" not in exc.value.detail
+    assert await validate_auth0_token(sign(claims)) == claims
+    for invalid_claims in (
+        {"aud": "another-api"},
+        {"iss": "another-issuer"},
+        {"exp": 1},
+        {"at_hash": "id-token-hash"},
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await validate_auth0_token(sign({**claims, **invalid_claims}))
+        assert exc.value.status_code == 401
+        assert exc.value.detail == "Invalid token"
 
 
 @pytest.mark.asyncio
