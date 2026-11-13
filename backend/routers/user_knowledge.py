@@ -205,7 +205,9 @@ async def ask_scope(
     return StreamingResponse(
         ask_service.stream_ask(owner_user_id, scope_name, prompt, current_user["id"]),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        # no-transform keeps the Next.js proxy from gzipping the stream, which
+        # holds every event until the response ends.
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
