@@ -36,8 +36,6 @@ COPY backend/ ./backend/
 COPY docs/skills/ ./docs/skills/
 # The VFS model + shell, shared verbatim with the `stash vfs` CLI command.
 COPY stashvfs/ ./stashvfs/
-# The eval wizard imports stashai.local_history (backend/services/intuition/history.py).
-COPY stashai/ ./stashai/
 COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
 # The CLI release number clients are told about (backend/cli_release.py).
