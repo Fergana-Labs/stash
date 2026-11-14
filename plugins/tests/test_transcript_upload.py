@@ -174,21 +174,9 @@ def test_upload_process_waits_for_the_delay(monkeypatch, tmp_path):
 
     monkeypatch.setattr(_do_upload, "StashClient", Client)
     monkeypatch.setattr(_do_upload.time, "sleep", lambda s: events.append(("sleep", s)))
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "_do_upload.py",
-            str(path),
-            "session-a",
-            "claude",
-            "/repo",
-            "https://example.test",
-            "test",
-            str(tmp_path),
-            "--skip-subagents",
-            "--delay=40",
-        ],
-    )
+    monkeypatch.setattr(sys, "argv", [
+        "_do_upload.py", str(path), "session-a", "claude", "/repo",
+        "https://example.test", "test", str(tmp_path), "--skip-subagents", "--delay=40",
+    ])
     _do_upload.main()
     assert events == [("sleep", 40.0), "upload"]

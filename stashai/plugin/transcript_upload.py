@@ -86,14 +86,8 @@ def spawn_transcript_upload(
     try:
         subprocess.Popen(
             [
-                sys.executable,
-                str(script),
-                str(path),
-                session_id,
-                agent_name,
-                cwd,
-                base_url,
-                api_key,
+                sys.executable, str(script),
+                str(path), session_id, agent_name, cwd, base_url, api_key,
                 str(data_dir),
                 *([] if include_subagents else ["--skip-subagents"]),
                 *([f"--delay={delay:.0f}"] if delay else []),

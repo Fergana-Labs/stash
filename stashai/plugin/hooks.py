@@ -523,7 +523,7 @@ def stream_session_end(
                     transcript_path=sa_jsonl,
                     agent_name="claude-subagent",
                     cwd=event.cwd,
-                )
+                        )
             except Exception:
                 pass
 

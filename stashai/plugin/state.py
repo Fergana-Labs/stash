@@ -54,7 +54,6 @@ def save_state(data_dir: Path, state: dict) -> None:
 # state.json per tool_use amortizes the cost and works for every plugin.
 # ---------------------------------------------------------------------------
 
-
 def _load_stats(state: dict) -> dict:
     stats = state.get("stats")
     if not isinstance(stats, dict):
@@ -75,11 +74,7 @@ def record_tool_use(data_dir: Path, tool_name: str, file_path: str | None) -> No
     stats["tool_count"] += 1
     if tool_name not in stats["tools_used"]:
         stats["tools_used"].append(tool_name)
-    if (
-        file_path
-        and tool_name in ("edit", "write", "read")
-        and file_path not in stats["files_touched"]
-    ):
+    if file_path and tool_name in ("edit", "write", "read") and file_path not in stats["files_touched"]:
         stats["files_touched"].append(file_path)
     state["stats"] = stats
     _write_json(data_dir / "state.json", state)
