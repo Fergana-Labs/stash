@@ -33,14 +33,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN playwright install chromium && chown -R stash:stash /opt/playwright
 
 COPY backend/ ./backend/
-COPY rm_worker/ ./rm_worker/
-
-ENV RM_WORKER_PYTHON=/usr/local/bin/python RM_ARTIFACT_DIR=/tmp/stash-rm RM_COMPUTE=modal
 COPY docs/skills/ ./docs/skills/
 # The VFS model + shell, shared verbatim with the `stash vfs` CLI command.
 COPY stashvfs/ ./stashvfs/
-# The eval wizard imports stashai.local_history (backend/services/intuition/history.py).
-COPY stashai/ ./stashai/
 COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
 # The CLI release number clients are told about (backend/cli_release.py).

@@ -575,10 +575,6 @@ echo "[worker]   Starting celery heavy worker..."
 celery -A backend.celery_app worker --loglevel=info --concurrency=2 -Q heavy &
 PIDS+=($!)
 
-echo "[worker]   Starting reward model worker..."
-celery -A backend.celery_app worker --loglevel=info --concurrency=1 -Q reward &
-PIDS+=($!)
-
 echo "[worker]   Starting celery source sync worker..."
 celery -A backend.celery_app worker --loglevel=info --concurrency=2 -Q sync &
 PIDS+=($!)

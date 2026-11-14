@@ -38,15 +38,6 @@ const nextConfig: NextConfig = {
     middlewareClientMaxBodySize: "100mb",
     proxyTimeout: 120_000,
   },
-  async redirects() {
-    return [
-      {
-        source: "/reward-models/traces",
-        destination: "/reward-models",
-        permanent: false,
-      },
-    ];
-  },
   async rewrites() {
     return {
       // These run before App Router pages so `.md` and `.json` are content
@@ -119,10 +110,6 @@ const nextConfig: NextConfig = {
         {
           source: "/api/v1/:path*",
           destination: `${backend}/api/v1/:path*`,
-        },
-        {
-          source: "/mcp/intuitions",
-          destination: `${backend}/mcp/intuitions`,
         },
         {
           source: "/skill/:path*",

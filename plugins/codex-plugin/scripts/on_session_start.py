@@ -19,7 +19,6 @@ from stashai.plugin.hooks import (
 )
 from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
 from stashai.plugin.state import load_state, reset_stats, save_state
-from stashai.plugin.workbench import released_instruction_context
 
 _ASK_AUTO_UPDATE = (
     "Stash: Codex auto-update isn't configured yet. Ask the user whether Stash "
@@ -62,12 +61,9 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    instruction_context = ""
     try:
         with get_client() as client:
             create_session_record(client, cfg, state, event, DATA_DIR)
-            if state.get("session_row_id"):
-                instruction_context = released_instruction_context(client, cfg, event)
     except Exception:
         return
 
@@ -87,11 +83,6 @@ def main():
         )
 
     output = {}
-    if instruction_context:
-        output["hookSpecificOutput"] = {
-            "hookEventName": "SessionStart",
-            "additionalContext": instruction_context,
-        }
     message = _auto_update_message()
     if message:
         output["systemMessage"] = message

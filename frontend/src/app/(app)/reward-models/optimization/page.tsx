@@ -1,3 +1,0 @@
-import { redirect } from "next/navigation";
-
-export default function Page() { redirect("/reward-models/monitoring"); }

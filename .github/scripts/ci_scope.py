@@ -12,7 +12,7 @@ def suites_for(paths):
             selected.add("www")
         elif path.startswith("frontend/"):
             selected.add("frontend")
-        elif path.startswith(("backend/", "cli/", "plugins/", "stashai/", "stashvfs/", "rm_worker/")):
+        elif path.startswith(("backend/", "cli/", "plugins/", "stashai/", "stashvfs/")):
             selected.add("python")
         elif path.startswith("docs/") or path.endswith(".md"):
             continue

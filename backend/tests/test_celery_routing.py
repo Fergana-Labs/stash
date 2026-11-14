@@ -9,27 +9,11 @@ from backend.celery_app import celery
 from backend.exports.pdf import export_pdf
 from backend.exports.pptx import export_pptx
 from backend.integrations.google.exporters.slides import export_to_google_slides
-from backend.tasks.agent_judge import investigate
 from backend.tasks.agent_schedules import run_curator_now, run_scheduled_agent
-from backend.tasks.behaviors import scan_models, triage
 from backend.tasks.clips import process_url_imports
 from backend.tasks.drive_extraction import extract_drive_document
-from backend.tasks.evals import build_eval
 from backend.tasks.extraction import extract_file_text
-from backend.tasks.intuitions import improve, refine
-from backend.tasks.optimization import score_run
-from backend.tasks.reward_models import (
-    collect_examples,
-    playground_score,
-    reconcile,
-    run_gepa,
-    score_batch,
-    score_trace,
-    train_evaluator,
-    train_reward_model,
-)
 from backend.tasks.sources import sync_source
-from backend.tasks.test_sets import score_run as score_test_run
 from backend.tasks.viz import precompute
 
 HEAVY_TASKS = {
@@ -42,25 +26,6 @@ HEAVY_TASKS = {
     run_scheduled_agent.name,
     run_curator_now.name,
     precompute.name,
-    improve.name,
-    refine.name,
-    scan_models.name,
-    triage.name,
-    investigate.name,
-    score_test_run.name,
-    build_eval.name,
-}
-
-
-REWARD_TASKS = {
-    train_reward_model.name,
-    run_gepa.name,
-    score_trace.name,
-    score_batch.name,
-    playground_score.name,
-    collect_examples.name,
-    train_evaluator.name,
-    score_run.name,
 }
 
 
@@ -68,10 +33,8 @@ def test_heavy_tasks_route_off_the_default_queue():
     # Route keys are matched by name at dispatch time, so importing the real
     # task objects above also pins the names against typos and renames.
     routes = celery.conf.task_routes
-    assert set(routes) == HEAVY_TASKS | REWARD_TASKS | {sync_source.name}
+    assert set(routes) == HEAVY_TASKS | {sync_source.name}
     assert routes[sync_source.name] == {"queue": "sync"}
-    for task_name in REWARD_TASKS:
-        assert routes[task_name] == {"queue": "reward"}
     for task_name in HEAVY_TASKS:
         assert routes[task_name] == {"queue": "heavy"}
 
@@ -81,30 +44,10 @@ def test_only_expensive_viz_beat_task_is_heavy():
     # Viz is the one exception because the task itself fits UMAP inline.
     beat_tasks = {entry["task"] for entry in celery.conf.beat_schedule.values()}
     assert beat_tasks & HEAVY_TASKS == {precompute.name}
-    assert reconcile.name in beat_tasks and reconcile.name not in celery.conf.task_routes
-
-
-def test_shared_training_timeout_allows_three_remote_stages():
-    assert train_evaluator.time_limit == 3900
-    assert train_evaluator.soft_time_limit == 3800
 
 
 def test_bare_worker_consumes_declared_queues():
     # A worker started without -Q consumes exactly the queues declared in
     # task_queues. If "heavy" is missing here, a worker whose command
     # predates the split strands every routed task the moment routing ships.
-    assert {q.name for q in celery.conf.task_queues} == {"default", "heavy", "sync", "reward"}
-
-
-def test_reward_queue_does_not_subscribe_to_existing_workers_exchange():
-    # A bare Queue("reward") inherits the default exchange/routing key and can
-    # consume ingestion work. Both sides of the reward route must be distinct.
-    queue = celery.amqp.queues["reward"]
-    assert queue.exchange.name == "reward"
-    assert queue.routing_key == "reward"
-    for name in ("default", "heavy", "sync"):
-        assert celery.amqp.queues[name].exchange.name != queue.exchange.name
-    for name in REWARD_TASKS:
-        route = celery.amqp.router.route({}, name)
-        assert route["queue"].exchange.name == "reward"
-        assert route["queue"].routing_key == "reward"
+    assert {q.name for q in celery.conf.task_queues} == {"default", "heavy", "sync"}

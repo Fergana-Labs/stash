@@ -11,7 +11,6 @@ import {
 } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
 import { loginPathWithNext } from "@/lib/loginRedirect";
-import { ProductCheckpointProvider } from "@/components/ProductCheckpointContext";
 
 // Shared chrome for the signed-in app. Hosting AppShell here (rather than
 // inside each subtree's layout or page) keeps the sidebar mounted as you move
@@ -65,11 +64,9 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ProductCheckpointProvider checkpoint={user.product_checkpoint}>
-      <WorkspaceShell user={user} onLogout={logout}>
-        {children}
-        <ImportProgressPill />
-      </WorkspaceShell>
-    </ProductCheckpointProvider>
+    <WorkspaceShell user={user} onLogout={logout}>
+      {children}
+      <ImportProgressPill />
+    </WorkspaceShell>
   );
 }

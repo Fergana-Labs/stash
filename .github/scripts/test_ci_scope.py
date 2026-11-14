@@ -11,7 +11,7 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(suites_for(["www/package-lock.json"]), {"www"})
 
     def test_python_shared_suites(self):
-        for path in ("backend/main.py", "cli/main.py", "plugins/tests/test_hooks.py", "stashai/plugin/hooks.py", "rm_worker/train.py", "stashvfs/core.py"):
+        for path in ("backend/main.py", "cli/main.py", "plugins/tests/test_hooks.py", "stashai/plugin/hooks.py", "stashvfs/core.py"):
             with self.subTest(path=path):
                 self.assertEqual(suites_for([path]), {"python"})
 
