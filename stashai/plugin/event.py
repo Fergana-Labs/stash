@@ -29,13 +29,13 @@ class HookEvent:
     prompt_text: str = ""
 
     # tool_use
-    tool_name: str = ""           # normalized: "edit", "write", "bash", "read", "glob", "grep", "agent", ...
+    tool_name: str = ""  # normalized: "edit", "write", "bash", "read", "glob", "grep", "agent", ...
     tool_input: dict = field(default_factory=dict)
     tool_response: dict | None = None
 
     # stop / session_end
     last_assistant_message: str = ""
-    transcript_path: str = ""     # optional — only agents that expose one
+    transcript_path: str = ""  # optional — only agents that expose one
 
     # escape hatch for adapter-specific extras
     extras: dict = field(default_factory=dict)

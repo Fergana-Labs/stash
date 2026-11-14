@@ -90,9 +90,17 @@ def spawn_session_watcher(
     try:
         subprocess.Popen(
             [
-                sys.executable, str(script),
-                str(agent_pid), session_id, agent_name,
-                base_url, api_key, cwd, str(data_dir), session_row_id, transcript_path,
+                sys.executable,
+                str(script),
+                str(agent_pid),
+                session_id,
+                agent_name,
+                base_url,
+                api_key,
+                cwd,
+                str(data_dir),
+                session_row_id,
+                transcript_path,
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -124,9 +132,16 @@ def spawn_session_upload(
     try:
         subprocess.Popen(
             [
-                sys.executable, str(script),
-                session_row_id, transcript_path, cwd, session_id,
-                agent_name, base_url, api_key, upload_status_dir,
+                sys.executable,
+                str(script),
+                session_row_id,
+                transcript_path,
+                cwd,
+                session_id,
+                agent_name,
+                base_url,
+                api_key,
+                upload_status_dir,
             ],
             env=env,
             stdin=subprocess.DEVNULL,

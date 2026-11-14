@@ -24,7 +24,6 @@ from stashai.plugin.session_upload import (
     spawn_skills_sync,
 )
 from stashai.plugin.state import load_state, reset_stats, save_state
-from stashai.plugin.workbench import released_instruction_context
 
 CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
@@ -91,14 +90,11 @@ def main():
     state = load_state(DATA_DIR)
 
     session_context = ""
-    instruction_context = ""
     try:
         from config import get_client
 
         with get_client() as client:
             session_url = create_session_record(client, cfg, state, event, DATA_DIR)
-            if state.get("session_row_id"):
-                instruction_context = released_instruction_context(client, cfg, event)
     except Exception:
         session_url = None
 
@@ -125,9 +121,7 @@ def main():
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": CONTEXT
-            + session_context
-            + ("\n\n" + instruction_context if instruction_context else ""),
+            "additionalContext": CONTEXT + session_context,
         }
     }
     # Surface upload failures at session START, not only at first Stop: warned

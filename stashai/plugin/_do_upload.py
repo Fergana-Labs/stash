@@ -16,8 +16,14 @@ from stashai.plugin.stash_client import StashClient
 
 def main() -> None:
     (
-        _, transcript_path, session_id, agent_name, cwd,
-        base_url, api_key, data_dir,
+        _,
+        transcript_path,
+        session_id,
+        agent_name,
+        cwd,
+        base_url,
+        api_key,
+        data_dir,
     ) = sys.argv[:8]
     flags = sys.argv[8:]
     skip_subagents = "--skip-subagents" in flags
