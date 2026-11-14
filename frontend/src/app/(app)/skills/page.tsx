@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import MonitoringNav from "@/components/reward-models/MonitoringNav";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -194,7 +193,6 @@ export default function SkillsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
-        {user?.reward_models_enabled && user.product_checkpoint !== "floodgate-2026-10-05" && <MonitoringNav />}
         <div className="flex items-center justify-between gap-4">
           <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
             Skills
@@ -204,7 +202,7 @@ export default function SkillsPage() {
             onClick={showComposer}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
-            {user?.reward_models_enabled ? "New skill" : <><PlusGlyph /> New Skill</>}
+            <PlusGlyph /> New Skill
           </button>
         </div>
 
@@ -235,7 +233,7 @@ export default function SkillsPage() {
           />
         )}
 
-        {tab === "yours" && (!user?.reward_models_enabled || visible.length > 0) && (
+        {tab === "yours" && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <SkillViewToggle view={view} onChange={setViewPersisted} />
           </div>
@@ -254,9 +252,7 @@ export default function SkillsPage() {
                 onRefresh={load}
               />
             ) : (
-              user?.reward_models_enabled
-                ? <p className="m-0 py-3 text-[13px] text-muted-foreground">No skills yet.</p>
-                : <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
+              <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
             )}
             <ExternalSkillLinkForm onAdded={() => void load()} />
           </div>

@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
 import Rail from "./rail";
-import RewardRail from "./reward-rail";
 import Topbar from "./topbar";
 import Explorer, { type ExplorerSection } from "./explorer";
 import Workbench from "./workbench";
@@ -128,15 +127,13 @@ export default function WorkspaceShell({
   // The console links to these shared viewers for its users' data and sources.
   // DeveloperGate requires a platform workspace before mounting their content.
   const isPlatformResource = /^\/(p|f|folders|tables|sessions|integrations)\/[^/]+$/.test(pathname);
-  const developerOnly = user.developer_platform_only && !user.reward_models_enabled;
-  const redirectToRewards = user.reward_models_enabled && (pathname === "/" || pathname === "/developer");
+  const developerOnly = user.developer_platform_only;
   const redirectToPlatform = developerOnly &&
     !isPlatformResource && pathname !== "/settings" &&
     pathname !== "/developer" && !pathname.startsWith("/developer/");
   useEffect(() => {
     if (redirectToPlatform) router.replace("/developer");
-    if (redirectToRewards) router.replace("/reward-models");
-  }, [redirectToPlatform, redirectToRewards, router]);
+  }, [redirectToPlatform, router]);
   const scope = useScope();
   // Below md the rail is a drawer behind the top bar's menu button; it closes on navigation.
   const [navOpen, setNavOpen] = useState(false);
@@ -166,9 +163,9 @@ export default function WorkspaceShell({
 
   // A Developer Console context gets its own chrome — the infra-dashboard
   // shell, not the consumer app's rail and workbench.
-  if (redirectToPlatform || redirectToRewards) return null;
+  if (redirectToPlatform) return null;
 
-  if (!user.reward_models_enabled && (developerOnly || scope?.view === "developer")) {
+  if (developerOnly || scope?.view === "developer") {
     return (
       <>
         <DeveloperShell user={user} onLogout={onLogout}>
@@ -181,13 +178,10 @@ export default function WorkspaceShell({
     );
   }
 
-  const rail = user.reward_models_enabled
-    ? <RewardRail user={user} onLogout={onLogout} />
-    : <Rail user={user} onLogout={onLogout} />;
+  const rail = <Rail user={user} onLogout={onLogout} />;
 
-  const contentFrameClass = user.reward_models_enabled && user.product_checkpoint !== "floodgate-2026-10-05"
-    ? "rounded-tl-[4px] border-l border-t border-border bg-base"
-    : "rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]";
+  const contentFrameClass =
+    "rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]";
 
   return (
     // Chrome surface — the content panel floats on top of it.
