@@ -330,24 +330,7 @@ class Settings:
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-    # Scores judge evals (services/evals). The trait-grading judge was benchmarked on Opus.
-    EVAL_JUDGE_MODEL: str = os.getenv("EVAL_JUDGE_MODEL", "claude-opus-5-5")
-    # Grades per submission; each trait takes the middle one (sampling can't be turned off).
-    EVAL_JUDGE_SAMPLES: int = int(os.getenv("EVAL_JUDGE_SAMPLES", "3"))
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
-
-    # --- Agent Workbench rubric grading (TypeSafe Jev) ---
-    TYPESAFE_API_KEY: str | None = os.getenv("TYPESAFE_API_KEY")
-    JEV_MODEL: str = os.getenv("JEV_MODEL", "jev-1.13.0")
-    JEV_TIMEOUT_SECONDS: float = float(os.getenv("JEV_TIMEOUT_SECONDS", "45"))
-
-    # Automatic annotation labels each step of a trace (services/rm/step_labeling.py).
-    # Trace content is sent to OpenAI, so it needs OPENAI_API_KEY. These are
-    # per-context-window budgets, not trace size limits. Long traces use
-    # overlapping windows and explicitly marked excerpts of large messages.
-    STEP_LABEL_MODEL: str = os.getenv("STEP_LABEL_MODEL", "gpt-6-sol")
-    STEP_LABELING_MAX_CHUNKS: int = int(os.getenv("STEP_LABELING_MAX_CHUNKS", "80"))
-    STEP_LABELING_MAX_CHARS: int = int(os.getenv("STEP_LABELING_MAX_CHARS", "200000"))
 
     # --- LLM (Gemini) — PDF vision transcription (services/pdf_ocr.py) ---
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
